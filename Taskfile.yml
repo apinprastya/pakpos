@@ -93,7 +93,7 @@ tasks:
   lint:
     summary: Runs Go and frontend linters/type checks
     cmds:
-      - test -z "$(gofmt -l main.go internal)" || (gofmt -l main.go internal && echo "gofmt needed" && exit 1)
+      - test -z "$(gofmt -l *.go internal)" || (gofmt -l *.go internal && echo "gofmt needed" && exit 1)
       - go vet ./internal/...
       - if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else echo "golangci-lint not installed, skipping"; fi
       - cd frontend && npm run typecheck --silent && npm run lint --silent && npm run format:check --silent

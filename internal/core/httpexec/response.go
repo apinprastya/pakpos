@@ -120,7 +120,7 @@ func decodedBody(resp *http.Response) (io.Reader, error) {
 }
 
 func (e *Executor) spill(head []byte, rest io.Reader) (string, int64, error) {
-	f, err := os.CreateTemp(e.settings.TempDir, "pakpos-response-*")
+	f, err := os.CreateTemp(e.settings.TempDir, SpillPrefix+"*")
 	if err != nil {
 		return "", 0, err
 	}

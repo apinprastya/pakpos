@@ -10,10 +10,9 @@ Read before larger changes:
 
 - **Backend:** Go 1.26, Wails v3.0.0 (`github.com/wailsapp/wails/v3`), module name `pakpos`
 - **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (`radix-nova` style), Zustand, lucide-react, sonner
+- **Storage:** YAML workspace files with ULID IDs (`gopkg.in/yaml.v3`, `oklog/ulid`), `fsnotify` watcher, `modernc.org/sqlite` (pure Go, no CGO)
 - **Planned (not yet added):**
   - CodeMirror 6
-  - `modernc.org/sqlite` (pure Go, no CGO)
-  - YAML workspace files with ULID IDs
   - goja for scripting
   - `zalando/go-keyring` for secrets
 - **Targets:** Linux (WebKitGTK), macOS, Windows
@@ -38,12 +37,14 @@ Before you finish a task, run `wails3 task lint` and `wails3 task coverage`, and
 ## Repository layout
 
 ```
-main.go                  Wails bootstrap, registers services; keep it minimal
+main.go                  Wails bootstrap: creates service.Core, registers services and events
+wails_adapters.go        Wails implementations of service.Dialogs and service.Events
 internal/
-  service/               Wails-bound services: thin adapters only
+  service/               Wails-bound services (thin) + Core (shared state: db, workspace, executor)
   buildinfo/             Version info (set via -ldflags)
-  core/...               (planned) model, vars, auth, httpexec, script, curl, codegen
-  store/...              (planned) fsstore (YAML workspace), sqlite (history/settings)
+  core/                  model, urlx, auth, httpexec, settings; planned: vars, script, curl, codegen
+  store/fsstore/         YAML workspace: manifest, collections, one file per request, watcher
+  store/sqlite/          history, settings, recent workspaces; migrations in migrations/NNNN_name.sql
   secrets/               (planned) keychain wrapper behind an interface
 frontend/
   src/components/ui/     shadcn components, vendored; see "Frontend conventions"
@@ -74,6 +75,11 @@ docs/                    architecture and plans
 - Return errors with context (`fmt.Errorf("open workspace %q: %w", path, err)`). Do not panic in library code.
 - Pass `context.Context` through anything that does I/O or can be cancelled.
 - Bound service methods should use JSON-tagged DTO structs so the generated TS types stay clean.
+- **Services never import Wails.** Anything that needs the Wails app (dialogs, events) goes behind an interface in `internal/service/core.go` and is implemented in `wails_adapters.go`. Tests use fakes.
+- New typed events: add a const and a payload struct in `internal/service`, then `application.RegisterEvent[T](name)` in `main.go`'s `init`, so the bindings are typed.
+- **Database changes go in a new migration file**, `internal/store/sqlite/migrations/NNNN_name.sql`. Never edit an applied migration.
+- Workspace writes go through `fsstore.Workspace` methods. They write atomically and mark the path as the app's own write, so the watcher does not echo it back as an external change.
+- App data lives in `os.UserConfigDir()/pakpos`: `pakpos.db`, `bodies/`, `tmp/`. Set `XDG_CONFIG_HOME` to a temp dir when smoke-running the app, so you don't touch real data.
 
 ## Frontend conventions
 
@@ -115,6 +121,9 @@ docs/                    architecture and plans
 - `go vet ./...` at the root fails until `frontend/dist` exists, because of the `//go:embed`. Lint tasks run `go vet ./internal/...`.
 - npm prints `Unknown project config "minimum-release-age"`. This comes from `frontend/.npmrc` (a supply-chain guard for pnpm/bun) and is harmless.
 - `@wailsio/runtime` is pinned to exactly `3.0.0` to match the Go module. Upgrade both together.
+- yaml.v3 panics, rather than returning an error, on values it can't encode; `fsstore.marshalYAML` recovers from this.
+- fsnotify drops a folder's watch when the folder is renamed. `fsstore.Watcher` re-syncs its watches on rename/remove events, and the workspace adds watches synchronously for folders it creates. Keep both.
+- `RequestService.Send` takes a `context.Context` first; Wails passes it in and hides it from TS. Network failures are returned in `SendResult.Error`, not as Go errors.
 - The Linux webview is WebKitGTK. Avoid bleeding-edge CSS and check rendering on Linux.
 
 ## License

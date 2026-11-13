@@ -171,10 +171,25 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
   - When sending, the query table is the source of truth, not the typed URL.
   - Response body goes to the UI as `body` + `encoding` (`utf8` or `base64`), with a `kind` hint and `truncated`/`bodyPath` for bodies over 10 MB.
 
+- **M2 — done.**
+  - `store/fsstore`: YAML workspace with atomic writes and an fsnotify watcher.
+  - `store/sqlite`: history, settings and recent workspaces, using embedded migrations.
+- **M3 — done.**
+  - Services: `WorkspaceService`, `RequestService`, `HistoryService`, `SettingsService`, all wired up in `main.go`.
+  - Dialogs and events are behind interfaces (`service.Dialogs`, `service.Events`); the Wails adapters live in `wails_adapters.go`.
+  - `Send` returns a `SendResult{response, error, historyId}`. Network failures come back in `error` (with a kind and a message), not as a rejected promise.
+
 ### Carried over from M1
 
-- [ ] Cookie jar kept between requests, one per workspace (M3, on the Executor).
-- [ ] Delete truncated-body temp files: move them into history storage or clean up on exit or after a time limit (M2/M3).
+- [x] Cookie jar kept between requests, one per workspace. Fixed in M3: it resets on workspace switch and is kept when settings change.
+- [x] Truncated-body temp files are cleaned up. Fixed in M2/M3: history moves them into `<data>/bodies` and deletes them on delete, clear or prune. Leftover spills and orphaned body files are removed at startup.
 - [ ] Optionally buffer small form-data bodies to send a Content-Length (some servers reject chunked uploads).
 - [ ] Manual decompression covers gzip only; add deflate/brotli if needed.
 - [ ] `TestExecuteDNS` depends on the system resolver; consider a custom dialer/resolver to make it hermetic.
+
+### Carried over from M2/M3
+
+- [ ] Root package `main` (`main.go`, `wails_adapters.go`) has no unit tests: the Wails dialog/event adapters are only exercised by running the app.
+- [ ] Watcher edge case: an external write into a collection folder in the same instant the app renames that folder can be missed until the next change.
+- [ ] Workspace switching does not cancel in-flight sends; they finish on the previous executor and are recorded against the newly open workspace.
+- [ ] `HistoryService.Clear` clears all workspaces; add a per-workspace clear if the UI needs it (`sqlite.ClearHistory(workspaceID)` already supports it).
