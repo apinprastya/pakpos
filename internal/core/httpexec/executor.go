@@ -31,6 +31,8 @@ type Settings struct {
 	// TempDir holds full bodies of truncated responses. Empty means os.TempDir().
 	TempDir   string
 	UserAgent string
+	// Jar stores cookies between requests. Nil disables cookie persistence.
+	Jar http.CookieJar
 }
 
 // DefaultSettings returns the settings used for a fresh install.
@@ -74,6 +76,7 @@ func New(s Settings) *Executor {
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: s.InsecureSkipVerify} //nolint:gosec // user-controlled setting
 	client := &http.Client{
 		Transport: transport,
+		Jar:       s.Jar,
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 			if !s.FollowRedirects {
 				return http.ErrUseLastResponse
