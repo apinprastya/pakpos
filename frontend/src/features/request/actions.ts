@@ -1,7 +1,9 @@
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { compactRequest, type SendResult } from "@/lib/model";
+import { useHistoryStore } from "@/stores/history";
 import { useTabsStore } from "@/stores/tabs";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 function newSendId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `send-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -29,6 +31,7 @@ export async function sendTab(tabId: string): Promise<void> {
   // Ignore results for tabs that were closed or re-sent meanwhile.
   const current = useTabsStore.getState().tabs.find((t) => t.id === tabId);
   if (current?.sendId === sendId) useTabsStore.getState().setResult(tabId, result);
+  if (result.historyId) void useHistoryStore.getState().refresh();
 }
 
 export async function cancelTab(tabId: string): Promise<void> {
@@ -58,6 +61,7 @@ export async function saveTab(tabId: string, closeAfter = false): Promise<boolea
     useTabsStore.getState().markSaved(tabId, saved);
     if (closeAfter) useTabsStore.getState().close(tabId);
     toast.success("Request saved");
+    void useWorkspaceStore.getState().refresh();
     return true;
   } catch (e) {
     toast.error("Couldn't save the request", { description: errorMessage(e) });
@@ -71,8 +75,10 @@ export async function saveTabAs(tabId: string, collectionId: string, name: strin
   if (!tab) return false;
   try {
     const saved = await api.saveAs(collectionId, name, compactRequest({ ...tab.request, name }));
-    useTabsStore.getState().markSaved(tabId, saved, collectionId);
+    const workspaceId = useWorkspaceStore.getState().workspace?.id ?? "";
+    useTabsStore.getState().markSaved(tabId, saved, collectionId, workspaceId);
     toast.success("Request saved");
+    void useWorkspaceStore.getState().refresh();
     return true;
   } catch (e) {
     toast.error("Couldn't save the request", { description: errorMessage(e) });

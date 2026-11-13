@@ -69,3 +69,47 @@ describe("model", () => {
     expect(requestsEqual(a, { ...a, url: "x" })).toBe(false);
   });
 });
+
+describe("sidebar model helpers", () => {
+  it("normalizeTree fills nulls and defaults", async () => {
+    const { normalizeTree } = await import("./model");
+    expect(normalizeTree(null)).toEqual({ collections: [], problems: [] });
+    expect(
+      normalizeTree({
+        collections: [
+          { id: "c", name: "C", seq: 1, requests: [{ id: "r", name: "R", method: "", seq: 2 }] },
+          {},
+        ],
+        problems: [{ path: "x.yaml", message: "bad" }],
+      }),
+    ).toEqual({
+      collections: [
+        { id: "c", name: "C", seq: 1, requests: [{ id: "r", name: "R", method: "GET", url: "", seq: 2 }] },
+        { id: "", name: "", seq: 0, requests: [] },
+      ],
+      problems: [{ path: "x.yaml", message: "bad" }],
+    });
+  });
+
+  it("normalizeHistoryEntry and historyToResult", async () => {
+    const { normalizeHistoryEntry, historyToResult } = await import("./model");
+    const empty = normalizeHistoryEntry(undefined);
+    expect(empty.method).toBe("GET");
+    expect(empty.response).toBeNull();
+    expect(historyToResult(empty)).toEqual({ response: null, error: null, historyId: 0 });
+
+    const ok = normalizeHistoryEntry({
+      id: 7,
+      method: "POST",
+      url: "https://x",
+      status: 201,
+      request: { method: "POST", url: "https://x" },
+      response: { statusCode: 201 },
+    });
+    expect(ok.request.method).toBe("POST");
+    expect(historyToResult(ok)).toMatchObject({ response: { statusCode: 201 }, error: null, historyId: 7 });
+
+    const failed = normalizeHistoryEntry({ id: 8, errorKind: "dns", errorMessage: "no such host" });
+    expect(historyToResult(failed).error).toEqual({ kind: "dns", message: "no such host" });
+  });
+});

@@ -10,6 +10,8 @@ export interface Tab {
   saved: Request | null;
   /** Collection a saved request lives in. */
   collectionId: string;
+  /** Workspace a saved request belongs to ("" when unknown or unsaved). */
+  workspaceId: string;
   /** Running send, if any. */
   sendId: string | null;
   /** Last send result for this tab (not persisted). */
@@ -26,7 +28,7 @@ interface TabsState {
 
   newTab: () => string;
   /** Opens a saved request, or focuses its tab if it's already open. */
-  openSaved: (request: Request, collectionId: string) => string;
+  openSaved: (request: Request, collectionId: string, workspaceId?: string) => string;
   /** Opens a history entry as a new unsaved tab with its response attached. */
   openFromHistory: (request: Request, result: SendResult) => string;
   activate: (id: string) => void;
@@ -37,7 +39,16 @@ interface TabsState {
   cancelClose: () => void;
   move: (fromId: string, toId: string) => void;
   updateRequest: (id: string, update: (req: Request) => Request) => void;
-  markSaved: (id: string, saved: Request, collectionId?: string) => void;
+  markSaved: (id: string, saved: Request, collectionId?: string, workspaceId?: string) => void;
+  /** Detaches a tab from its file: it stays open as an unsaved request. */
+  detach: (id: string) => void;
+  /**
+   * Applies the version of the request found on disk. A clean tab shows it;
+   * a tab with edits keeps them and only updates what it compares against.
+   */
+  applyDiskVersion: (id: string, disk: Request, collectionId: string) => void;
+  /** Applies a rename done from the sidebar to the tab and its saved copy. */
+  renameSaved: (id: string, name: string) => void;
   setSending: (id: string, sendId: string | null) => void;
   setResult: (id: string, result: SendResult | null) => void;
   openSaveDialog: (tabId: string, closeAfter?: boolean) => void;
@@ -56,6 +67,7 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
     request: emptyRequest(),
     saved: null,
     collectionId: "",
+    workspaceId: "",
     sendId: null,
     result: null,
     ...partial,
@@ -111,14 +123,14 @@ export const useTabsStore = create<TabsState>()(
         return tab.id;
       },
 
-      openSaved: (request, collectionId) => {
+      openSaved: (request, collectionId, workspaceId = "") => {
         const existing = get().tabs.find((t) => t.saved?.id === request.id && request.id !== "");
         if (existing) {
           set({ activeId: existing.id });
           return existing.id;
         }
         const req = normalizeRequest(request);
-        const tab = makeTab({ request: req, saved: req, collectionId });
+        const tab = makeTab({ request: req, saved: req, collectionId, workspaceId });
         set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
         return tab.id;
       },
@@ -173,7 +185,7 @@ export const useTabsStore = create<TabsState>()(
       updateRequest: (id, update) =>
         set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, request: update(t.request) } : t)) })),
 
-      markSaved: (id, saved, collectionId) =>
+      markSaved: (id, saved, collectionId, workspaceId) =>
         set((s) => ({
           tabs: s.tabs.map((t) =>
             t.id === id
@@ -182,7 +194,43 @@ export const useTabsStore = create<TabsState>()(
                   request: saved,
                   saved,
                   collectionId: collectionId ?? t.collectionId,
+                  workspaceId: workspaceId ?? t.workspaceId,
                 }
+              : t,
+          ),
+        })),
+
+      detach: (id) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === id
+              ? {
+                  ...t,
+                  request: { ...t.request, id: "", seq: 0 },
+                  saved: null,
+                  collectionId: "",
+                  workspaceId: "",
+                }
+              : t,
+          ),
+        })),
+
+      applyDiskVersion: (id, disk, collectionId) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) => {
+            if (t.id !== id) return t;
+            const req = normalizeRequest(disk);
+            return isDirty(t)
+              ? { ...t, saved: req, collectionId }
+              : { ...t, request: req, saved: req, collectionId };
+          }),
+        })),
+
+      renameSaved: (id, name) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === id && t.saved
+              ? { ...t, request: { ...t.request, name }, saved: { ...t.saved, name } }
               : t,
           ),
         })),

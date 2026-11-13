@@ -193,6 +193,14 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
   - Headers and cookies tables.
   - Loading state with Cancel, and an error state with a title, the message and a hint for each error kind.
 
+- **M6 — done.** Sidebar: workspace switcher, collections tree and history.
+  - `stores/workspace.ts`: current workspace, tree, problems and recent list. On start it restores `Current()`, or reopens the most recent workspace.
+  - Open tabs follow the workspace. External changes (`workspace:changed`) reload clean tabs, keep edits on dirty ones with a notice, and detach tabs whose file was deleted. Switching workspace closes clean tabs from the old one and detaches edited ones.
+  - Switcher: recent workspaces (removable), Open folder…, Create workspace…, Close workspace. The status bar shows the workspace name.
+  - Collections tree (`role="tree"`): expand state per workspace, filter by name/URL/method, right-click and "More" menus (new request, rename, duplicate, move to, delete with confirm), inline rename, drag and drop (dnd-kit) to reorder collections and move requests, keyboard support (arrows, Home/End, Enter, F2, Delete, Alt+↑/↓ to reorder). Files that couldn't be loaded are listed.
+  - History: grouped by day, debounced search, Load more, open as a new tab with its stored response, delete one, clear all with confirm. Reloads after each recorded send.
+  - Go: `RequestSummary` gained `url` so the tree filter can match URLs.
+
 ### Carried over from M1
 
 - [x] Cookie jar kept between requests, one per workspace. Fixed in M3: it resets on workspace switch and is kept when settings change.
@@ -211,8 +219,16 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
 ### Carried over from M4/M5
 
 - [ ] `{{variable}}` highlighting and autocomplete in the URL and body editors (Tier 2, together with environments).
-- [ ] Saved tabs don't react to `workspace:changed` yet: an external edit to an open request isn't reloaded and a deleted one isn't flagged (M6, alongside the sidebar tree).
+- [x] Saved tabs react to `workspace:changed`. Fixed in M6 (see `stores/workspace.ts` `syncTabs`).
 - [ ] Code-split CodeMirror languages; the main bundle is ~1 MB minified (fine for a desktop app, but it slows the first paint).
 - [ ] HTML pretty-printing: Pretty shows HTML highlighted as received, not reformatted.
 - [ ] The Settings dialog (M7) is referenced by error hints (timeout, TLS, redirects) but doesn't exist yet.
 
+
+### Carried over from M6
+
+- [ ] Drag and drop is pointer-only; keyboard users reorder with Alt+↑/↓ and move between collections with "Move to". There's no keyboard drag mode.
+- [ ] Keyboard reordering of requests stays within a collection (Alt+↑ at the top doesn't jump to the previous collection).
+- [ ] History shows every workspace's entries; "Clear history" clears all (matches `HistoryService.Clear`). Add a per-workspace filter/clear if wanted.
+- [ ] Tabs persisted before M6 have no `workspaceId`; they're adopted by the first workspace that contains their request id.
+- [ ] Opening a folder that isn't a workspace from the switcher shows an error with a "Create workspace here" action, rather than creating one silently (the Save dialog still creates one, as its copy says).

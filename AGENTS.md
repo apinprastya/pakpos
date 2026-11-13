@@ -113,6 +113,11 @@ docs/                    architecture and plans
   - Pass `key={tabId}` so each request gets its own undo history.
   - Its colors come from the `--syntax-*` and `--editor-*` tokens in `index.css`.
 - Response status colors: `text-status-ok|redirect|client|server`, via `statusTextClass()`.
+- **Sidebar state** lives in `stores/workspace.ts` (workspace, tree, recent) and `stores/history.ts`. Mutations go through store actions: they call the api, refresh the tree, and keep open tabs in step (rename, delete, move). The app's own writes don't fire `workspace:changed`, so actions must refresh themselves.
+  - Tabs record the `workspaceId` they were saved in. `syncTabs` reconciles them after every tree load; `fromDisk: true` also re-reads open requests (used for external changes and on start).
+  - `features/sidebar/treeModel.ts` holds the pure tree logic (filter, visible rows, drag moves); keep `CollectionTree` thin and test logic there.
+  - Tree rows don't spread dnd-kit's `attributes` (they'd override `role="treeitem"`/`tabIndex`); only `listeners` and the node ref.
+  - Nested Tailwind groups need distinct names (`group/col`, `group/req`, `group/row`): a collection `li` contains its request rows.
 
 ## Testing
 
@@ -125,7 +130,10 @@ docs/                    architecture and plans
 - Mock Wails bindings in frontend tests. Never call real Go services from Vitest.
   - `@/lib/api` is mocked globally in `src/test/setup.ts`, with fresh `vi.fn()` stubs before each test. Override them per test with `vi.mocked(api.x).mockResolvedValue(...)`.
   - CodeMirror: use `src/test/editor.ts` (`setEditorText`, `editorText`, `editorView`). user-event can't type into contenteditable reliably in jsdom. `setup.ts` polyfills the Range rects CodeMirror measures with.
-  - Use `src/test/store.ts` (`resetTabs`, `activeTab`) to seed the tabs store, and `src/test/fixtures.ts` (`makeResponse`) for responses.
+  - Use `src/test/store.ts` (`resetTabs`, `activeTab`) to seed the tabs store, and `src/test/fixtures.ts` (`makeResponse`) for responses. The workspace and history stores are reset before every test (`resetSidebarStores` in `setup.ts`).
+  - Spy on store actions with `vi.spyOn(useWorkspaceStore.getState(), "action")` to test components without the api.
+  - Drag and drop can't be driven in jsdom (no layout). Test the handlers by mocking `DndContext` and calling the captured props (see `CollectionTreeDnd.test.tsx`).
+  - Radix submenus need real geometry for pointer selection: focus the submenu item and press Enter instead.
 - `src/lib/api.ts` is excluded from coverage because it's a thin binding adapter that's always mocked.
 
 ## Gotchas
@@ -137,6 +145,8 @@ docs/                    architecture and plans
 - yaml.v3 panics, rather than returning an error, on values it can't encode; `fsstore.marshalYAML` recovers from this.
 - fsnotify drops a folder's watch when the folder is renamed. `fsstore.Watcher` re-syncs its watches on rename/remove events, and the workspace adds watches synchronously for folders it creates. Keep both.
 - `RequestService.Send` takes a `context.Context` first; Wails passes it in and hides it from TS. Network failures are returned in `SendResult.Error`, not as Go errors.
+- An input that mounts while a Radix menu is open (e.g. "Rename" from a context menu) loses `autoFocus` to the menu's focus trap. Focus it on the next tick, as `InlineRename` does.
+- `fsstore.Open` errors contain "not a pakpos workspace" and `Create` errors contain "a workspace already exists here"; the frontend matches on these strings to offer the right next step.
 - Tailwind's `sr-only` is `position: absolute`, so inside a CSS grid it drops out of the column flow. Wrap screen-reader-only header text in a normal grid cell: `<span role="columnheader"><span className="sr-only">…</span></span>`.
 - To screenshot the UI with fake data, run `vite preview` and use Playwright to route `**/wails/runtime*`. The body is `{object, method, args: {methodID, args}}`; return the JSON result for the method ID (IDs are in `frontend/bindings/.../*service.ts`).
 - The Linux webview is WebKitGTK. Avoid bleeding-edge CSS and check rendering on Linux.

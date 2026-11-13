@@ -141,3 +141,50 @@ describe("tabs store", () => {
     rm.mockRestore();
   });
 });
+
+describe("tabs: workspace sync helpers", () => {
+  const base = () => ({ ...emptyRequest(), id: "r1", name: "Get user", url: "https://a" });
+
+  it("openSaved records the workspace, markSaved can set it", () => {
+    resetTabs();
+    const id = useTabsStore.getState().openSaved(base(), "c1", "w1");
+    expect(useTabsStore.getState().tabs.find((t) => t.id === id)?.workspaceId).toBe("w1");
+    useTabsStore.getState().markSaved(id, base(), undefined, "w2");
+    expect(useTabsStore.getState().tabs.find((t) => t.id === id)).toMatchObject({
+      workspaceId: "w2",
+      collectionId: "c1",
+    });
+  });
+
+  it("detach turns a saved tab into an unsaved request", () => {
+    resetTabs(base(), { saved: base(), collectionId: "c1", workspaceId: "w1" });
+    useTabsStore.getState().detach("t1");
+    expect(activeTab()).toMatchObject({ saved: null, collectionId: "", workspaceId: "" });
+    expect(activeTab().request.id).toBe("");
+    expect(activeTab().request.url).toBe("https://a");
+  });
+
+  it("applyDiskVersion replaces a clean tab and keeps edits on a dirty one", () => {
+    const disk = { ...base(), url: "https://disk" };
+    resetTabs(base(), { saved: base() });
+    useTabsStore.getState().applyDiskVersion("t1", disk, "c2");
+    expect(activeTab().request.url).toBe("https://disk");
+    expect(activeTab().collectionId).toBe("c2");
+
+    resetTabs({ ...base(), url: "https://edited" }, { saved: base() });
+    useTabsStore.getState().applyDiskVersion("t1", disk, "c2");
+    expect(activeTab().request.url).toBe("https://edited");
+    expect(activeTab().saved?.url).toBe("https://disk");
+  });
+
+  it("renameSaved renames both copies; ignores unsaved tabs", () => {
+    resetTabs(base(), { saved: base() });
+    useTabsStore.getState().renameSaved("t1", "Fetch user");
+    expect(activeTab().request.name).toBe("Fetch user");
+    expect(activeTab().saved?.name).toBe("Fetch user");
+
+    resetTabs(base());
+    useTabsStore.getState().renameSaved("t1", "X");
+    expect(activeTab().request.name).toBe("Get user");
+  });
+});

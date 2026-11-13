@@ -104,10 +104,23 @@ describe("save dialog", () => {
   it("asks for a workspace when none is open, then saves into a collection", async () => {
     const user = userEvent.setup();
     vi.mocked(api.pickFolder).mockResolvedValue("/work/api");
-    vi.mocked(api.openWorkspace).mockRejectedValue(new Error("not a workspace"));
+    vi.mocked(api.openWorkspace).mockRejectedValue(
+      new Error("not a pakpos workspace: /work/api has no pakpos.yaml"),
+    );
     vi.mocked(api.createWorkspace).mockImplementation(async () => {
       vi.mocked(api.currentWorkspace).mockResolvedValue({ id: "w", name: "api", path: "/work/api" });
       vi.mocked(api.collections).mockResolvedValue([{ id: "c1", name: "Users", seq: 1, requests: [] }]);
+      vi.mocked(api.tree).mockResolvedValue({
+        collections: [
+          {
+            id: "c1",
+            name: "Users",
+            seq: 1,
+            requests: [{ id: "saved-id", name: "List users", method: "GET", url: "https://x", seq: 1 }],
+          },
+        ],
+        problems: [],
+      });
       return { id: "w", name: "api", path: "/work/api" };
     });
     render(<App />);

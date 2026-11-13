@@ -126,11 +126,68 @@ export interface SendResult {
   historyId: number;
 }
 
+export interface RequestSummary {
+  id: string;
+  name: string;
+  method: string;
+  url: string;
+  seq: number;
+}
+
 export interface CollectionNode {
   id: string;
   name: string;
   seq: number;
-  requests: { id: string; name: string; method: string; seq: number }[];
+  requests: RequestSummary[];
+}
+
+/** A workspace file that couldn't be loaded (e.g. hand-edited invalid YAML). */
+export interface Problem {
+  path: string;
+  message: string;
+}
+
+export interface WorkspaceTree {
+  collections: CollectionNode[];
+  problems: Problem[];
+}
+
+export interface RecentWorkspace {
+  path: string;
+  name: string;
+  lastOpened: string;
+}
+
+export interface HistorySummary {
+  id: number;
+  createdAt: string;
+  workspaceId: string;
+  requestId: string;
+  requestName: string;
+  method: string;
+  url: string;
+  status: number;
+  durationMs: number;
+  size: number;
+  errorKind: string;
+  errorMessage: string;
+}
+
+export interface HistoryEntry extends HistorySummary {
+  request: Request;
+  response: Response | null;
+}
+
+export interface HistoryFilter {
+  text: string;
+  workspaceId: string;
+  offset: number;
+  limit: number;
+}
+
+export interface HistoryPage {
+  items: HistorySummary[];
+  total: number;
 }
 
 export interface WorkspaceInfo {
@@ -258,6 +315,58 @@ export function normalizeSendResult(input: unknown): SendResult {
     response: r.response ? normalizeResponse(r.response) : null,
     error: r.error ? { kind: r.error.kind, message: r.error.message } : null,
     historyId: r.historyId ?? 0,
+  };
+}
+
+export function normalizeTree(input: unknown): WorkspaceTree {
+  const t = (input ?? {}) as {
+    collections?:
+      (Omit<Loose<CollectionNode>, "requests"> & { requests?: Loose<RequestSummary>[] | null })[] | null;
+    problems?: Problem[] | null;
+  };
+  return {
+    collections: (t.collections ?? []).map((c) => ({
+      id: c.id ?? "",
+      name: c.name ?? "",
+      seq: c.seq ?? 0,
+      requests: (c.requests ?? []).map((r) => ({
+        id: r.id ?? "",
+        name: r.name ?? "",
+        method: r.method || "GET",
+        url: r.url ?? "",
+        seq: r.seq ?? 0,
+      })),
+    })),
+    problems: t.problems ?? [],
+  };
+}
+
+/** Turns a history entry into what a tab shows: the request plus its stored result. */
+export function historyToResult(entry: HistoryEntry): SendResult {
+  return {
+    response: entry.response,
+    error: entry.errorKind ? { kind: entry.errorKind as SendErrorKind, message: entry.errorMessage } : null,
+    historyId: entry.id,
+  };
+}
+
+export function normalizeHistoryEntry(input: unknown): HistoryEntry {
+  const e = (input ?? {}) as Loose<HistoryEntry>;
+  return {
+    id: e.id ?? 0,
+    createdAt: e.createdAt ?? "",
+    workspaceId: e.workspaceId ?? "",
+    requestId: e.requestId ?? "",
+    requestName: e.requestName ?? "",
+    method: e.method || "GET",
+    url: e.url ?? "",
+    status: e.status ?? 0,
+    durationMs: e.durationMs ?? 0,
+    size: e.size ?? 0,
+    errorKind: e.errorKind ?? "",
+    errorMessage: e.errorMessage ?? "",
+    request: normalizeRequest(e.request),
+    response: e.response ? normalizeResponse(e.response) : null,
   };
 }
 

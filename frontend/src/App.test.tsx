@@ -14,10 +14,10 @@ describe("App shell", () => {
     resetTabs();
   });
 
-  it("renders sidebar, tab, request and response areas", () => {
+  it("renders sidebar, tab, request and response areas", async () => {
     render(<App />);
     expect(screen.getByRole("complementary", { name: "Sidebar" })).toBeInTheDocument();
-    expect(screen.getByText("No workspace open")).toBeInTheDocument();
+    expect(await screen.findByText("No workspace open")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Untitled request/ })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("region", { name: "Request" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Response" })).toBeInTheDocument();
@@ -27,10 +27,10 @@ describe("App shell", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: "History" }));
-    expect(screen.getByText("No requests sent yet")).toBeInTheDocument();
+    expect(await screen.findByText("No requests sent yet")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "History" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "Collections" }));
-    expect(screen.getByText("No workspace open")).toBeInTheDocument();
+    expect(await screen.findByText("No workspace open")).toBeInTheDocument();
   });
 
   it("toggles the request/response split orientation", async () => {

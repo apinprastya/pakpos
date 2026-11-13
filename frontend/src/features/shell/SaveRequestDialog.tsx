@@ -17,6 +17,7 @@ import { saveTabAs } from "@/features/request/actions";
 import { api } from "@/lib/api";
 import type { CollectionNode, WorkspaceInfo } from "@/lib/model";
 import { useTabsStore } from "@/stores/tabs";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 const NEW_COLLECTION = "__new__";
 
@@ -83,12 +84,7 @@ function SaveForm({
     try {
       const path = await api.pickFolder();
       if (!path) return;
-      try {
-        await api.openWorkspace(path);
-      } catch {
-        // Not a workspace yet: create one in that folder.
-        await api.createWorkspace(path, "");
-      }
+      await useWorkspaceStore.getState().openOrCreate(path);
       await refresh();
     } catch (e) {
       toast.error("Couldn't open the folder", { description: String(e) });
@@ -104,6 +100,7 @@ function SaveForm({
       if (collection === NEW_COLLECTION) {
         if (!newCollection.trim()) return;
         collectionId = (await api.createCollection(newCollection.trim())).id;
+        void useWorkspaceStore.getState().refresh();
       }
       const ok = await saveTabAs(tabId, collectionId, name.trim());
       if (ok) {

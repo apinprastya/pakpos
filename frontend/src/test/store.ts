@@ -1,5 +1,16 @@
 import { emptyRequest, type Request } from "@/lib/model";
+import { useHistoryStore } from "@/stores/history";
 import { useTabsStore, type Tab } from "@/stores/tabs";
+import { useWorkspaceStore } from "@/stores/workspace";
+
+const workspaceInitial = useWorkspaceStore.getState();
+const historyInitial = useHistoryStore.getState();
+
+/** Puts the workspace and history stores back to their start state (run before each test). */
+export function resetSidebarStores(): void {
+  useWorkspaceStore.setState(workspaceInitial, true);
+  useHistoryStore.setState(historyInitial, true);
+}
 
 /** Resets the tabs store to a single tab with the given request. */
 export function resetTabs(request: Partial<Request> = {}, tab: Partial<Tab> = {}): Tab {
@@ -8,6 +19,7 @@ export function resetTabs(request: Partial<Request> = {}, tab: Partial<Tab> = {}
     request: { ...emptyRequest(), ...request },
     saved: null,
     collectionId: "",
+    workspaceId: "",
     sendId: null,
     result: null,
     ...tab,

@@ -434,7 +434,7 @@ func TestReloadMissingCollectionsDir(t *testing.T) {
 }
 
 func TestSummaryDefaults(t *testing.T) {
-	if s := summarize(model.Request{ID: "1", Name: "n", Method: "patch"}); s.Method != "PATCH" {
+	if s := summarize(model.Request{ID: "1", Name: "n", Method: "patch", URL: "https://x.dev/a"}); s.Method != "PATCH" || s.URL != "https://x.dev/a" {
 		t.Fatalf("summary = %+v", s)
 	}
 	if s := summarize(model.Request{}); s.Method != "GET" {

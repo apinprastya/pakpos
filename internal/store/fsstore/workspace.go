@@ -60,7 +60,9 @@ type RequestSummary struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Method string `json:"method"`
-	Seq    int    `json:"seq"`
+	// URL lets the sidebar filter match on the request URL.
+	URL string `json:"url"`
+	Seq int    `json:"seq"`
 }
 
 // CollectionNode is one collection with its requests, ordered by Seq.
@@ -654,7 +656,7 @@ func summarize(r model.Request) RequestSummary {
 	if method == "" {
 		method = "GET"
 	}
-	return RequestSummary{ID: r.ID, Name: r.Name, Method: method, Seq: r.Seq}
+	return RequestSummary{ID: r.ID, Name: r.Name, Method: method, URL: r.URL, Seq: r.Seq}
 }
 
 func normalizeRequest(r *model.Request) {
