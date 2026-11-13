@@ -1,6 +1,18 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+
+// Never reach real Wails bindings from tests; each test gets fresh stubs.
+vi.mock("@/lib/api", async () => {
+  const { createApiMock } = await import("./apiMock");
+  return { api: createApiMock() };
+});
+
+beforeEach(async () => {
+  const { api } = await import("@/lib/api");
+  const { createApiMock } = await import("./apiMock");
+  Object.assign(api, createApiMock());
+});
 
 afterEach(() => {
   cleanup();
@@ -63,3 +75,15 @@ vi.mock("@/components/ui/resizable", async () => {
     ResizableHandle: passthrough("resizable-handle"),
   };
 });
+
+// CodeMirror measures text via Range rects, which jsdom doesn't implement.
+const emptyRects = () => {
+  const list = [] as unknown as DOMRectList;
+  (list as unknown as { item: () => null }).item = () => null;
+  return list;
+};
+const zeroRect = () =>
+  ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) }) as DOMRect;
+Range.prototype.getClientRects ??= emptyRects;
+Range.prototype.getBoundingClientRect ??= zeroRect;
+if (!document.elementFromPoint) document.elementFromPoint = () => null;

@@ -27,6 +27,7 @@ export default defineConfig({
         "src/main.tsx",
         "src/components/ui/**", // vendored shadcn components
         "src/test/**",
+        "src/lib/api.ts", // thin adapter over generated Wails bindings; mocked in tests
         "src/**/*.d.ts",
       ],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
