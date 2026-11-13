@@ -160,3 +160,21 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
 - Every Tier 1 feature works on Linux, macOS, and Windows builds
 - Coverage ≥ 80% for Go and frontend; lint clean
 - A workspace folder can be committed to git, cloned, and reopened with no loss
+
+---
+
+## Progress
+
+- **M0 — done.**
+- **M1 — done.** Core coverage is 97.8%.
+  - A header or param the user enabled wins over the one auth would set.
+  - When sending, the query table is the source of truth, not the typed URL.
+  - Response body goes to the UI as `body` + `encoding` (`utf8` or `base64`), with a `kind` hint and `truncated`/`bodyPath` for bodies over 10 MB.
+
+### Carried over from M1
+
+- [ ] Cookie jar kept between requests, one per workspace (M3, on the Executor).
+- [ ] Delete truncated-body temp files: move them into history storage or clean up on exit or after a time limit (M2/M3).
+- [ ] Optionally buffer small form-data bodies to send a Content-Length (some servers reject chunked uploads).
+- [ ] Manual decompression covers gzip only; add deflate/brotli if needed.
+- [ ] `TestExecuteDNS` depends on the system resolver; consider a custom dialer/resolver to make it hermetic.
