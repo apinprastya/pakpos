@@ -190,7 +190,13 @@ func (w *Workspace) Root() string { return w.root }
 func (w *Workspace) Manifest() Manifest { return w.manifest }
 
 // Reload rescans the workspace from disk and returns files that could not be loaded.
+//
+// The scan and the swap happen under w.mu: a save that ran between an
+// unlocked scan and the swap would otherwise be dropped from the index by the
+// scan's stale snapshot (the request then reads as "not found").
 func (w *Workspace) Reload() []Problem {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	cols := map[string]*colEntry{}
 	reqs := map[string]*reqEntry{}
 	var problems []Problem
@@ -233,9 +239,7 @@ func (w *Workspace) Reload() []Problem {
 		w.loadRequests(meta.ID, dirPath, reqs, addProblem)
 	}
 
-	w.mu.Lock()
 	w.collections, w.requests, w.problems = cols, reqs, problems
-	w.mu.Unlock()
 	return problems
 }
 

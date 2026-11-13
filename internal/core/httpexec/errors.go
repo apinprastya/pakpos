@@ -9,7 +9,6 @@ import (
 	"io/fs"
 	"net"
 	"strings"
-	"syscall"
 )
 
 // ErrorKind classifies a send failure so the UI can show a helpful message.
@@ -81,7 +80,7 @@ func Classify(err error) *Error {
 		return newError(KindTooManyRedirects, err, "Stopped after too many redirects. Raise the redirect limit or check for a redirect loop")
 	case errors.As(err, &dnsErr):
 		return newError(KindDNS, err, "Could not resolve host %q. Check the URL and your network connection", dnsErr.Name)
-	case errors.Is(err, syscall.ECONNREFUSED):
+	case isConnRefused(err):
 		return newError(KindConnectionRefused, err, "Connection refused. Check that the server is running and the port is correct")
 	case errors.As(err, &unknownCA), errors.As(err, &hostErr), errors.As(err, &certInvalid), errors.As(err, &verifyErr):
 		return newError(KindTLS, err, "The server's TLS certificate could not be verified. Turn off certificate verification in settings to send anyway")

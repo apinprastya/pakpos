@@ -103,10 +103,22 @@ func (wt *Watcher) handle(ev fsnotify.Event) {
 			wt.add(ev.Name)
 		}
 	}
-	if !wt.relevant(ev.Name) || wt.ws.isOwnWrite(ev.Name) {
+	if !wt.relevant(ev.Name) || wt.ws.isOwnWrite(ev.Name) || isDirWrite(ev) {
 		return
 	}
 	wt.schedule()
+}
+
+// isDirWrite reports a Write event on a directory. Windows emits one for a
+// folder whenever a file inside it changes; the file's own event already
+// covers the change, and the folder path is never marked as our own write, so
+// without this every save in the app would trigger a reload.
+func isDirWrite(ev fsnotify.Event) bool {
+	if ev.Op != fsnotify.Write {
+		return false
+	}
+	info, err := os.Stat(ev.Name)
+	return err == nil && info.IsDir()
 }
 
 // watchable: only the collections dir and its direct children are watched.
