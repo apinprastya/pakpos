@@ -23,6 +23,15 @@ type Watcher struct {
 	timer  *time.Timer
 	closed bool
 	done   chan struct{}
+
+	// Watches requested from the event loop are added on the adder
+	// goroutine. On Windows, fsnotify's Add waits for its reader goroutine,
+	// which may itself be blocked delivering the next event to our loop, so
+	// calling Add from the loop deadlocks (and Close then hangs).
+	pendingDirs   map[string]struct{}
+	pendingResync bool
+	kick          chan struct{}
+	stop          chan struct{}
 }
 
 // Watch starts watching the workspace. onChange runs after the workspace has
@@ -32,13 +41,22 @@ func (w *Workspace) Watch(debounce time.Duration, onChange func([]Problem)) (*Wa
 	if err != nil {
 		return nil, err
 	}
-	wt := &Watcher{ws: w, fsw: fsw, debounce: debounce, onChange: onChange, done: make(chan struct{})}
+	wt := &Watcher{
+		ws: w, fsw: fsw, debounce: debounce, onChange: onChange,
+		done:        make(chan struct{}),
+		pendingDirs: map[string]struct{}{},
+		kick:        make(chan struct{}, 1),
+		stop:        make(chan struct{}),
+	}
+	// Drain events before adding any watch: Add can block until the reader
+	// has delivered its pending events (Windows).
+	go wt.loop()
+	go wt.adder()
 	wt.add(w.root)
 	wt.resync()
 	w.watchersMu.Lock()
 	w.watchers[wt] = struct{}{}
 	w.watchersMu.Unlock()
-	go wt.loop()
 	return wt, nil
 }
 
@@ -91,16 +109,18 @@ func (wt *Watcher) loop() {
 	}
 }
 
+// handle runs on the event loop and must never call into fsnotify (see
+// the adder field docs); watch changes are queued instead.
 func (wt *Watcher) handle(ev fsnotify.Event) {
 	colRoot := filepath.Join(wt.ws.root, CollectionsDir)
 	switch {
 	case ev.Name == colRoot && (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
-		wt.resync()
+		wt.queueResync()
 	case wt.watchable(ev.Name) && (ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
-		wt.resync()
+		wt.queueResync()
 	case wt.watchable(ev.Name) && ev.Has(fsnotify.Create):
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
-			wt.add(ev.Name)
+			wt.queueAdd(ev.Name)
 		}
 	}
 	if !wt.relevant(ev.Name) || wt.ws.isOwnWrite(ev.Name) || isDirWrite(ev) {
@@ -119,6 +139,52 @@ func isDirWrite(ev fsnotify.Event) bool {
 	}
 	info, err := os.Stat(ev.Name)
 	return err == nil && info.IsDir()
+}
+
+func (wt *Watcher) queueResync() {
+	wt.mu.Lock()
+	wt.pendingResync = true
+	wt.mu.Unlock()
+	wt.wake()
+}
+
+func (wt *Watcher) queueAdd(dir string) {
+	wt.mu.Lock()
+	wt.pendingDirs[dir] = struct{}{}
+	wt.mu.Unlock()
+	wt.wake()
+}
+
+func (wt *Watcher) wake() {
+	select {
+	case wt.kick <- struct{}{}:
+	default: // already signalled; the adder picks up everything pending
+	}
+}
+
+// adder applies queued watch changes off the event loop until Close.
+func (wt *Watcher) adder() {
+	for {
+		select {
+		case <-wt.stop:
+			return
+		case <-wt.kick:
+		}
+		wt.mu.Lock()
+		if wt.closed {
+			wt.mu.Unlock()
+			return
+		}
+		resync, dirs := wt.pendingResync, wt.pendingDirs
+		wt.pendingResync, wt.pendingDirs = false, map[string]struct{}{}
+		wt.mu.Unlock()
+		if resync {
+			wt.resync()
+		}
+		for d := range dirs {
+			wt.add(d)
+		}
+	}
 }
 
 // watchable: only the collections dir and its direct children are watched.
@@ -164,7 +230,9 @@ func (wt *Watcher) fire() {
 	}
 }
 
-// Close stops watching. No new callbacks start after Close returns.
+// Close stops watching. No new callbacks start after Close returns. It does
+// not wait for the adder goroutine: an Add in flight finishes (or fails with
+// ErrClosed) on its own.
 func (wt *Watcher) Close() error {
 	wt.mu.Lock()
 	if wt.closed {
@@ -175,6 +243,7 @@ func (wt *Watcher) Close() error {
 	if wt.timer != nil {
 		wt.timer.Stop()
 	}
+	close(wt.stop)
 	wt.mu.Unlock()
 	wt.ws.watchersMu.Lock()
 	delete(wt.ws.watchers, wt)

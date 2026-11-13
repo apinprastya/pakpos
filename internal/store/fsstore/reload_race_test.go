@@ -2,6 +2,7 @@ package fsstore
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -97,4 +98,64 @@ func TestIsDirWrite(t *testing.T) {
 			t.Errorf("isDirWrite(%v) = %v, want %v", tc.ev, got, tc.want)
 		}
 	}
+}
+
+// The event loop must never call into fsnotify: on Windows, Add waits for the
+// reader goroutine, which may be blocked delivering the next event to the
+// loop — a deadlock that also hung Close (seen on Windows CI). With a nil
+// fsnotify watcher any such call would panic; handle must only queue.
+func TestWatcherHandleQueuesWatchChangesOffTheEventLoop(t *testing.T) {
+	ws := newWS(t)
+	mustCol(t, ws, "API")
+	colRoot := filepath.Join(ws.Root(), CollectionsDir)
+	fresh := filepath.Join(colRoot, "fresh")
+	if err := os.Mkdir(fresh, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wt := &Watcher{ws: ws, debounce: time.Hour, pendingDirs: map[string]struct{}{}, kick: make(chan struct{}, 1), stop: make(chan struct{})}
+
+	wt.handle(fsnotify.Event{Name: colRoot, Op: fsnotify.Create})
+	wt.handle(fsnotify.Event{Name: filepath.Join(colRoot, "gone"), Op: fsnotify.Rename})
+	wt.handle(fsnotify.Event{Name: fresh, Op: fsnotify.Create})
+	wt.handle(fsnotify.Event{Name: fresh, Op: fsnotify.Create}) // second kick coalesces
+
+	wt.mu.Lock()
+	defer wt.mu.Unlock()
+	if !wt.pendingResync {
+		t.Error("resync not queued")
+	}
+	if _, ok := wt.pendingDirs[fresh]; !ok || len(wt.pendingDirs) != 1 {
+		t.Errorf("pending dirs = %v, want only %s", wt.pendingDirs, fresh)
+	}
+	if len(wt.kick) != 1 {
+		t.Errorf("kick signals = %d, want 1", len(wt.kick))
+	}
+	if wt.timer != nil {
+		wt.timer.Stop()
+	}
+}
+
+// Close must return promptly even while watch changes are queued.
+func TestWatcherCloseWithQueuedWatchChanges(t *testing.T) {
+	ws := newWS(t)
+	mustCol(t, ws, "API")
+	w, err := ws.Watch(testDebounce, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range 50 {
+		w.queueResync()
+		w.queueAdd(filepath.Join(ws.Root(), CollectionsDir, fmt.Sprintf("d%d", i)))
+	}
+	done := make(chan error, 1)
+	go func() { done <- w.Close() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not return")
+	}
+	w.queueResync() // after Close: no panic, nothing runs
 }
