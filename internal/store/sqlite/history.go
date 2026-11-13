@@ -201,7 +201,7 @@ func (s *Store) ListHistory(f HistoryFilter) (HistoryPage, error) {
 	if limit <= 0 {
 		limit = DefaultHistoryLimit
 	}
-	rows, err := s.db.Query(`SELECT `+summaryCols+` FROM history WHERE `+cond+
+	rows, err := s.db.Query(`SELECT `+summaryCols+` FROM history WHERE `+cond+ //nolint:gosec // cond is built from constant fragments; values are bound parameters
 		` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, append(args, limit, max(f.Offset, 0))...)
 	if err != nil {
 		return HistoryPage{}, fmt.Errorf("list history: %w", err)
@@ -259,7 +259,7 @@ func (s *Store) PruneHistory(keep int) (int, error) {
 }
 
 func (s *Store) deleteWhere(cond string, args ...any) error {
-	rows, err := s.db.Query(`SELECT body_path, full_body_path FROM history WHERE `+cond, args...)
+	rows, err := s.db.Query(`SELECT body_path, full_body_path FROM history WHERE `+cond, args...) //nolint:gosec // cond is a constant fragment from this package
 	if err != nil {
 		return fmt.Errorf("delete history: %w", err)
 	}
@@ -273,7 +273,7 @@ func (s *Store) deleteWhere(cond string, args ...any) error {
 		files = append(files, a, b)
 	}
 	_ = rows.Close()
-	if _, err := s.db.Exec(`DELETE FROM history WHERE `+cond, args...); err != nil {
+	if _, err := s.db.Exec(`DELETE FROM history WHERE `+cond, args...); err != nil { //nolint:gosec // cond is a constant fragment from this package
 		return fmt.Errorf("delete history: %w", err)
 	}
 	for _, f := range files {

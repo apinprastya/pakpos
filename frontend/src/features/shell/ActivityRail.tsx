@@ -1,4 +1,7 @@
-import { FolderTree, History, type LucideIcon } from "lucide-react";
+import { FolderTree, History, Settings, type LucideIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { modKeyLabel } from "@/lib/platform";
+import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLayoutStore, type SidebarView } from "@/stores/layout";
@@ -39,7 +42,8 @@ export function ActivityRail() {
           <TooltipContent side="right">{label}</TooltipContent>
         </Tooltip>
       ))}
-      <div className="mt-auto">
+      <div className="mt-auto flex flex-col items-center gap-1">
+        <SettingsButton />
         <ThemeMenu />
       </div>
     </nav>
@@ -55,5 +59,21 @@ function Logo() {
     >
       P
     </div>
+  );
+}
+
+function SettingsButton() {
+  const open = useSettingsStore((s) => s.openDialog);
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label="Settings" onClick={() => open()}>
+          <Settings />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="right">
+        Settings <span className="ml-1 text-muted-foreground">{modKeyLabel()}+,</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }

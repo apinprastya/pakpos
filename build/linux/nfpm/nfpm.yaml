@@ -1,80 +1,77 @@
-# Feel free to remove those if you don't want/need to use them.
-# Make sure to check the documentation at https://nfpm.goreleaser.com
+# nfpm config for the Pakpos .deb / .rpm / Arch packages, built by
+# `wails3 task package:linux` (linux:generate:deb|rpm|aur → `wails3 tool package`).
+# See https://nfpm.goreleaser.com.
 #
-# The lines below are called `modelines`. See `:help modeline`
+# Identity mirrors build/config.yml. NOTE: `wails3 task common:update:build-assets`
+# rewrites this file from the Wails template; re-apply this version afterwards.
+#
+# PAKPOS_PKG_VERSION and GOARCH are set by the Linux Taskfile (VERSION from the
+# root Taskfile: git describe / PAKPOS_VERSION, CalVer e.g. 26.11.1). nfpm maps
+# a semver pre-release such as 0.0.0-dev+abc1234 to each format's rules.
 
 name: "pakpos"
 arch: ${GOARCH}
 platform: "linux"
-version: "0.1.0"
-section: "default"
-priority: "extra"
-maintainer: ${GIT_COMMITTER_NAME} <${GIT_COMMITTER_EMAIL}>
-description: "A pakpos application"
-vendor: "My Company"
-homepage: "https://wails.io"
-license: "MIT"
+version: ${PAKPOS_PKG_VERSION}
+version_schema: semver
 release: "1"
+section: "devel"
+priority: "optional"
+maintainer: "Pakpos contributors"
+description: |-
+  Desktop REST API client
+  Build, send and save HTTP requests. Workspaces are plain YAML files you can
+  commit to git; history and settings stay on your machine.
+vendor: "Pakpos contributors"
+# SPDX id of LICENSE (Apache License 2.0); see also NOTICE.
+license: "Apache-2.0"
 
 contents:
   - src: "./bin/pakpos"
-    dst: "/usr/local/bin/pakpos"
-  - src: "./build/appicon.png"
-    dst: "/usr/share/icons/hicolor/128x128/apps/pakpos.png"
+    dst: "/usr/bin/pakpos"
+    file_info:
+      mode: 0755
+  - src: "./LICENSE"
+    dst: "/usr/share/doc/pakpos/LICENSE"
+    file_info:
+      mode: 0644
+  - src: "./NOTICE"
+    dst: "/usr/share/doc/pakpos/NOTICE"
+    file_info:
+      mode: 0644
   - src: "./build/linux/pakpos.desktop"
     dst: "/usr/share/applications/pakpos.desktop"
+    file_info:
+      mode: 0644
+  - src: "./build/appicon.svg"
+    dst: "/usr/share/icons/hicolor/scalable/apps/pakpos.svg"
+    file_info:
+      mode: 0644
+  - src: "./build/appicon.png"
+    dst: "/usr/share/pixmaps/pakpos.png"
+    file_info:
+      mode: 0644
 
-# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
+# GTK4 + WebKitGTK 6.0 (Wails v3 default). Debian 13+ / Ubuntu 24.04+ names:
 depends:
   - libgtk-4-1
   - libwebkitgtk-6.0-4
 
-# Distribution-specific overrides for different package formats
 overrides:
-  # RPM packages for Fedora / RHEL / AlmaLinux / Rocky Linux
+  # Fedora 39+ (RHEL/Alma/Rocky 10 via EPEL where available)
   rpm:
     depends:
       - gtk4
       - webkitgtk6.0
-
-  # Arch Linux packages
+  # Arch Linux
   archlinux:
     depends:
       - gtk4
       - webkitgtk-6.0
 
-# scripts section to ensure desktop database is updated after install
+rpm:
+  group: "Development/Tools"
+  summary: "Desktop REST API client"
+
 scripts:
   postinstall: "./build/linux/nfpm/scripts/postinstall.sh"
-  # You can also add preremove, postremove if needed
-  # preremove: "./build/linux/nfpm/scripts/preremove.sh"
-  # postremove: "./build/linux/nfpm/scripts/postremove.sh"
-
-# If you build your app with -tags gtk3 (legacy WebKit2GTK 4.1 stack — supported through v3.0.x, removed in v3.1),
-# replace the depends/overrides above with these:
-#
-# depends:
-#   - libgtk-3-0
-#   - libwebkit2gtk-4.1-0
-# overrides:
-#   rpm:
-#     depends:
-#       - gtk3
-#       - webkit2gtk4.1
-#   archlinux:
-#     depends:
-#       - gtk3
-#       - webkit2gtk-4.1
-#
-# replaces:
-#   - foobar
-# provides:
-#   - bar
-# recommends:
-#   - whatever
-# suggests:
-#   - something-else
-# conflicts:
-#   - not-foo
-#   - not-bar
-# changelog: "changelog.yaml"

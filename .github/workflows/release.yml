@@ -1,0 +1,363 @@
+name: Release
+
+# Builds signed (when secrets exist) packages for every OS and attaches them,
+# with SHA256SUMS, to a DRAFT GitHub Release. Publishing the draft is manual.
+#
+# Versions are CalVer, vYY.MM.MICRO (e.g. v26.11.1; MICRO restarts at 1 every
+# month, pre-releases look like v26.11.2-rc.1). tools/calver checks the format.
+#
+# - push of a tag v* (e.g. v26.11.1): version = the tag without "v".
+# - workflow_dispatch: version = the "version" input, or, when empty, the next
+#   free number of the current month (UTC) computed from the existing tags and
+#   releases; the draft gets the tag v<version> on the dispatched commit when
+#   it is published.
+#
+# Optional secrets (each signing step is skipped when its secrets are absent):
+#   WINDOWS_CERT_PFX, WINDOWS_CERT_PASSWORD                      Authenticode
+#   MACOS_CERT_P12, MACOS_CERT_PASSWORD                          Developer ID
+#   APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER            notarization
+#     (App Store Connect API key; preferred), or
+#   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD                  notarization
+#     (Apple ID + app-specific password)
+#
+# Third-party code: none. GitHub's own actions are pinned to commit SHAs.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "CalVer to release, e.g. 26.11.2 or 26.11.2-rc.1 (empty: next number of this month)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  WAILS_VERSION: v3.0.0
+  NODE_VERSION: "24"
+
+jobs:
+  version:
+    name: Resolve CalVer version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # all tags, for the next number
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false # tools/ has no dependencies (no go.sum)
+
+      - id: resolve
+        name: Resolve and validate version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          calver() { go -C tools run ./calver "$@"; }
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            v=$(calver check "$GITHUB_REF_NAME")
+          elif [ -n "$INPUT_VERSION" ]; then
+            v=$(calver check "$INPUT_VERSION")
+          else
+            v=$({ git tag -l 'v*'; gh release list --limit 1000 --json tagName -q '.[].tagName'; } | calver next)
+          fi
+          tag="v$v"
+          if [ "$GITHUB_REF_TYPE" != tag ] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "::error::tag $tag already exists; push it to release it, or pick another version"
+            exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "### Releasing $tag" >> "$GITHUB_STEP_SUMMARY"
+          echo "Version: $v (tag $tag)"
+
+  linux:
+    name: Linux (AppImage, .deb, .rpm)
+    needs: version
+    runs-on: ubuntu-24.04
+    env:
+      PAKPOS_VERSION: ${{ needs.version.outputs.version }} # read by the root Taskfile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # tags for git describe
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install build dependencies (GTK4 + WebKitGTK 6.0)
+        run: |
+          sudo apt-get update
+          # file: used by linuxdeploy while building the AppImage.
+          sudo apt-get install -y build-essential pkg-config file \
+            libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Tests (frontend, Go -short, tools)
+        run: |
+          # frontend/bindings is generated (git-ignored); tsc and Vitest need it.
+          wails3 generate bindings -ts -clean=true
+          (cd frontend && npm ci && npx vitest run && npm run build)
+          go test -short ./...
+          (cd tools && go test ./...)
+
+      - name: Check stamped version
+        run: |
+          v=$(wails3 task version 2>/dev/null | head -n1 | cut -d' ' -f1)
+          echo "Taskfile VERSION: $v"
+          test "$v" = "$PAKPOS_VERSION"
+
+      - name: Build packages
+        run: wails3 task package:linux
+
+      - name: Collect artifacts
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp bin/pakpos-x86_64.AppImage "dist/pakpos-$V-linux-x86_64.AppImage"
+          cp bin/pakpos.deb "dist/pakpos-$V-linux-amd64.deb"
+          cp bin/pakpos.rpm "dist/pakpos-$V-linux-x86_64.rpm"
+          dpkg-deb -I dist/*.deb
+          ls -l dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-linux
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows (NSIS installer, portable zip)
+    needs: version
+    runs-on: windows-latest
+    env:
+      PAKPOS_VERSION: ${{ needs.version.outputs.version }}
+      HAVE_WINDOWS_SIGNING: ${{ secrets.WINDOWS_CERT_PFX != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Install NSIS
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) {
+            choco install nsis -y --no-progress
+          }
+          "${env:ProgramFiles(x86)}\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Tests (frontend, Go -short, tools)
+        run: |
+          # frontend/bindings is generated (git-ignored); tsc and Vitest need it.
+          wails3 generate bindings -ts -clean=true
+          (cd frontend && npm ci && npx vitest run && npm run build)
+          go test -short ./...
+          (cd tools && go test ./...)
+
+      - name: Check stamped version
+        run: |
+          v=$(wails3 task version 2>/dev/null | head -n1 | cut -d' ' -f1)
+          echo "Taskfile VERSION: $v"
+          test "$v" = "$PAKPOS_VERSION"
+
+      - name: Build pakpos.exe
+        run: wails3 task windows:build
+
+      - name: Sign pakpos.exe
+        if: env.HAVE_WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: ./build/windows/sign.ps1 bin/pakpos.exe
+
+      - name: Build NSIS installer (per-user, WebView2 bootstrapper)
+        # SKIP_BUILD keeps the (signed) exe from the previous steps.
+        run: wails3 task package:windows SKIP_BUILD=true
+
+      - name: Sign installer
+        if: env.HAVE_WINDOWS_SIGNING == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX: ${{ secrets.WINDOWS_CERT_PFX }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: ./build/windows/sign.ps1 bin/pakpos-amd64-installer.exe
+
+      - name: Collect artifacts
+        shell: pwsh
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item bin/pakpos-amd64-installer.exe "dist/pakpos-$env:V-windows-amd64-setup.exe"
+          Compress-Archive -Path bin/pakpos.exe -DestinationPath "dist/pakpos-$env:V-windows-amd64-portable.zip"
+          Get-ChildItem dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-windows
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS (universal .dmg)
+    needs: version
+    runs-on: macos-latest
+    env:
+      PAKPOS_VERSION: ${{ needs.version.outputs.version }}
+      HAVE_MACOS_SIGNING: ${{ secrets.MACOS_CERT_P12 != '' && secrets.MACOS_CERT_PASSWORD != '' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Tests (frontend, Go -short, tools)
+        run: |
+          # frontend/bindings is generated (git-ignored); tsc and Vitest need it.
+          wails3 generate bindings -ts -clean=true
+          (cd frontend && npm ci && npx vitest run && npm run build)
+          go test -short ./...
+          (cd tools && go test ./...)
+
+      - name: Check stamped version
+        run: |
+          v=$(wails3 task version 2>/dev/null | head -n1 | cut -d' ' -f1)
+          echo "Taskfile VERSION: $v"
+          test "$v" = "$PAKPOS_VERSION"
+
+      - name: Build universal pakpos.app (amd64 + arm64)
+        run: |
+          wails3 task darwin:package:universal
+          lipo -archs bin/pakpos.app/Contents/MacOS/pakpos
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' bin/pakpos.app/Contents/Info.plist
+
+      - name: Sign pakpos.app (Developer ID, hardened runtime)
+        if: env.HAVE_MACOS_SIGNING == 'true'
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: build/darwin/sign-notarize.sh app bin/pakpos.app
+
+      - name: Build .dmg
+        run: wails3 task darwin:create:dmg
+
+      - name: Sign and notarize .dmg
+        if: env.HAVE_MACOS_SIGNING == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: build/darwin/sign-notarize.sh dmg bin/pakpos.dmg
+
+      - name: Remove signing keychain
+        if: always() && env.HAVE_MACOS_SIGNING == 'true'
+        run: build/darwin/sign-notarize.sh cleanup
+
+      - name: Collect artifacts
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          cp bin/pakpos.dmg "dist/pakpos-$V-macos-universal.dmg"
+          ls -l dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-macos
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: Draft GitHub Release
+    needs: [version, linux, windows, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: SHA256SUMS
+        working-directory: dist
+        run: |
+          sha256sum -- * > ../SHA256SUMS
+          mv ../SHA256SUMS SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          V: ${{ needs.version.outputs.version }}
+          TAG: ${{ needs.version.outputs.tag }}
+        run: |
+          tag="$TAG"
+          # Also catches a draft left by an earlier run of the same version.
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::a release for $tag already exists (maybe an unpublished draft); delete it or release another version"
+            exit 1
+          fi
+          flags=(--draft --title "Pakpos $V" --generate-notes --target "$GITHUB_SHA")
+          case "$V" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$tag" "${flags[@]}" dist/*

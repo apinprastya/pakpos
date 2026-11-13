@@ -390,3 +390,61 @@ export function compactRequest(req: Request): Request {
 export function requestsEqual(a: Request, b: Request): boolean {
   return JSON.stringify(compactRequest(a)) === JSON.stringify(compactRequest(b));
 }
+
+export type ThemeSetting = "light" | "dark" | "system";
+export type LayoutSetting = "vertical" | "horizontal";
+
+/** App settings, stored in Go (SQLite). Mirrors internal/core/settings.Settings. */
+export interface AppSettings {
+  theme: ThemeSetting;
+  /** Whole-request timeout; 0 means no timeout. */
+  timeoutMs: number;
+  followRedirects: boolean;
+  maxRedirects: number;
+  verifyTls: boolean;
+  /** History entries to keep; 0 keeps all. */
+  historyRetention: number;
+  layout: LayoutSetting;
+}
+
+/** Limits matching internal/core/settings. */
+export const SETTINGS_LIMITS = {
+  maxTimeoutMs: 10 * 60 * 1000,
+  maxRedirects: 50,
+  maxHistoryRetention: 100_000,
+} as const;
+
+export interface BuildInfo {
+  version: string;
+  commit: string;
+  os: string;
+  arch: string;
+}
+
+/** Fills gaps in settings from Go (zero-value enums) with defaults. */
+export function normalizeSettings(
+  input: Partial<AppSettings> | null | undefined,
+  defaults: AppSettings,
+): AppSettings {
+  const s = input ?? {};
+  return {
+    theme: s.theme === "light" || s.theme === "dark" || s.theme === "system" ? s.theme : defaults.theme,
+    timeoutMs: typeof s.timeoutMs === "number" ? s.timeoutMs : defaults.timeoutMs,
+    followRedirects: typeof s.followRedirects === "boolean" ? s.followRedirects : defaults.followRedirects,
+    maxRedirects: typeof s.maxRedirects === "number" ? s.maxRedirects : defaults.maxRedirects,
+    verifyTls: typeof s.verifyTls === "boolean" ? s.verifyTls : defaults.verifyTls,
+    historyRetention: typeof s.historyRetention === "number" ? s.historyRetention : defaults.historyRetention,
+    layout: s.layout === "vertical" || s.layout === "horizontal" ? s.layout : defaults.layout,
+  };
+}
+
+/** Defaults of a fresh install (same as Go settings.Defaults). Used before Go answers. */
+export const DEFAULT_SETTINGS: AppSettings = {
+  theme: "system",
+  timeoutMs: 30_000,
+  followRedirects: true,
+  maxRedirects: 10,
+  verifyTls: true,
+  historyRetention: 500,
+  layout: "vertical",
+};

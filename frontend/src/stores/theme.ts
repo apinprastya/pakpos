@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+// `mode` is a first-paint cache of the Go "theme" setting; change it through
+// useSettingsStore.setTheme so it's saved.
 export type ThemeMode = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 

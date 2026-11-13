@@ -8,11 +8,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useResolvedTheme } from "@/hooks/useResolvedTheme";
+import { useSettingsStore } from "@/stores/settings";
 import { useThemeStore, type ThemeMode } from "@/stores/theme";
 
 export function ThemeMenu() {
   const mode = useThemeStore((s) => s.mode);
-  const setMode = useThemeStore((s) => s.setMode);
+  const setTheme = useSettingsStore((s) => s.setTheme);
   const resolved = useResolvedTheme();
   const Icon = resolved === "dark" ? Moon : Sun;
 
@@ -24,7 +25,7 @@ export function ThemeMenu() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="end">
-        <DropdownMenuRadioGroup value={mode} onValueChange={(v) => setMode(v as ThemeMode)}>
+        <DropdownMenuRadioGroup value={mode} onValueChange={(v) => void setTheme(v as ThemeMode)}>
           <DropdownMenuRadioItem value="light">
             <Sun /> Light
           </DropdownMenuRadioItem>

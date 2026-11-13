@@ -1,0 +1,139 @@
+name: CI
+
+# Third-party code: none. GitHub's own actions are pinned to commit SHAs;
+# golangci-lint runs at a pinned version via `go run`.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WAILS_VERSION: v3.0.0
+  GOLANGCI_LINT_VERSION: v2.15.0
+  NODE_VERSION: "24"
+
+jobs:
+  # Lint and coverage gates run once, on Linux; the code is platform-neutral.
+  quality:
+    name: Lint and coverage (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux webview dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Bindings and frontend/dist are needed by tsc and the //go:embed in main.go.
+      - name: Generate bindings and build frontend
+        run: |
+          wails3 generate bindings -ts -clean=true
+          npm --prefix frontend run build
+
+      - name: Lint (gofmt, go vet, golangci-lint, tsc, ESLint, Prettier)
+        run: wails3 task lint
+
+      - name: Coverage gates (Go, tools/, frontend; >= 80%)
+        run: wails3 task coverage
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage
+          path: |
+            coverage/go.out
+            frontend/coverage/
+          if-no-files-found: ignore
+
+  build:
+    name: Build & unit tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0 # tags for `git describe` (version stamping)
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Linux webview dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
+
+      - name: Install wails3 CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: wails3 build (version-stamped)
+        run: |
+          wails3 task version
+          wails3 build
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: npx vitest run
+
+      # -race needs cgo; keep it on Linux/macOS where a C toolchain is always present.
+      - name: Go unit tests
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            go test -short ./...
+          else
+            go test -short -race ./...
+          fi
+
+      - name: Build-tool tests (tools/ module)
+        working-directory: tools
+        run: go test -cover ./...
+
+      - name: Upload binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pakpos-${{ runner.os }}
+          path: bin/
+          if-no-files-found: error

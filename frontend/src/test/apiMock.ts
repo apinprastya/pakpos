@@ -1,10 +1,14 @@
 import { vi } from "vitest";
 import type { Api } from "@/lib/api";
+import { DEFAULT_SETTINGS } from "@/lib/model";
 
 /** Fresh vi.fn() stubs for every api method, with harmless defaults. */
 export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } {
   return {
-    buildInfo: vi.fn().mockResolvedValue({ version: "test" }),
+    buildInfo: vi.fn().mockResolvedValue({ version: "test", commit: "", os: "linux", arch: "amd64" }),
+    getSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
+    defaultSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
+    setSettings: vi.fn(async (s) => s),
     send: vi.fn().mockResolvedValue({ response: null, error: null, historyId: 0 }),
     cancel: vi.fn().mockResolvedValue(true),
     save: vi.fn(async (r) => r),
