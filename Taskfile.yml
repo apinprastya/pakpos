@@ -1,0 +1,99 @@
+version: '3'
+
+vars:
+  APP_NAME: "pakpos"
+  BIN_DIR: "bin"
+  PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'
+  VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
+  # Target OS for build/package/run. Defaults to the host OS, and is overridden
+  # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
+  # tasks below dispatch to the matching platform Taskfile via this variable.
+  GOOS: '{{.GOOS | default OS}}'
+
+includes:
+  common: ./build/Taskfile.yml
+  windows: ./build/windows/Taskfile.yml
+  darwin: ./build/darwin/Taskfile.yml
+  linux: ./build/linux/Taskfile.yml
+
+tasks:
+  build:
+    summary: Builds the application
+    cmds:
+      - task: "{{.GOOS}}:build"
+
+  package:
+    summary: Packages a production build of the application
+    cmds:
+      - task: "{{.GOOS}}:package"
+
+  run:
+    summary: Runs the application
+    cmds:
+      - task: "{{.GOOS}}:run"
+
+  dev:
+    summary: Runs the application in development mode
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  install:msix:tools:
+    summary: Installs tools required for Windows MSIX packaging
+    cmds:
+      - task: windows:install:msix:tools
+
+  setup:docker:
+    summary: Builds Docker image for cross-compilation (~800MB download)
+    cmds:
+      - task: common:setup:docker
+
+  build:server:
+    summary: Builds the application in server mode (no GUI, HTTP server only)
+    cmds:
+      - task: common:build:server
+
+  run:server:
+    summary: Runs the application in server mode
+    cmds:
+      - task: common:run:server
+
+  build:docker:
+    summary: Builds a Docker image for server mode deployment
+    cmds:
+      - task: common:build:docker
+
+  run:docker:
+    summary: Builds and runs the Docker image
+    cmds:
+      - task: common:run:docker
+
+  test:
+    summary: Runs all tests (Go + frontend)
+    cmds:
+      - task: test:go
+      - task: test:fe
+
+  test:go:
+    summary: Runs Go tests
+    cmds:
+      - go test -race ./internal/...
+
+  test:fe:
+    summary: Runs frontend tests
+    dir: frontend
+    cmds:
+      - npm run test --silent
+
+  coverage:
+    summary: Runs Go and frontend tests with coverage gates (>= 80%)
+    cmds:
+      - sh ./scripts/go-coverage.sh
+      - cd frontend && npm run coverage --silent
+
+  lint:
+    summary: Runs Go and frontend linters/type checks
+    cmds:
+      - test -z "$(gofmt -l main.go internal)" || (gofmt -l main.go internal && echo "gofmt needed" && exit 1)
+      - go vet ./internal/...
+      - if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else echo "golangci-lint not installed, skipping"; fi
+      - cd frontend && npm run typecheck --silent && npm run lint --silent && npm run format:check --silent
