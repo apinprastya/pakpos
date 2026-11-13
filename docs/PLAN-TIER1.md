@@ -179,6 +179,20 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
   - Dialogs and events are behind interfaces (`service.Dialogs`, `service.Events`); the Wails adapters live in `wails_adapters.go`.
   - `Send` returns a `SendResult{response, error, historyId}`. Network failures come back in `error` (with a kind and a message), not as a rejected promise.
 
+- **M4 — done.** Request builder UI.
+  - Tabs live in `stores/tabs.ts`: drafts, dirty tracking against the saved version, a close prompt, drag to reorder, and per-tab send state and result. Open tabs are kept in localStorage.
+  - Hooks ready for M6: `openSaved(request, collectionId)` and `openFromHistory(request, result)`.
+  - URL bar: single-line CodeMirror. The URL ↔ params sync is a TS port of Go `urlx` (`lib/urlx.ts`).
+  - Section editors: Params (query and path), Headers (table or text, plus the headers added when sending), Body (none/raw/form-data/urlencoded/binary, Beautify for JSON and XML), Auth (none/inherit/basic/bearer/API key, secret fields masked).
+  - Save dialog: picks or creates a collection, and can open or create a workspace folder.
+  - Shortcuts: Mod+Enter, Mod+S, Mod+T and Mod+W.
+- **M5 — done.** Response viewer.
+  - Status colored by class, time with a phase breakdown on hover, size.
+  - Body: Pretty (formats JSON/XML up to 2 MB), Raw, and Preview (sandboxed HTML, images).
+  - Search, copy and save to file. A notice for truncated bodies.
+  - Headers and cookies tables.
+  - Loading state with Cancel, and an error state with a title, the message and a hint for each error kind.
+
 ### Carried over from M1
 
 - [x] Cookie jar kept between requests, one per workspace. Fixed in M3: it resets on workspace switch and is kept when settings change.
@@ -193,3 +207,12 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
 - [ ] Watcher edge case: an external write into a collection folder in the same instant the app renames that folder can be missed until the next change.
 - [ ] Workspace switching does not cancel in-flight sends; they finish on the previous executor and are recorded against the newly open workspace.
 - [ ] `HistoryService.Clear` clears all workspaces; add a per-workspace clear if the UI needs it (`sqlite.ClearHistory(workspaceID)` already supports it).
+
+### Carried over from M4/M5
+
+- [ ] `{{variable}}` highlighting and autocomplete in the URL and body editors (Tier 2, together with environments).
+- [ ] Saved tabs don't react to `workspace:changed` yet: an external edit to an open request isn't reloaded and a deleted one isn't flagged (M6, alongside the sidebar tree).
+- [ ] Code-split CodeMirror languages; the main bundle is ~1 MB minified (fine for a desktop app, but it slows the first paint).
+- [ ] HTML pretty-printing: Pretty shows HTML highlighted as received, not reformatted.
+- [ ] The Settings dialog (M7) is referenced by error hints (timeout, TLS, redirects) but doesn't exist yet.
+

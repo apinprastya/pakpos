@@ -6,11 +6,13 @@ import { ActivityRail } from "./ActivityRail";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { TabBar } from "./TabBar";
-
-const PLACEHOLDER_TABS = [{ id: "draft", title: "Untitled request", method: "GET" }];
+import { CloseTabDialog } from "./CloseTabDialog";
+import { SaveRequestDialog } from "./SaveRequestDialog";
+import { useShortcuts } from "@/hooks/useShortcuts";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
+  useShortcuts();
 
   return (
     <div className="flex h-full flex-col">
@@ -23,7 +25,7 @@ export function AppShell() {
           <ResizableHandle />
           <ResizablePanel id="workspace" minSize="40">
             <main className="flex h-full min-w-0 flex-col">
-              <TabBar tabs={PLACEHOLDER_TABS} activeId="draft" />
+              <TabBar />
               <ResizablePanelGroup
                 key={orientation}
                 orientation={orientation === "vertical" ? "vertical" : "horizontal"}
@@ -42,6 +44,8 @@ export function AppShell() {
         </ResizablePanelGroup>
       </div>
       <StatusBar />
+      <CloseTabDialog />
+      <SaveRequestDialog />
     </div>
   );
 }

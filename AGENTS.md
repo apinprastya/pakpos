@@ -9,10 +9,9 @@ Read before larger changes:
 ## Stack
 
 - **Backend:** Go 1.26, Wails v3.0.0 (`github.com/wailsapp/wails/v3`), module name `pakpos`
-- **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (`radix-nova` style), Zustand, lucide-react, sonner
+- **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (`radix-nova` style), Zustand, lucide-react, sonner, CodeMirror 6
 - **Storage:** YAML workspace files with ULID IDs (`gopkg.in/yaml.v3`, `oklog/ulid`), `fsnotify` watcher, `modernc.org/sqlite` (pure Go, no CGO)
 - **Planned (not yet added):**
-  - CodeMirror 6
   - goja for scripting
   - `zalando/go-keyring` for secrets
 - **Targets:** Linux (WebKitGTK), macOS, Windows
@@ -104,6 +103,16 @@ docs/                    architecture and plans
   - Keep focus states visible.
   - Respect `prefers-reduced-motion`, which `index.css` already handles globally.
 - Component state goes in Zustand stores (`src/stores`). Persist only UI preferences to `localStorage`. Real data comes from Go services.
+  - `stores/tabs.ts` is the exception: it keeps open tabs and drafts in localStorage as a convenience (never results). Storage access is wrapped so it never throws.
+- **`src/lib/api.ts` is the only module that imports `frontend/bindings`.** It converts the binding types into `src/lib/model.ts` types: string unions instead of TS enums, and non-null arrays. Add new service calls there and mock them in `src/test/apiMock.ts`.
+  - Normalize anything coming from Go with `normalizeRequest`, `normalizeResponse` or `normalizeSendResult`.
+- **URL ↔ params sync** is `src/lib/urlx.ts`, a port of Go `internal/core/urlx`. Keep the two in step when either changes. Edit requests through `features/request/edits.ts` (`setUrl`, `setQuery`).
+- **Code editors use `<CodeEditor>`** (`src/components/editor`), not CodeMirror directly.
+  - It's created once per mount. Language and read-only changes go through compartments.
+  - Value changes from props are tagged with the `External` annotation so they aren't echoed back to `onChange`. Without it, editing the params table would re-parse the URL and reorder rows.
+  - Pass `key={tabId}` so each request gets its own undo history.
+  - Its colors come from the `--syntax-*` and `--editor-*` tokens in `index.css`.
+- Response status colors: `text-status-ok|redirect|client|server`, via `statusTextClass()`.
 
 ## Testing
 
@@ -114,6 +123,10 @@ docs/                    architecture and plans
   - It **mocks `@/components/ui/resizable` with plain divs**, because react-resizable-panels hit-tests by geometry and in jsdom (where every rect is 0×0) it captures every click. Keep this mock.
 - The Wails Vite plugin is disabled under Vitest (`process.env.VITEST`), because it requires generated bindings.
 - Mock Wails bindings in frontend tests. Never call real Go services from Vitest.
+  - `@/lib/api` is mocked globally in `src/test/setup.ts`, with fresh `vi.fn()` stubs before each test. Override them per test with `vi.mocked(api.x).mockResolvedValue(...)`.
+  - CodeMirror: use `src/test/editor.ts` (`setEditorText`, `editorText`, `editorView`). user-event can't type into contenteditable reliably in jsdom. `setup.ts` polyfills the Range rects CodeMirror measures with.
+  - Use `src/test/store.ts` (`resetTabs`, `activeTab`) to seed the tabs store, and `src/test/fixtures.ts` (`makeResponse`) for responses.
+- `src/lib/api.ts` is excluded from coverage because it's a thin binding adapter that's always mocked.
 
 ## Gotchas
 
@@ -124,6 +137,8 @@ docs/                    architecture and plans
 - yaml.v3 panics, rather than returning an error, on values it can't encode; `fsstore.marshalYAML` recovers from this.
 - fsnotify drops a folder's watch when the folder is renamed. `fsstore.Watcher` re-syncs its watches on rename/remove events, and the workspace adds watches synchronously for folders it creates. Keep both.
 - `RequestService.Send` takes a `context.Context` first; Wails passes it in and hides it from TS. Network failures are returned in `SendResult.Error`, not as Go errors.
+- Tailwind's `sr-only` is `position: absolute`, so inside a CSS grid it drops out of the column flow. Wrap screen-reader-only header text in a normal grid cell: `<span role="columnheader"><span className="sr-only">…</span></span>`.
+- To screenshot the UI with fake data, run `vite preview` and use Playwright to route `**/wails/runtime*`. The body is `{object, method, args: {methodID, args}}`; return the JSON result for the method ID (IDs are in `frontend/bindings/.../*service.ts`).
 - The Linux webview is WebKitGTK. Avoid bleeding-edge CSS and check rendering on Linux.
 
 ## License
