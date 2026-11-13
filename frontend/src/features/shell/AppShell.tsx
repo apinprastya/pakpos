@@ -9,10 +9,12 @@ import { TabBar } from "./TabBar";
 import { CloseTabDialog } from "./CloseTabDialog";
 import { SaveRequestDialog } from "./SaveRequestDialog";
 import { useShortcuts } from "@/hooks/useShortcuts";
+import { useWorkspaceSync } from "@/hooks/useWorkspaceSync";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
   useShortcuts();
+  useWorkspaceSync();
 
   return (
     <div className="flex h-full flex-col">

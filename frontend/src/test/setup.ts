@@ -12,6 +12,8 @@ beforeEach(async () => {
   const { api } = await import("@/lib/api");
   const { createApiMock } = await import("./apiMock");
   Object.assign(api, createApiMock());
+  const { resetSidebarStores } = await import("./store");
+  resetSidebarStores();
 });
 
 afterEach(() => {

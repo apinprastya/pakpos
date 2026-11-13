@@ -1,15 +1,20 @@
-import { Columns2, Rows2 } from "lucide-react";
+import { Columns2, Folder, Rows2 } from "lucide-react";
 import { useLayoutStore } from "@/stores/layout";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 export function StatusBar() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
   const toggle = useLayoutStore((s) => s.toggleSplitOrientation);
+  const workspace = useWorkspaceStore((s) => s.workspace);
   const nextLabel =
     orientation === "vertical" ? "Show response beside request" : "Show response below request";
 
   return (
     <footer className="flex h-6 shrink-0 items-center justify-between border-t bg-sidebar px-3 text-[11px] text-muted-foreground">
-      <span>No workspace</span>
+      <span className="flex min-w-0 items-center gap-1.5" title={workspace?.path}>
+        {workspace && <Folder className="size-3 shrink-0" aria-hidden />}
+        <span className="truncate">{workspace ? workspace.name : "No workspace"}</span>
+      </span>
       <button
         type="button"
         onClick={toggle}
