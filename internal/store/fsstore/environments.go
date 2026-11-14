@@ -39,7 +39,9 @@ func (w *Workspace) loadEnvironments(addProblem func(string, string)) (map[strin
 	dir := filepath.Join(w.root, EnvironmentsDir)
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
+		// ReadDir on a regular file reports "not found" on Windows, so only
+		// treat the directory as absent when Stat agrees.
+		if _, statErr := os.Stat(dir); !errors.Is(statErr, os.ErrNotExist) {
 			addProblem(dir, err.Error())
 		}
 		return envs, nil
