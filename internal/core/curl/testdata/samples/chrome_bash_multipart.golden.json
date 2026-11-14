@@ -1,0 +1,59 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://example.com/upload",
+    "pathParams": [],
+    "query": [],
+    "headers": [
+      {
+        "key": "accept",
+        "value": "*/*",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "form-data",
+      "raw": "",
+      "language": "",
+      "formData": [
+        {
+          "key": "title",
+          "kind": "text",
+          "value": "Holiday",
+          "filePath": "",
+          "contentType": "",
+          "enabled": true
+        },
+        {
+          "key": "photo",
+          "kind": "file",
+          "value": "",
+          "filePath": "beach.jpg",
+          "contentType": "image/jpeg",
+          "enabled": true
+        }
+      ],
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": [
+    {
+      "option": "",
+      "message": "The file for field \"photo\" isn't in the command; choose beach.jpg again before sending."
+    }
+  ]
+}

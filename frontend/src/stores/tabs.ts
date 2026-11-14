@@ -91,6 +91,8 @@ interface TabsState {
   newTab: () => string;
   /** Opens a saved request, or focuses its tab if it's already open. */
   openSaved: (request: Request, parentId: string, workspaceId?: string) => string;
+  /** Opens an unsaved request (e.g. imported from cURL) in a new tab; `parentId` is the collection or folder it inherits from. */
+  openDraft: (request: Request, parentId?: string) => string;
   /** Opens a history entry as a new unsaved tab with its response attached. */
   openFromHistory: (request: Request, result: SendResult) => string;
   activate: (id: string) => void;
@@ -221,6 +223,13 @@ export const useTabsStore = create<TabsState>()(
         }
         const req = normalizeRequest(request);
         const tab = makeTab({ request: req, saved: req, parentId, workspaceId });
+        set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
+        return tab.id;
+      },
+
+      openDraft: (request, parentId = "") => {
+        const req = { ...normalizeRequest(request), id: "", seq: 0 };
+        const tab = makeTab({ request: req, parentId });
         set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
         return tab.id;
       },

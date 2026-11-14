@@ -744,3 +744,62 @@ export const DEFAULT_SETTINGS: AppSettings = {
   historyRetention: 500,
   layout: "vertical",
 };
+
+/** Something in a curl command that was ignored or imported differently from what curl would do. */
+export interface CurlWarning {
+  /** The option it is about (e.g. "--insecure"), or "". */
+  option: string;
+  message: string;
+}
+
+/** A request read from a curl command. The request has no id or name. */
+export interface CurlImport {
+  request: Request;
+  warnings: CurlWarning[];
+}
+
+export function normalizeCurlImport(input: unknown): CurlImport {
+  const c = (input ?? {}) as Loose<CurlImport>;
+  return {
+    request: normalizeRequest(c.request),
+    warnings: (c.warnings ?? []).map((w) => ({ option: w?.option ?? "", message: w?.message ?? "" })),
+  };
+}
+
+/** A code generator: `editor` is the CodeMirror language that highlights its output. */
+export interface CodeLanguage {
+  id: string;
+  label: string;
+  editor: string;
+}
+
+export interface CodeOptions {
+  /** Replace `{{variables}}` with their values (inheritance is applied either way). */
+  resolveVariables: boolean;
+  /** Put secret values in the code; otherwise secrets stay `{{name}}`. Ignored when not resolving. */
+  revealSecrets: boolean;
+}
+
+export interface CodeResult {
+  code: string;
+  /** `{{names}}` with no value; they are in the code as written. */
+  unresolved: string[];
+  /** Secret variables left as `{{name}}` because secrets weren't revealed. */
+  masked: string[];
+  secretsLocked: boolean;
+  /** What the code leaves out or does differently. */
+  warnings: string[];
+  environment: EnvRef | null;
+}
+
+export function normalizeCodeResult(input: unknown): CodeResult {
+  const c = (input ?? {}) as Loose<CodeResult>;
+  return {
+    code: c.code ?? "",
+    unresolved: c.unresolved ?? [],
+    masked: c.masked ?? [],
+    secretsLocked: c.secretsLocked ?? false,
+    warnings: c.warnings ?? [],
+    environment: c.environment ? { id: c.environment.id ?? "", name: c.environment.name ?? "" } : null,
+  };
+}

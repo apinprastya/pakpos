@@ -1,0 +1,62 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://api.example.com/v1/search?q=caf%C3%A9&limit=10",
+    "pathParams": [],
+    "query": [
+      {
+        "key": "q",
+        "value": "café",
+        "enabled": true
+      },
+      {
+        "key": "limit",
+        "value": "10",
+        "enabled": true
+      }
+    ],
+    "headers": [
+      {
+        "key": "accept",
+        "value": "application/json",
+        "enabled": true
+      },
+      {
+        "key": "Cookie",
+        "value": "session=abc123",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "raw",
+      "raw": "{\"query\":\"shoes & socks\",\"tags\":[\"a\",\"b\"]}",
+      "language": "json",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": [
+    {
+      "option": "",
+      "message": "This looks like a Windows cmd command. It was read with cmd quoting (^ escapes)."
+    },
+    {
+      "option": "--compressed",
+      "message": "Pakpos always asks for compressed responses and decompresses them, so this option isn't needed."
+    }
+  ]
+}

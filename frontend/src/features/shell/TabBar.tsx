@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ChevronDown, FilePlus, Plus, Terminal, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { methodShortLabel, methodTextClass } from "@/lib/http";
 import { modKeyLabel } from "@/lib/platform";
@@ -7,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { isDirty, tabTitle, useTabsStore, type Tab } from "@/stores/tabs";
 import { EnvironmentSwitcher } from "@/features/environments/EnvironmentSwitcher";
 import { DocKindIcon } from "@/features/scopes/DocKindIcon";
+import { useCodeDialogsStore } from "@/stores/codeDialogs";
 
 /** Open request tabs: click to switch, middle-click or × to close, drag to reorder. */
 export function TabBar() {
@@ -110,6 +118,31 @@ export function TabBar() {
         </TooltipTrigger>
         <TooltipContent>New request ({modKeyLabel()}+T)</TooltipContent>
       </Tooltip>
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="More ways to start a request"
+                className="mb-1.5 -ml-1 flex h-7 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <ChevronDown className="size-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>More ways to start a request</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="start" className="w-52">
+          <DropdownMenuItem onSelect={() => newTab()}>
+            <FilePlus /> New request
+            <DropdownMenuShortcut>{modKeyLabel()}+T</DropdownMenuShortcut>
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => useCodeDialogsStore.getState().openImport()}>
+            <Terminal /> Import cURL…
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <div className="ml-auto flex h-full shrink-0 items-center border-l px-1.5">
         <EnvironmentSwitcher />
       </div>

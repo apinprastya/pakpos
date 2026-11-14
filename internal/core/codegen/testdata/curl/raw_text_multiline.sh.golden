@@ -1,0 +1,3 @@
+curl https://example.com/notes \
+  -H 'Content-Type: text/plain' \
+  --data-raw $'first line\nsecond `line` with café\ttab'

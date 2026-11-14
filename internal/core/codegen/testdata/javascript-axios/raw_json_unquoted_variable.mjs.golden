@@ -1,0 +1,17 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "put",
+  url: "https://api.example.com/limits",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  data: `{
+  "max": {{max}},
+  "big": 12345678901234567890
+}`,
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

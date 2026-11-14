@@ -27,6 +27,7 @@ import {
   Pencil,
   Trash2,
   Settings2,
+  Terminal,
 } from "lucide-react";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -38,6 +39,8 @@ import { cn } from "@/lib/utils";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { openContainerSettings } from "@/features/scopes/docActions";
+import { copySavedAsCurl } from "@/features/code/actions";
+import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import type { DeleteTarget } from "./ConfirmDeleteDialog";
 import { InlineRename } from "./InlineRename";
 import { ItemMenuContent, type MenuEntry, type SubmenuItem } from "./ItemMenu";
@@ -180,6 +183,11 @@ export function CollectionTree({
   const containerMenu = (c: ContainerNode): MenuEntry[] => [
     { label: "New request", icon: FilePlus, onSelect: () => newRequest(c) },
     { label: "New folder", icon: FolderPlus, onSelect: () => newFolder(c) },
+    {
+      label: "Import cURL here",
+      icon: Terminal,
+      onSelect: () => useCodeDialogsStore.getState().openImport(c.id),
+    },
     { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(nodeKey(c)) },
     ...(c.kind === "folder"
       ? [{ label: "Move to", icon: FolderInput, empty: "No collections", submenu: moveMenu(c) }]
@@ -193,6 +201,7 @@ export function CollectionTree({
     { label: "Open", icon: ExternalLink, onSelect: () => void store().openRequest(r.id) },
     { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(nodeKey(r)) },
     { label: "Duplicate", icon: Copy, onSelect: () => void store().duplicateRequest(r.id) },
+    { label: "Copy as cURL", icon: Terminal, onSelect: () => void copySavedAsCurl(r.id, r.parentId) },
     { label: "Move to", icon: FolderInput, empty: "No collections", submenu: moveMenu(r) },
     "separator",
     { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteNode(r) },

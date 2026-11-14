@@ -1,0 +1,22 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://example.com/blob/1',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => 'PATCH',
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/octet-stream',
+    ],
+    CURLOPT_POSTFIELDS => file_get_contents('/data/blob.bin'),
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}

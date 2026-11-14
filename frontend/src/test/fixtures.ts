@@ -1,5 +1,6 @@
 import { emptyAuth } from "@/lib/model";
 import type {
+  CodeResult,
   Environment,
   PreviewVariable,
   ResolvePreview,
@@ -128,4 +129,16 @@ export function makePreviewVar(
     ...patch,
   };
   return v.secret ? { ...v, value: "" } : v;
+}
+
+export function makeCodeResult(patch: Partial<CodeResult> = {}): CodeResult {
+  return {
+    code: "",
+    unresolved: [],
+    masked: [],
+    secretsLocked: false,
+    warnings: [],
+    environment: null,
+    ...patch,
+  };
 }

@@ -1,0 +1,25 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://api.example.com/limits',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => 'PUT',
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/json',
+    ],
+    CURLOPT_POSTFIELDS => '{
+  "max": {{max}},
+  "big": 12345678901234567890
+}',
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}

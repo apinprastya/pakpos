@@ -1,0 +1,47 @@
+import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        String boundary = "PakposFormBoundary7MA4YWxkTrZu0gW";
+        ByteArrayOutputStream form = new ByteArrayOutputStream();
+        form.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"title\"\r\n\r\n"
+                + "Holiday \"2026\"\r\n").getBytes(StandardCharsets.UTF_8));
+        form.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"meta\"\r\nContent-Type: application/json\r\n\r\n"
+                + "{\"a\":1}\r\n").getBytes(StandardCharsets.UTF_8));
+        form.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"photo\"; filename=\"beach.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        form.write(Files.readAllBytes(Path.of("/home/jane/My Pictures/beach.jpg")));
+        form.write("\r\n".getBytes(StandardCharsets.UTF_8));
+        form.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"doc\"; filename=\"report.pdf\"\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        form.write(Files.readAllBytes(Path.of("C:\\Users\\jane\\report.pdf")));
+        form.write("\r\n".getBytes(StandardCharsets.UTF_8));
+        form.write(("--" + boundary + "\r\n"
+                + "Content-Disposition: form-data; name=\"title\"\r\n\r\n"
+                + "again\r\n").getBytes(StandardCharsets.UTF_8));
+        form.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://example.com/upload"))
+                .header("Accept", "*/*")
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(form.toByteArray()))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}

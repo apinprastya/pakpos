@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Folder, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -46,7 +46,13 @@ export function SaveRequestDialog() {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && useTabsStore.getState().closeSaveDialog()}>
       {open && (
-        <SaveForm key={tab.id} tabId={tab.id} initialName={tab.request.name} closeAfter={dialog.closeAfter} />
+        <SaveForm
+          key={tab.id}
+          tabId={tab.id}
+          initialName={tab.request.name}
+          initialParent={tab.parentId}
+          closeAfter={dialog.closeAfter}
+        />
       )}
     </Dialog>
   );
@@ -55,10 +61,13 @@ export function SaveRequestDialog() {
 function SaveForm({
   tabId,
   initialName,
+  initialParent,
   closeAfter,
 }: {
   tabId: string;
   initialName: string;
+  /** The collection or folder a draft belongs to (e.g. "Import cURL here"); preselected when it exists. */
+  initialParent: string;
   closeAfter: boolean;
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
@@ -67,10 +76,14 @@ function SaveForm({
   const [target, setTarget] = useState("");
   const [newCollection, setNewCollection] = useState("");
   const [busy, setBusy] = useState(false);
+  // Read when the targets arrive; the form is keyed by tab, so it never changes.
+  const parentRef = useRef(initialParent);
 
   const apply = (l: Load) => {
     setLoad(l);
-    if (l.state === "ready") setTarget(l.targets[0]?.id ?? NEW_COLLECTION);
+    if (l.state !== "ready") return;
+    const parent = l.targets.find((t) => t.id === parentRef.current);
+    setTarget(parent?.id ?? l.targets[0]?.id ?? NEW_COLLECTION);
   };
   const refresh = async () => apply(await fetchWorkspace());
 

@@ -1,0 +1,1 @@
+curl -sSLk -G https://example.com/search --data-urlencode "q=hello world" -d lang=en --max-time 10 --frobnicate -o out.json | jq .

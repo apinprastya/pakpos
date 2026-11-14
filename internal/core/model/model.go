@@ -173,3 +173,40 @@ type Auth struct {
 	APIValue string         `json:"apiValue" yaml:"apiValue,omitempty"`
 	APIIn    APIKeyLocation `json:"apiIn" yaml:"apiIn,omitempty"`
 }
+
+var rawContentTypes = map[RawLanguage]string{
+	LangJSON:       "application/json",
+	LangXML:        "application/xml",
+	LangHTML:       "text/html; charset=utf-8",
+	LangJavaScript: "application/javascript",
+	LangText:       "text/plain; charset=utf-8",
+}
+
+// RawContentType is the Content-Type sent with a raw body of language lang
+// when the user sets none (text for an unknown language).
+func RawContentType(lang RawLanguage) string {
+	if ct, ok := rawContentTypes[lang]; ok {
+		return ct
+	}
+	return rawContentTypes[LangText]
+}
+
+// DefaultContentType is the Content-Type sent with the body when the user
+// sets none: by language for raw bodies, the form type for urlencoded,
+// application/octet-stream for binary and "multipart/form-data" (the
+// boundary is added by whoever writes the parts) for form-data. It is ""
+// for no body.
+func (b Body) DefaultContentType() string {
+	switch b.Type {
+	case BodyRaw:
+		return RawContentType(b.Language)
+	case BodyURLEncoded:
+		return "application/x-www-form-urlencoded"
+	case BodyBinary:
+		return "application/octet-stream"
+	case BodyFormData:
+		return "multipart/form-data"
+	default:
+		return ""
+	}
+}

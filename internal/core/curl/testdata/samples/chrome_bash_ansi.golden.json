@@ -1,0 +1,31 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://example.com/api/notes",
+    "pathParams": [],
+    "query": [],
+    "headers": [],
+    "body": {
+      "type": "raw",
+      "raw": "first line\nsecond line with café and a 'quote'\ttab",
+      "language": "text",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": []
+}

@@ -1,0 +1,3 @@
+curl 'https://api.example.com/users/42?q=say%20%22hi%22%20%26%20go' \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer {{token}}'

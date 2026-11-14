@@ -1,0 +1,6 @@
+curl -X PURGE https://cdn.example.com/x \
+  -H 'Host: origin.example.com' \
+  -H 'Cookie: a=1' \
+  -H 'Cookie: b=2' \
+  -H 'X-Empty;' \
+  -H 'X-Api-Key: set'

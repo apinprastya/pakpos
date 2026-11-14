@@ -1,0 +1,8 @@
+curl --location --request PATCH 'https://api.example.com/v1/users/42?include=roles' \
+--header 'Content-Type: application/json' \
+--header 'X-Request-Id: 7f9c2ba4' \
+--header 'Authorization: Basic YWRtaW46czNjcjN0' \
+--data-raw '{
+    "name": "Jane Doe",
+    "email": "jane@example.com"
+}'

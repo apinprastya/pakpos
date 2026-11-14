@@ -1,0 +1,83 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://upload.example.com/v1/files",
+    "pathParams": [],
+    "query": [],
+    "headers": [
+      {
+        "key": "Authorization",
+        "value": "Token abc",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "form-data",
+      "raw": "",
+      "language": "",
+      "formData": [
+        {
+          "key": "purpose",
+          "kind": "text",
+          "value": "avatar",
+          "filePath": "",
+          "contentType": "",
+          "enabled": true
+        },
+        {
+          "key": "file",
+          "kind": "file",
+          "value": "",
+          "filePath": "/home/jane/Pictures/me.png",
+          "contentType": "image/png",
+          "enabled": true
+        },
+        {
+          "key": "meta",
+          "kind": "file",
+          "value": "",
+          "filePath": "meta.json",
+          "contentType": "",
+          "enabled": true
+        },
+        {
+          "key": "notes",
+          "kind": "text",
+          "value": "hello",
+          "filePath": "",
+          "contentType": "text/plain",
+          "enabled": true
+        },
+        {
+          "key": "raw",
+          "kind": "text",
+          "value": "@not-a-file",
+          "filePath": "",
+          "contentType": "",
+          "enabled": true
+        }
+      ],
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": [
+    {
+      "option": "-F",
+      "message": "The field \"meta\" reads its text from meta.json; it was imported as a file part."
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+)
+
+func main() {
+	req, err := http.NewRequest("PURGE", "https://cdn.example.com/x", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Host = "origin.example.com"
+	req.Header.Set("Cookie", "a=1")
+	req.Header.Add("Cookie", "b=2")
+	req.Header.Set("X-Empty", "")
+	req.Header.Set("X-Api-Key", "set")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(resp.Status)
+	fmt.Println(string(data))
+}

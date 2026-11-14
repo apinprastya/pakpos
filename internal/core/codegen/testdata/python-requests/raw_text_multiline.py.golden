@@ -1,0 +1,17 @@
+import requests
+
+url = "https://example.com/notes"
+
+headers = {
+    "Content-Type": "text/plain",
+}
+
+payload = (
+    "first line\n"
+    "second `line` with café\ttab"
+)
+
+response = requests.post(url, headers=headers, data=payload.encode("utf-8"))
+
+print(response.status_code)
+print(response.text)

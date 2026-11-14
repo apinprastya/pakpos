@@ -230,3 +230,35 @@ func ApplyPathParams(raw string, params []model.KeyValue) string {
 	}
 	return out
 }
+
+// SendURL is the URL of req as httpexec.Build sends it, for display (code
+// generation, Copy as cURL): path params applied, "http://" added when there
+// is no scheme, the query built strictly from the enabled query rows (the
+// URL's own query is ignored) and the fragment dropped. Escaping would turn
+// {{name}} references that are still in the request into %7B%7Bname%7D%7D,
+// so simple names ([A-Za-z0-9_.$:-]) are put back as {{name}}.
+func SendURL(req model.Request) string {
+	base, _, _, _ := Split(strings.TrimSpace(req.URL))
+	out := EnsureScheme(ApplyPathParams(base, req.PathParams))
+	if q := EncodeWireQuery(req.Query); q != "" {
+		out += "?" + q
+	}
+	return KeepReferences(out)
+}
+
+var (
+	escapedRefRe = regexp.MustCompile(`%7[Bb]%7[Bb]([A-Za-z0-9_.:%-]+?)%7[Dd]%7[Dd]`)
+	simpleNameRe = regexp.MustCompile(`^[A-Za-z0-9_.$:-]+$`)
+)
+
+// KeepReferences turns escaped {{name}} references (%7B%7Bname%7D%7D) back
+// into {{name}} for simple names; see SendURL.
+func KeepReferences(s string) string {
+	return escapedRefRe.ReplaceAllStringFunc(s, func(m string) string {
+		name, err := url.PathUnescape(m[6 : len(m)-6])
+		if err != nil || !simpleNameRe.MatchString(name) {
+			return m
+		}
+		return "{{" + name + "}}"
+	})
+}

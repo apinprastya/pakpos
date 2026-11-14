@@ -1,0 +1,18 @@
+import requests
+
+url = "https://cdn.example.com/x"
+
+headers = {
+    "Host": "origin.example.com",
+    "Cookie": "a=1; b=2",
+    "X-Empty": "",
+    "X-Api-Key": "set",
+}
+
+response = requests.request("PURGE", url, headers=headers)
+
+print(response.status_code)
+print(response.text)
+
+# warnings:
+# requests takes one value per header, so repeated headers were combined into one.

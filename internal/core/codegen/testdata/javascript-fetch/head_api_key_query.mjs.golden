@@ -1,0 +1,6 @@
+const response = await fetch("http://example.com/status?api_key=k%201", {
+  method: "HEAD",
+});
+
+console.log(response.status);
+console.log(await response.text());

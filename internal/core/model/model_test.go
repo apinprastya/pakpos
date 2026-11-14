@@ -71,3 +71,25 @@ func TestYAMLOmitsEmptyOptionalFields(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultContentType(t *testing.T) {
+	tests := []struct {
+		body Body
+		want string
+	}{
+		{Body{Type: BodyNone}, ""},
+		{Body{}, ""},
+		{Body{Type: BodyRaw, Language: LangJSON}, "application/json"},
+		{Body{Type: BodyRaw, Language: LangXML}, "application/xml"},
+		{Body{Type: BodyRaw}, "text/plain; charset=utf-8"},
+		{Body{Type: BodyRaw, Language: "yaml"}, "text/plain; charset=utf-8"},
+		{Body{Type: BodyURLEncoded}, "application/x-www-form-urlencoded"},
+		{Body{Type: BodyBinary}, "application/octet-stream"},
+		{Body{Type: BodyFormData}, "multipart/form-data"},
+	}
+	for _, tt := range tests {
+		if got := tt.body.DefaultContentType(); got != tt.want {
+			t.Errorf("%+v: got %q, want %q", tt.body, got, tt.want)
+		}
+	}
+}

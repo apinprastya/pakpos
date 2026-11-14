@@ -1,0 +1,1 @@
+curl --head 'http://example.com/status?api_key=k%201'

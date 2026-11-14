@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { VarScope } from "@/lib/variables";
 import { External, singleLineFilter } from "./extensions";
-import { languageExtension, type EditorLanguage } from "./languages";
+import { isLazyLanguage, languageExtension, loadLanguage, type EditorLanguage } from "./languages";
 import { pakposHighlight, pakposTheme } from "./theme";
 import { setVarScope, variables as variablesExt } from "./variables";
 
@@ -46,6 +46,11 @@ export interface CodeEditorProps {
   initialCursor?: number;
   /** Called when the editor loses focus to something else in the window. */
   onBlur?: () => void;
+  /**
+   * Called with pasted plain text before the editor inserts it; return true
+   * to handle the paste yourself (the editor then inserts nothing).
+   */
+  onPaste?: (text: string) => boolean;
 }
 
 export function CodeEditor({
@@ -64,15 +69,16 @@ export function CodeEditor({
   autoFocus = false,
   initialCursor,
   onBlur,
+  onPaste,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const langComp = useRef(new Compartment());
   const roComp = useRef(new Compartment());
   // Latest callbacks without recreating the editor.
-  const cb = useRef({ onChange, onSubmit, onBlur });
+  const cb = useRef({ onChange, onSubmit, onBlur, onPaste });
   useLayoutEffect(() => {
-    cb.current = { onChange, onSubmit, onBlur };
+    cb.current = { onChange, onSubmit, onBlur, onPaste };
   });
 
   useEffect(() => {
@@ -86,6 +92,14 @@ export function CodeEditor({
       langComp.current.of(languageExtension(language)),
       roComp.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
       EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "false" }),
+      EditorView.domEventHandlers({
+        paste: (e) => {
+          const text = e.clipboardData?.getData("text/plain") ?? "";
+          if (!text || !cb.current.onPaste?.(text)) return false;
+          e.preventDefault();
+          return true;
+        },
+      }),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && !u.transactions.some((tr) => tr.annotation(External))) {
           cb.current.onChange?.(u.state.doc.toString());
@@ -156,6 +170,15 @@ export function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({ effects: langComp.current.reconfigure(languageExtension(language)) });
+    if (!isLazyLanguage(language)) return;
+    // Generated-code languages load on first use; highlight once they arrive.
+    let current = true;
+    void loadLanguage(language).then((ext) => {
+      if (current) view.current?.dispatch({ effects: langComp.current.reconfigure(ext) });
+    });
+    return () => {
+      current = false;
+    };
   }, [language]);
 
   useEffect(() => {

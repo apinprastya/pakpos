@@ -1,0 +1,3 @@
+curl https://example.com/soap \
+  -H 'Content-Type: application/xml' \
+  --data-raw $'<a>\r\n  <b>x</b>\r\n</a>'

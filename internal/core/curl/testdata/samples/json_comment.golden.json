@@ -1,0 +1,37 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://todo.example.com/api/todos",
+    "pathParams": [],
+    "query": [],
+    "headers": [
+      {
+        "key": "Accept",
+        "value": "application/json",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "raw",
+      "raw": "{\"title\":\"Buy milk\"}",
+      "language": "json",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": []
+}

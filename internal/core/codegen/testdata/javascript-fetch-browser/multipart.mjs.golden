@@ -1,0 +1,23 @@
+const form = new FormData();
+form.append("title", "Holiday \"2026\"");
+form.append("meta", new Blob(["{\"a\":1}"], { type: "application/json" }));
+// Pick /home/jane/My Pictures/beach.jpg with an <input type="file"> on your page;
+// a browser can't read files from a path.
+const photoFile = document.querySelector("input[type=file][name='photo']").files[0];
+form.append("photo", new Blob([photoFile], { type: "image/jpeg" }), photoFile.name);
+// Pick C:\Users\jane\report.pdf with an <input type="file"> on your page;
+// a browser can't read files from a path.
+const docFile = document.querySelector("input[type=file][name='doc']").files[0];
+form.append("doc", docFile, docFile.name);
+form.append("title", "again");
+
+const response = await fetch("https://example.com/upload", {
+  method: "POST",
+  headers: {
+    "Accept": "*/*",
+  },
+  body: form,
+});
+
+console.log(response.status);
+console.log(await response.text());

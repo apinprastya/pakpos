@@ -1,0 +1,30 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+)
+
+func main() {
+	req, err := http.NewRequest(http.MethodGet, "https://api.example.com/users/42?q=say%20%22hi%22%20%26%20go", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer {{token}}")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(resp.Status)
+	fmt.Println(string(data))
+}

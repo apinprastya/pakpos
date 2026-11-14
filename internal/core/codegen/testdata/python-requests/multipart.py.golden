@@ -1,0 +1,20 @@
+import requests
+
+url = "https://example.com/upload"
+
+headers = {
+    "Accept": "*/*",
+}
+
+files = [
+    ("title", (None, "Holiday \"2026\"")),
+    ("meta", (None, "{\"a\":1}", "application/json")),
+    ("photo", ("beach.jpg", open("/home/jane/My Pictures/beach.jpg", "rb"), "image/jpeg")),
+    ("doc", ("report.pdf", open("C:\\Users\\jane\\report.pdf", "rb"))),
+    ("title", (None, "again")),
+]
+
+response = requests.post(url, headers=headers, files=files)
+
+print(response.status_code)
+print(response.text)

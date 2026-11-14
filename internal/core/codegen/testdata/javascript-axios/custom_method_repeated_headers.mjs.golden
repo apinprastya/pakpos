@@ -1,0 +1,19 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "purge",
+  url: "https://cdn.example.com/x",
+  headers: {
+    "Host": "origin.example.com",
+    "Cookie": "a=1; b=2",
+    "X-Empty": "",
+    "X-Api-Key": "set",
+  },
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);
+
+# warnings:
+# axios takes one value per header, so repeated headers were combined into one.

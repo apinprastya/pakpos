@@ -1,0 +1,47 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://api.stripe.com/v1/payment_intents",
+    "pathParams": [],
+    "query": [],
+    "headers": [],
+    "body": {
+      "type": "urlencoded",
+      "raw": "",
+      "language": "",
+      "formData": null,
+      "urlEncoded": [
+        {
+          "key": "amount",
+          "value": "2000",
+          "enabled": true
+        },
+        {
+          "key": "currency",
+          "value": "usd",
+          "enabled": true
+        },
+        {
+          "key": "automatic_payment_methods[enabled]",
+          "value": "true",
+          "enabled": true
+        }
+      ],
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "basic",
+      "username": "sk_test_example",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": []
+}

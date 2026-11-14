@@ -17,12 +17,16 @@ import { useActiveTab } from "@/stores/tabs";
 import { DocEditor } from "@/features/scopes/DocEditor";
 import { useScopeSync } from "@/features/scopes/useScopeSync";
 import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
+import { CodeDialog } from "@/features/code/CodeDialog";
+import { ImportCurlDialog } from "@/features/code/ImportCurlDialog";
+import { useDismissToastsOnDialog } from "@/lib/dialogToasts";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
   useShortcuts();
   useWorkspaceSync();
   useScopeSync();
+  useDismissToastsOnDialog();
   const active = useActiveTab();
   useEffect(() => {
     void useSettingsStore.getState().load();
@@ -66,6 +70,8 @@ export function AppShell() {
       <SaveRequestDialog />
       <SettingsDialog />
       <SecretsDialogs />
+      <ImportCurlDialog />
+      <CodeDialog />
     </div>
   );
 }

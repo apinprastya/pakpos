@@ -1,0 +1,17 @@
+import requests
+
+url = "https://example.com/tags"
+
+headers = {
+    "Content-Type": "application/x-www-form-urlencoded",
+}
+
+payload = [
+    ("tag", "a"),
+    ("tag", "b"),
+]
+
+response = requests.post(url, headers=headers, data=payload)
+
+print(response.status_code)
+print(response.text)

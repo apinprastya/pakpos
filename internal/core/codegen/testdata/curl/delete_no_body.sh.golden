@@ -1,0 +1,1 @@
+curl -X DELETE https://example.com/items/7

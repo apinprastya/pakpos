@@ -1,0 +1,42 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "PUT",
+    "url": "https://example.com/orders/7",
+    "pathParams": [],
+    "query": [],
+    "headers": [
+      {
+        "key": "Content-Type",
+        "value": "application/xml",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "binary",
+      "raw": "",
+      "language": "",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": "C:\\data\\order.xml"
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": [
+    {
+      "option": "",
+      "message": "This looks like a PowerShell command. Backtick line breaks were joined; other PowerShell quoting may not be read correctly."
+    }
+  ]
+}

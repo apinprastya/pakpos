@@ -1,0 +1,5 @@
+curl https://api.stripe.com/v1/payment_intents \
+  -u "sk_test_example:" \
+  -d amount=2000 \
+  -d currency=usd \
+  -d "automatic_payment_methods[enabled]"=true

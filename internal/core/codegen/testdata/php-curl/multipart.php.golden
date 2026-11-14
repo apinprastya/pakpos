@@ -1,0 +1,31 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://example.com/upload',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => 'POST',
+    CURLOPT_HTTPHEADER => [
+        'Accept: */*',
+    ],
+    CURLOPT_POSTFIELDS => [
+        'title' => 'Holiday "2026"',
+        'meta' => '{"a":1}',
+        'photo' => new CURLFile('/home/jane/My Pictures/beach.jpg', 'image/jpeg', 'beach.jpg'),
+        'doc' => new CURLFile('C:\\Users\\jane\\report.pdf', 'application/octet-stream', 'report.pdf'),
+    ],
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}
+
+# warnings:
+# PHP's cURL can't set a content type on the text field "meta", so it was left out.
+# PHP's cURL takes one form field per name, so the repeated field "title" was left out.

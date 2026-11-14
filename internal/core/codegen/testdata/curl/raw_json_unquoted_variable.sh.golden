@@ -1,0 +1,6 @@
+curl -X PUT https://api.example.com/limits \
+  -H 'Content-Type: application/json' \
+  --data-raw '{
+  "max": {{max}},
+  "big": 12345678901234567890
+}'

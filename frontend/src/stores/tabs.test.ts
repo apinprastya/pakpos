@@ -39,6 +39,15 @@ describe("tabs store", () => {
     expect(tabTitle(activeTab())).toBe("Untitled request");
   });
 
+  it("opens drafts unsaved, in a parent", () => {
+    const id = s().openDraft({ ...emptyRequest(), id: "x", seq: 4, method: "POST", url: "https://a" }, "f1");
+    expect(s().activeId).toBe(id);
+    expect(activeTab()).toMatchObject({ saved: null, parentId: "f1", doc: null });
+    expect(activeTab().request).toMatchObject({ id: "", seq: 0, method: "POST", url: "https://a" });
+    s().openDraft(emptyRequest());
+    expect(activeTab().parentId).toBe("");
+  });
+
   it("closes tabs, picks a neighbour and never leaves zero tabs", () => {
     const b = s().newTab();
     const c = s().newTab();
