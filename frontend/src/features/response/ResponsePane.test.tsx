@@ -7,6 +7,8 @@ import type { Response, SendResult } from "@/lib/model";
 import { editorText, editorView } from "@/test/editor";
 import { makeResponse } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
+import { useSettingsStore } from "@/stores/settings";
+import { useWorkspaceStore } from "@/stores/workspace";
 import { ResponsePane } from "./ResponsePane";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -27,9 +29,28 @@ const ok = (patch: Partial<Response> = {}, historyId = 5): SendResult => ({
 });
 
 describe("ResponsePane", () => {
-  it("shows the empty state", () => {
+  it("shows the empty state, noting a workspace is only needed to save", () => {
     show(null);
     expect(screen.getByText(/send the request to see the response/)).toBeInTheDocument();
+    expect(screen.getByText(/You can send requests without a workspace/)).toBeInTheDocument();
+  });
+
+  it("drops the workspace note when one is open", () => {
+    useWorkspaceStore.setState({ workspace: { id: "w", name: "W", path: "/w" } });
+    show(null);
+    expect(screen.queryByText(/without a workspace/)).not.toBeInTheDocument();
+  });
+
+  it.each(["tls", "timeout", "too_many_redirects"])("offers Open settings for %s errors", async (kind) => {
+    const user = userEvent.setup();
+    show({ response: null, error: { kind: kind as never, message: "x" }, historyId: 1 });
+    await user.click(screen.getByRole("button", { name: "Open settings" }));
+    expect(useSettingsStore.getState()).toMatchObject({ dialogOpen: true, section: "requests" });
+  });
+
+  it("doesn't offer settings for errors settings can't fix", () => {
+    show({ response: null, error: { kind: "dns", message: "no such host" }, historyId: 1 });
+    expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument();
   });
 
   it("shows progress with a cancel button while sending", async () => {

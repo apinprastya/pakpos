@@ -10,11 +10,17 @@ import { CloseTabDialog } from "./CloseTabDialog";
 import { SaveRequestDialog } from "./SaveRequestDialog";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useWorkspaceSync } from "@/hooks/useWorkspaceSync";
+import { SettingsDialog } from "@/features/settings/SettingsDialog";
+import { useSettingsStore } from "@/stores/settings";
+import { useEffect } from "react";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
   useShortcuts();
   useWorkspaceSync();
+  useEffect(() => {
+    void useSettingsStore.getState().load();
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -48,6 +54,7 @@ export function AppShell() {
       <StatusBar />
       <CloseTabDialog />
       <SaveRequestDialog />
+      <SettingsDialog />
     </div>
   );
 }

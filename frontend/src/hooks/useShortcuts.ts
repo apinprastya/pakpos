@@ -1,8 +1,9 @@
 import { useEffect } from "react";
 import { saveTab, sendTab } from "@/features/request/actions";
+import { useSettingsStore } from "@/stores/settings";
 import { useTabsStore } from "@/stores/tabs";
 
-/** App-wide shortcuts: Mod+Enter send, Mod+S save, Mod+T new tab, Mod+W close tab. */
+/** App-wide shortcuts: Mod+Enter send, Mod+S save, Mod+T new tab, Mod+W close tab, Mod+, settings. */
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -24,6 +25,10 @@ export function useShortcuts(): void {
         case "w":
           e.preventDefault();
           requestClose(activeId);
+          break;
+        case ",":
+          e.preventDefault();
+          useSettingsStore.getState().openDialog();
           break;
       }
     };

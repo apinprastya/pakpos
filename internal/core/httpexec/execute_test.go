@@ -129,6 +129,9 @@ func TestExecuteResponseMetadata(t *testing.T) {
 		w.Header().Add("X-A", "1")
 		w.Header().Add("X-A", "1b")
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		// Think time the TTFB must cover. Windows' monotonic clock ticks
+		// coarsely (0.5–15.6 ms), so an instant local reply measures as 0.
+		time.Sleep(30 * time.Millisecond)
 		w.WriteHeader(http.StatusTeapot)
 		_, _ = w.Write([]byte("short and stout"))
 	}))
@@ -162,8 +165,12 @@ func TestExecuteResponseMetadata(t *testing.T) {
 	if resp.Cookies[1].Expires != "" || resp.Cookies[1].SameSite != "" {
 		t.Errorf("session cookie = %+v", resp.Cookies[1])
 	}
-	if resp.Timings.Total <= 0 || resp.Timings.TTFB <= 0 || resp.Timings.Connect <= 0 {
-		t.Errorf("timings = %+v", resp.Timings)
+	// A loopback connect can be below the clock resolution (0 on Windows), so
+	// it is only checked for sanity; TTFB must include the server's 30 ms
+	// (minus one coarse clock tick).
+	tm := resp.Timings
+	if tm.TTFB < 15 || tm.Total < tm.TTFB || tm.Connect < 0 || tm.Connect > tm.Total {
+		t.Errorf("timings = %+v", tm)
 	}
 }
 

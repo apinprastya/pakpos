@@ -1,10 +1,12 @@
 [Desktop Entry]
 Type=Application
-Name=pakpos
+Name=Pakpos
 Exec=pakpos
 Icon=pakpos
-Categories=Development;
+Categories=Development;Network;
+Comment=Desktop REST API client
 Terminal=false
-Keywords=wails
+Keywords=api;rest;http;postman;request;
 Version=1.0
+GenericName=REST API client
 StartupNotify=false

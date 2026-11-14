@@ -1,15 +1,15 @@
 {
 	"fixed": {
-		"file_version": "0.1.0"
+		"file_version": "0.0.0"
 	},
 	"info": {
 		"0409": {
-			"ProductVersion": "0.1.0",
-			"CompanyName": "My Company",
-			"FileDescription": "A pakpos application",
-			"LegalCopyright": "© 2026, My Company",
-			"ProductName": "My Product",
-			"Comments": "This is a comment"
+			"ProductVersion": "0.0.0",
+			"CompanyName": "Pakpos contributors",
+			"FileDescription": "Desktop REST API client",
+			"LegalCopyright": "© 2026 Pakpos contributors",
+			"ProductName": "Pakpos",
+			"Comments": "REST API client"
 		}
 	}
 }

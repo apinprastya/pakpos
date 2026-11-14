@@ -8,11 +8,17 @@ import {
   AppService,
   HistoryService,
   RequestService,
+  SettingsService,
   WorkspaceService,
 } from "../../bindings/pakpos/internal/service";
+import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
 import { WorkspaceChanged } from "../../bindings/events";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import {
+  DEFAULT_SETTINGS,
+  normalizeSettings,
+  type AppSettings,
+  type BuildInfo,
   normalizeHistoryEntry,
   normalizeRequest,
   normalizeSendResult,
@@ -37,8 +43,20 @@ export interface WorkspaceChange {
 }
 
 export const api = {
-  async buildInfo(): Promise<{ version: string }> {
+  async buildInfo(): Promise<BuildInfo> {
     return AppService.BuildInfo();
+  },
+
+  async getSettings(): Promise<AppSettings> {
+    return normalizeSettings((await SettingsService.Get()) as Partial<AppSettings>, DEFAULT_SETTINGS);
+  },
+  async defaultSettings(): Promise<AppSettings> {
+    return normalizeSettings((await SettingsService.Defaults()) as Partial<AppSettings>, DEFAULT_SETTINGS);
+  },
+  /** Validates, saves and applies settings in Go; rejects with Go's validation message. */
+  async setSettings(next: AppSettings): Promise<AppSettings> {
+    const saved = await SettingsService.Set(next as unknown as bs.Settings);
+    return normalizeSettings(saved as Partial<AppSettings>, DEFAULT_SETTINGS);
   },
 
   async send(sendId: string, req: Request): Promise<SendResult> {

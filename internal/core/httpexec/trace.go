@@ -15,7 +15,8 @@ type tracer struct {
 	mu sync.Mutex
 
 	start, dnsStart, dnsDone, connStart, connDone time.Time
-	tlsStart, tlsDone, wroteRequest, firstByte    time.Time
+	tlsStart, tlsDone, gotConn, wroteRequest      time.Time
+	firstByte                                     time.Time
 	reused                                        bool
 }
 
@@ -37,6 +38,7 @@ func (t *tracer) clientTrace() *httptrace.ClientTrace {
 		TLSHandshakeDone: func(tls.ConnectionState, error) { t.set(&t.tlsDone) },
 		GotConn: func(info httptrace.GotConnInfo) {
 			t.mu.Lock()
+			t.gotConn = time.Now()
 			t.reused = info.Reused
 			t.mu.Unlock()
 		},
@@ -49,7 +51,20 @@ func ms(from, to time.Time) float64 {
 	if from.IsZero() || to.IsZero() || to.Before(from) {
 		return 0
 	}
-	return float64(to.Sub(from).Microseconds()) / 1000
+	return float64(to.Sub(from).Nanoseconds()) / 1e6
+}
+
+// ttfbStart is where time-to-first-byte is measured from: the end of the
+// request write, which isolates server think time. WroteRequest and
+// GotFirstResponseByte run on different transport goroutines, so when the
+// server answers before the write callback is recorded (common for small
+// requests to a fast server, e.g. on Windows), fall back to the moment the
+// connection was obtained.
+func (t *tracer) ttfbStart() time.Time {
+	if !t.wroteRequest.IsZero() && !t.firstByte.Before(t.wroteRequest) {
+		return t.wroteRequest
+	}
+	return t.gotConn
 }
 
 func (t *tracer) timings(end time.Time) model.Timings {
@@ -61,7 +76,7 @@ func (t *tracer) timings(end time.Time) model.Timings {
 		DNS:        ms(t.dnsStart, t.dnsDone),
 		Connect:    ms(t.connStart, t.connDone),
 		TLS:        ms(t.tlsStart, t.tlsDone),
-		TTFB:       ms(t.wroteRequest, t.firstByte),
+		TTFB:       ms(t.ttfbStart(), t.firstByte),
 		Total:      ms(t.start, end),
 		ReusedConn: t.reused,
 	}

@@ -63,6 +63,8 @@ export function editorLanguage(kind: Response["kind"]): "json" | "xml" | "html" 
 export interface ErrorCopy {
   title: string;
   hint: string | null;
+  /** Settings section that can fix this error, offered as an "Open settings" action. */
+  settings?: "requests";
 }
 
 const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
@@ -80,15 +82,18 @@ const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
   tls: {
     title: "The secure connection failed",
     hint: "For a server with a self-signed certificate, turn off certificate verification in settings.",
+    settings: "requests",
   },
   timeout: {
     title: "The request timed out",
     hint: "The server didn't answer in time. Try again, or raise the timeout in settings.",
+    settings: "requests",
   },
   canceled: { title: "Request cancelled", hint: "Send it again when you're ready." },
   too_many_redirects: {
     title: "Too many redirects",
     hint: "The server kept redirecting. Check the URL, or turn off following redirects in settings.",
+    settings: "requests",
   },
   network: { title: "The request failed", hint: "Check your network connection and try again." },
 };

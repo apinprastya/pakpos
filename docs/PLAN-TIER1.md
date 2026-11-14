@@ -201,6 +201,27 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
   - History: grouped by day, debounced search, Load more, open as a new tab with its stored response, delete one, clear all with confirm. Reloads after each recorded send.
   - Go: `RequestSummary` gained `url` so the tree filter can match URLs.
 
+- **M7 — done.** Polish and release.
+  - Settings dialog (gear in the rail, Mod+,) with Appearance (theme, response position), Requests (timeout, redirects, TLS verification with a warning), History (retention, with a note when lowering it trims entries) and About (version, commit, platform). Edits apply on Save; Reset to defaults; inline validation plus Go's message on failure.
+  - **Go settings are the single source of truth** for theme and layout. The theme and layout stores keep a localStorage copy only for first paint; `stores/settings.ts` loads from Go on start and every change (dialog, theme menu, status bar toggle) saves through it.
+  - Error states for timeout, TLS and redirect errors offer "Open settings" at the Requests section.
+  - First run: the sidebar empty state (M6) is the onboarding; the response area adds that requests can be sent without a workspace.
+  - Go end-to-end test (`internal/service/e2e_test.go`) using real fsstore, SQLite and httpexec against an `httptest.Server`: send without a workspace, create workspace and collections, save, send, history, cookies across sends, a >10 MB body saved in full, rename/move/duplicate/delete, close and reopen, cookie reset, clear history.
+  - Build stamping: `VERSION` (default `info.version` from `build/config.yml`, via `scripts/version`) and `COMMIT` go into `-ldflags` for every platform; `nfpm` package versions follow `VERSION`.
+  - Pakpos icon: `build/appicon.svg` (cobalt perforated stamp, paper face, "P", postmark) rendered to `appicon.png`. `.ico`, `.icns` and the DMG assets regenerated, and the macOS Icon Composer source updated. App metadata updated from `build/config.yml` (name, identifier `dev.pakpos.app`, description, copyright).
+  - Linux packaging verified locally: AppImage, .deb, .rpm and Arch package. The desktop entry uses categories `Development;Network;` and the package license is Apache-2.0.
+  - CI (`.github/workflows/ci.yml`): lint and coverage gates on Linux; tests and `wails3 build` on Linux, macOS and Windows. Release (`release.yml`): tags `v*` build packages on all three OSes into a draft GitHub release with checksums.
+  - golangci-lint v2.15.0 config (`.golangci.yml`); the lint task runs it via `go run` when it isn't installed. 0 issues.
+  - Manual checklist: `docs/SMOKE-TEST.md`.
+
+### Definition of Done — what's left
+
+- [ ] Run CI on GitHub once the repository exists (the workflows haven't run yet) and fix anything platform-specific, especially macOS icon generation (`actool` with the `.icon` source) and NSIS on Windows.
+- [ ] Run `docs/SMOKE-TEST.md` on real macOS and Windows machines; only Linux builds and packages were produced here.
+- [ ] Code signing and notarization (macOS) and Authenticode (Windows) are not set up; the builds are unsigned.
+- [x] Coverage ≥ 80% (Go 95%, frontend 99% lines) and lint clean.
+- [x] A workspace folder can be committed, cloned and reopened (covered by the Go end-to-end test reopening from disk).
+
 ### Carried over from M1
 
 - [x] Cookie jar kept between requests, one per workspace. Fixed in M3: it resets on workspace switch and is kept when settings change.
@@ -211,9 +232,9 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
 
 ### Carried over from M2/M3
 
-- [ ] Root package `main` (`main.go`, `wails_adapters.go`) has no unit tests: the Wails dialog/event adapters are only exercised by running the app.
+- [ ] Root package `main` (`main.go`, `wails_adapters.go`) has no unit tests: the Wails dialog/event adapters are only exercised by running the app. The M7 end-to-end test covers everything behind them.
 - [ ] Watcher edge case: an external write into a collection folder in the same instant the app renames that folder can be missed until the next change.
-- [ ] Workspace switching does not cancel in-flight sends; they finish on the previous executor and are recorded against the newly open workspace.
+- [x] Workspace switching while a send is running: fixed in M7, the send is recorded against the workspace that was open when it started (it still finishes; it isn't cancelled).
 - [ ] `HistoryService.Clear` clears all workspaces; add a per-workspace clear if the UI needs it (`sqlite.ClearHistory(workspaceID)` already supports it).
 
 ### Carried over from M4/M5
@@ -222,7 +243,7 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
 - [x] Saved tabs react to `workspace:changed`. Fixed in M6 (see `stores/workspace.ts` `syncTabs`).
 - [ ] Code-split CodeMirror languages; the main bundle is ~1 MB minified (fine for a desktop app, but it slows the first paint).
 - [ ] HTML pretty-printing: Pretty shows HTML highlighted as received, not reformatted.
-- [ ] The Settings dialog (M7) is referenced by error hints (timeout, TLS, redirects) but doesn't exist yet.
+- [x] Error hints for timeout, TLS and redirects open the Settings dialog (M7).
 
 
 ### Carried over from M6
@@ -232,3 +253,26 @@ M1 and M2 can be built in parallel, and so can M4, M5, and M6.
 - [ ] History shows every workspace's entries; "Clear history" clears all (matches `HistoryService.Clear`). Add a per-workspace filter/clear if wanted.
 - [ ] Tabs persisted before M6 have no `workspaceId`; they're adopted by the first workspace that contains their request id.
 - [ ] Opening a folder that isn't a workspace from the switcher shows an error with a "Create workspace here" action, rather than creating one silently (the Save dialog still creates one, as its copy says).
+
+
+### Carried over from M7
+
+- [ ] macOS `Assets.car` (Icon Composer) was removed because it held the Wails icon and can only be rebuilt on macOS; the app uses `icons.icns` until a macOS build regenerates it from `build/appicon.icon`.
+- [ ] Windows and macOS packaging, and the CI/release workflows, are untested (no runners here).
+- [ ] Settings "Appearance" holds both theme and response position; there's no separate Layout section.
+- [ ] The README CI badge and release links use an `OWNER/REPO` placeholder.
+
+### Release process aligned with Lontar (dbedit)
+
+- CalVer `vYY.MM.MICRO` with `tools/calver` (check/next) and `wails3 task release:next`.
+- The version comes from `git describe` / `PAKPOS_VERSION` (replaces `scripts/version` and `info.version`). `tools/stamp` writes it into Info.plist and Windows VERSIONINFO; NSIS and nfpm get it too.
+- `release.yml`:
+  - Resolves and validates the version, then tests and packages on 3 OSes.
+  - Optional Authenticode, Developer ID and notarization signing (`build/windows/sign.ps1`, `build/darwin/sign-notarize.sh`).
+  - Creates a draft release with `SHA256SUMS`.
+- `ci.yml` pins GitHub's own actions to SHAs and uses no third-party actions.
+- Installers and packages:
+  - The Windows installer is per-user, with a portable zip as well.
+  - The macOS build is a universal dmg.
+  - nfpm installs to `/usr/bin` with LICENSE + NOTICE.
+- Not ported: in-app updates / `UPDATE_SIGNING_KEY` (Pakpos has no updater).

@@ -1,13 +1,13 @@
 [Desktop Entry]
 Version=1.0
-Name=My Product
-Comment=A pakpos application
-# The Exec line includes %u to pass the URL to the application
-Exec=/usr/local/bin/pakpos %u
+Name=Pakpos
+Comment=Desktop REST API client
+Exec=/usr/local/bin/pakpos
 Terminal=false
 Type=Application
 Icon=pakpos
-Categories=Utility;
+Categories=Development;Network;
+Keywords=api;rest;http;postman;request;
 StartupWMClass=pakpos
 
  

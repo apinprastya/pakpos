@@ -4,7 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cancelTab } from "@/features/request/actions";
 import { modKeyLabel } from "@/lib/platform";
 import type { SendError } from "@/lib/model";
+import { useSettingsStore } from "@/stores/settings";
 import { useActiveTab } from "@/stores/tabs";
+import { useWorkspaceStore } from "@/stores/workspace";
 import { errorCopy } from "./format";
 import { ResponseBody } from "./ResponseBody";
 import { ResponseMeta } from "./ResponseMeta";
@@ -60,16 +62,7 @@ export function ResponsePane() {
       </Tabs>
     );
   } else {
-    content = (
-      <Centered>
-        <p className="text-muted-foreground">Enter a URL and send the request to see the response here.</p>
-        <p className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Kbd>{modKeyLabel()}</Kbd>
-          <Kbd>Enter</Kbd>
-          <span className="ml-1">sends the request</span>
-        </p>
-      </Centered>
-    );
+    content = <EmptyResponse />;
   }
 
   return (
@@ -81,6 +74,25 @@ export function ResponsePane() {
       ) : null}
       <div className="min-h-0 flex-1">{content}</div>
     </section>
+  );
+}
+
+function EmptyResponse() {
+  const hasWorkspace = useWorkspaceStore((s) => s.workspace !== null);
+  return (
+    <Centered>
+      <p className="text-muted-foreground">Enter a URL and send the request to see the response here.</p>
+      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Kbd>{modKeyLabel()}</Kbd>
+        <Kbd>Enter</Kbd>
+        <span className="ml-1">sends the request</span>
+      </p>
+      {!hasWorkspace && (
+        <p className="max-w-sm text-xs text-muted-foreground">
+          You can send requests without a workspace. To save them, open or create one in the sidebar.
+        </p>
+      )}
+    </Centered>
   );
 }
 
@@ -97,6 +109,15 @@ function ErrorState({ error }: { error: SendError }) {
         </p>
       )}
       {copy.hint && <p className="max-w-md text-xs text-muted-foreground">{copy.hint}</p>}
+      {copy.settings && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => useSettingsStore.getState().openDialog(copy.settings)}
+        >
+          Open settings
+        </Button>
+      )}
     </Centered>
   );
 }

@@ -1,10 +1,12 @@
 import { Columns2, Folder, Rows2 } from "lucide-react";
 import { useLayoutStore } from "@/stores/layout";
+import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 export function StatusBar() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
-  const toggle = useLayoutStore((s) => s.toggleSplitOrientation);
+  const setLayout = useSettingsStore((s) => s.setLayout);
+  const toggle = () => void setLayout(orientation === "vertical" ? "horizontal" : "vertical");
   const workspace = useWorkspaceStore((s) => s.workspace);
   const nextLabel =
     orientation === "vertical" ? "Show response beside request" : "Show response below request";

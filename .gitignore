@@ -7,3 +7,9 @@ build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 coverage
 frontend/coverage
 frontend/bindings
+build/linux/appimage/pakpos
+build/linux/appimage/pakpos.png
+build/linux/pakpos.desktop
+dist
+*.syso
+build/windows/info.stamped.json

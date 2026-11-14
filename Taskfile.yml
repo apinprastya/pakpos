@@ -9,6 +9,43 @@ vars:
   # by `wails3 build GOOS=...` (or the GOOS env var) for cross-compilation. The
   # tasks below dispatch to the matching platform Taskfile via this variable.
   GOOS: '{{.GOOS | default OS}}'
+  # Version stamped into every build and package (Go ldflags, Info.plist,
+  # Windows VERSIONINFO, NSIS, nfpm). Releases use CalVer, vYY.MM.MICRO (see
+  # README "Releasing"; tools/calver checks the format). PAKPOS_VERSION (e.g.
+  # the release tag) wins; otherwise `git describe --tags --always --dirty` is
+  # used: a tag such as v26.11.1 or v26.11.1-4-gabc1234 gives
+  # 26.11.1[-4-gabc1234], a bare commit gives 0.0.0-dev+<hash>, and no git at
+  # all gives 0.0.0-dev. A leading "v" is dropped, and anything but semver
+  # characters is refused. Only shell builtins are used, so this also works in
+  # Task's shell on Windows. Print it with `wails3 task version`.
+  VERSION:
+    sh: |
+      v="${PAKPOS_VERSION:-}"
+      if [ -z "$v" ]; then v=$(git describe --tags --always --dirty 2>/dev/null) || v=""; fi
+      v="${v#v}"
+      case "$v" in
+        # Only semver characters: VERSION ends up in -ldflags and file names.
+        *[!0-9A-Za-z.+-]*) echo "invalid version '$v' (allowed: 0-9 A-Z a-z . + -)" >&2; exit 1 ;;
+        "") echo "0.0.0-dev" ;;
+        [0-9]*.[0-9]*.[0-9]*) echo "$v" ;;
+        *) echo "0.0.0-dev+$v" ;;
+      esac
+  # The numeric X.Y.Z core of VERSION, for fields that only accept numbers
+  # (CFBundleVersion, Windows VERSIONINFO, NSIS VIProductVersion).
+  VERSION_NUM:
+    sh: |
+      n="{{.VERSION}}"
+      n="${n%%-*}"
+      n="${n%%+*}"
+      case "$n" in
+        *[!0-9.]*|"") echo "0.0.0" ;;
+        *) echo "$n" ;;
+      esac
+  COMMIT:
+    sh: 'git rev-parse --short HEAD 2>/dev/null || echo ""'
+  # Linker flags that set internal/buildinfo (shown in Settings → About).
+  VERSION_LDFLAGS: '-X pakpos/internal/buildinfo.Version={{.VERSION}} -X pakpos/internal/buildinfo.Commit={{.COMMIT}}'
+  GOLANGCI_LINT_VERSION: v2.15.0
 
 includes:
   common: ./build/Taskfile.yml
@@ -36,6 +73,56 @@ tasks:
     summary: Runs the application in development mode
     cmds:
       - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+
+  version:
+    summary: Prints the version that builds and packages are stamped with
+    cmds:
+      - 'echo "{{.VERSION}} (numeric {{.VERSION_NUM}})"'
+
+  # ---------------------------------------------------------------------------
+  # Packaging & release (see README "Building packages" / "Releasing")
+  # ---------------------------------------------------------------------------
+
+  package:linux:
+    summary: Builds the AppImage, .deb and .rpm (plus Arch .pkg.tar.zst) into bin/ (Linux host)
+    cmds:
+      - task: linux:package
+
+  package:windows:
+    summary: Builds the per-user NSIS installer (bin/pakpos-amd64-installer.exe; needs makensis)
+    cmds:
+      - task: windows:package
+        vars:
+          FORMAT: nsis
+          INSTALL_SCOPE: '{{.INSTALL_SCOPE | default "user"}}'
+
+  package:darwin:
+    summary: Builds a universal (amd64 + arm64) bin/pakpos.app and bin/pakpos.dmg (macOS host)
+    cmds:
+      - task: darwin:package:universal
+      - task: darwin:create:dmg
+
+  release:next:
+    summary: Prints the next CalVer release (YY.MM.MICRO) for this month from the local tags (run `git fetch --tags` first)
+    silent: true
+    cmds:
+      - git tag -l 'v*' | go -C tools run ./calver next
+
+  release:checksums:
+    summary: Writes SHA256SUMS for every file in DIR (default dist)
+    vars:
+      DIR: '{{.DIR | default "dist"}}'
+    dir: '{{.DIR}}'
+    cmds:
+      - rm -f SHA256SUMS
+      - |
+        if command -v sha256sum >/dev/null 2>&1; then
+          sha256sum -- * > ../SHA256SUMS.tmp
+        else
+          shasum -a 256 -- * > ../SHA256SUMS.tmp
+        fi
+        mv ../SHA256SUMS.tmp SHA256SUMS
+      - cat SHA256SUMS
 
   install:msix:tools:
     summary: Installs tools required for Windows MSIX packaging
@@ -68,10 +155,17 @@ tasks:
       - task: common:run:docker
 
   test:
-    summary: Runs all tests (Go + frontend)
+    summary: Runs all tests (Go, frontend, tools/)
     cmds:
       - task: test:go
       - task: test:fe
+      - task: test:tools
+
+  test:tools:
+    summary: Tests the build helpers in tools/ (calver, stamp; a separate Go module)
+    dir: tools
+    cmds:
+      - go test -cover ./...
 
   test:go:
     summary: Runs Go tests
@@ -88,12 +182,15 @@ tasks:
     summary: Runs Go and frontend tests with coverage gates (>= 80%)
     cmds:
       - sh ./scripts/go-coverage.sh
+      - go -C tools test -cover ./...
       - cd frontend && npm run coverage --silent
 
   lint:
     summary: Runs Go and frontend linters/type checks
     cmds:
-      - test -z "$(gofmt -l *.go internal)" || (gofmt -l *.go internal && echo "gofmt needed" && exit 1)
+      - test -z "$(gofmt -l *.go internal tools)" || (gofmt -l *.go internal tools && echo "gofmt needed" && exit 1)
       - go vet ./internal/...
-      - if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else echo "golangci-lint not installed, skipping"; fi
+      - go -C tools vet ./...
+      # Uses an installed golangci-lint, or the pinned version via `go run` (slower first run).
+      - if command -v golangci-lint >/dev/null 2>&1; then golangci-lint run ./...; else go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.GOLANGCI_LINT_VERSION}} run ./...; fi
       - cd frontend && npm run typecheck --silent && npm run lint --silent && npm run format:check --silent

@@ -123,6 +123,12 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 	}
 	defer s.c.unregisterSend(sendID)
 
+	// Record against the workspace open when the send started, even if the
+	// user switches workspace while it runs.
+	wsID := ""
+	if ws, err := s.c.workspace(); err == nil {
+		wsID = ws.Manifest().ID
+	}
 	started := s.now()
 	resp, err := s.c.executor().Execute(ctx, "", req)
 	sendErr := httpexec.Classify(err)
@@ -131,11 +137,11 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 		return result, nil
 	}
 
-	result.HistoryID = s.record(req, resp, sendErr, started)
+	result.HistoryID = s.record(wsID, req, resp, sendErr, started)
 	return result, nil
 }
 
-func (s *RequestService) record(req model.Request, resp *model.Response, sendErr *httpexec.Error, started time.Time) int64 {
+func (s *RequestService) record(wsID string, req model.Request, resp *model.Response, sendErr *httpexec.Error, started time.Time) int64 {
 	method := strings.ToUpper(strings.TrimSpace(req.Method))
 	if method == "" {
 		method = "GET"
@@ -151,9 +157,7 @@ func (s *RequestService) record(req model.Request, resp *model.Response, sendErr
 		Request:  req,
 		Response: resp,
 	}
-	if ws, err := s.c.workspace(); err == nil {
-		e.WorkspaceID = ws.Manifest().ID
-	}
+	e.WorkspaceID = wsID
 	if resp != nil {
 		e.Status, e.DurationMs, e.Size = resp.StatusCode, resp.Timings.Total, resp.Size
 	}
@@ -244,7 +248,7 @@ var kindExt = map[model.BodyKind]string{
 func suggestFileName(e sqlite.HistoryEntry) string {
 	base := "response"
 	if u, err := url.Parse(e.URL); err == nil {
-		if b := path.Base(u.Path); b != "." && b != "/" && !(u.Host == "" && !strings.Contains(u.Path, "/")) {
+		if b := path.Base(u.Path); b != "." && b != "/" && (u.Host != "" || strings.Contains(u.Path, "/")) {
 			base = b
 		}
 	}

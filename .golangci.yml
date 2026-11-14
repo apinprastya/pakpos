@@ -1,0 +1,57 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - gosec
+    - revive
+    - misspell
+    - bodyclose
+  settings:
+    gosec:
+      severity: medium
+      confidence: medium
+      excludes:
+        # Paths come from the user's own dialogs and workspace folder by design.
+        - G304 # file inclusion via variable
+        - G301 # directory permissions (workspace folders are user-owned, 0o755 is intended)
+        - G306 # file permissions (workspace files are meant to be readable, 0o644)
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-strings
+        - name: error-return
+        - name: errorf
+        - name: blank-imports
+        - name: context-as-argument
+        - name: unreachable-code
+        - name: redefines-builtin-id
+  exclusions:
+    generated: lax
+    presets:
+      - std-error-handling
+    rules:
+      # Tests may ignore errors from cleanup and use test servers freely.
+      - path: _test\.go
+        linters: [errcheck, gosec, bodyclose]
+    paths:
+      - frontend
+      - build
+
+formatters:
+  enable:
+    - gofmt

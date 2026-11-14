@@ -59,7 +59,8 @@ func writeFileAtomic(path string, data []byte) (err error) {
 	if err = f.Close(); err != nil {
 		return fmt.Errorf("close %s: %w", filepath.Base(path), err)
 	}
-	if err = os.Chmod(tmp, 0o644); err != nil {
+	// Workspace files are meant to be shared via git, so they're world-readable like any source file.
+	if err = os.Chmod(tmp, 0o644); err != nil { //nolint:gosec // see above
 		return fmt.Errorf("chmod %s: %w", filepath.Base(path), err)
 	}
 	if err = os.Rename(tmp, path); err != nil {

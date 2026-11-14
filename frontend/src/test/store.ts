@@ -1,3 +1,5 @@
+import { useSettingsStore } from "@/stores/settings";
+import { DEFAULT_SETTINGS } from "@/lib/model";
 import { emptyRequest, type Request } from "@/lib/model";
 import { useHistoryStore } from "@/stores/history";
 import { useTabsStore, type Tab } from "@/stores/tabs";
@@ -10,6 +12,12 @@ const historyInitial = useHistoryStore.getState();
 export function resetSidebarStores(): void {
   useWorkspaceStore.setState(workspaceInitial, true);
   useHistoryStore.setState(historyInitial, true);
+  useSettingsStore.setState({
+    settings: { ...DEFAULT_SETTINGS },
+    loaded: false,
+    dialogOpen: false,
+    section: "appearance",
+  });
 }
 
 /** Resets the tabs store to a single tab with the given request. */
