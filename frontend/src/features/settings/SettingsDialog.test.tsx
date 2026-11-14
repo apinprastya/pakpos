@@ -123,7 +123,9 @@ describe("SettingsDialog", () => {
     const keep = within(dialog).getByRole("textbox", { name: "Requests to keep" });
     await user.clear(keep);
     await user.type(keep, "50");
-    expect(within(dialog).getByRole("note")).toHaveTextContent("older than the newest 50 entries");
+    expect(within(dialog).getByRole("note")).toHaveTextContent(
+      "older than the newest 50 entries in each workspace",
+    );
   });
 
   it("shows Go's error when saving fails and stays open", async () => {

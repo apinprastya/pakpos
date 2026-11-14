@@ -273,3 +273,26 @@ func TestDynamicNames(t *testing.T) {
 		t.Fatal("names need the $ prefix")
 	}
 }
+
+func TestUnsetSecretShadowsLowerScopes(t *testing.T) {
+	scopes := []Scope{
+		{Kind: ScopeGlobal, ID: "G", Variables: []model.Variable{{Key: "token", Value: "global", Enabled: true}, {Key: "ref", Value: "{{token}}", Enabled: true}}},
+		{Kind: ScopeEnvironment, ID: "E", Name: "Dev", Unset: []string{"token", ""}},
+	}
+	r := New(scopes)
+	for _, in := range []string{"{{token}}", "{{ref}}"} {
+		out, unresolved, err := r.Resolve(in)
+		if err != nil || out != in && out != "{{token}}" || len(unresolved) != 1 || unresolved[0] != "token" {
+			t.Fatalf("%s -> %q %v %v", in, out, unresolved, err)
+		}
+	}
+	m, ok := r.Lookup("token")
+	if !ok || !m.Unset || !m.Secret || m.ScopeID != "E" || m.Value != "" {
+		t.Fatalf("lookup = %+v %v", m, ok)
+	}
+	// A higher scope with a value wins over an unset secret below it.
+	r = New(append(scopes, Scope{Kind: ScopeLocal, Variables: []model.Variable{{Key: "token", Value: "local", Enabled: true}}}))
+	if out, _, _ := r.Resolve("{{token}}"); out != "local" {
+		t.Fatalf("local = %q", out)
+	}
+}

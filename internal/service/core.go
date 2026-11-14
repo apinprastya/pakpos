@@ -15,6 +15,8 @@ import (
 
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/settings"
+	"pakpos/internal/pipeline"
+	"pakpos/internal/secrets"
 	"pakpos/internal/store/fsstore"
 	"pakpos/internal/store/sqlite"
 )
@@ -55,15 +57,21 @@ type Config struct {
 	DataDir string
 	Dialogs Dialogs
 	Events  Events
+	// Secrets stores secret variable values. main.go passes the keychain or
+	// the encrypted file (secrets.Select); tests pass secrets.Fake. When nil,
+	// the encrypted file store in DataDir is used (never the keychain).
+	Secrets secrets.Store
 	// WatchDebounce delays reloads after external file changes (default 300ms).
 	WatchDebounce time.Duration
 	Logger        *slog.Logger
 }
 
-// Core is the state shared by all services: the database, the open
-// workspace, the HTTP executor and settings. It is safe for concurrent use.
+// Core is the state shared by all services: the database, the secret store,
+// the open workspace, the HTTP executor and settings. It is safe for
+// concurrent use.
 type Core struct {
 	db       *sqlite.Store
+	secrets  secrets.Store
 	dialogs  Dialogs
 	events   Events
 	log      *slog.Logger
@@ -100,8 +108,13 @@ func NewCore(cfg Config) (*Core, error) {
 	if err != nil {
 		return nil, err
 	}
+	sec := cfg.Secrets
+	if sec == nil {
+		sec = secrets.NewFileStore(cfg.DataDir)
+	}
 	c := &Core{
 		db:       db,
+		secrets:  sec,
 		dialogs:  cfg.Dialogs,
 		events:   cfg.Events,
 		log:      cfg.Logger,
@@ -179,6 +192,32 @@ func (c *Core) workspace() (*fsstore.Workspace, error) {
 		return nil, ErrNoWorkspace
 	}
 	return c.ws, nil
+}
+
+// session returns the send pipeline for ws.
+func (c *Core) session(ws *fsstore.Workspace) *pipeline.Session {
+	return pipeline.New(ws, c.secrets, c.log)
+}
+
+// openSession returns the open workspace and its pipeline, or ErrNoWorkspace.
+func (c *Core) openSession() (*fsstore.Workspace, *pipeline.Session, error) {
+	ws, err := c.workspace()
+	if err != nil {
+		return nil, nil, err
+	}
+	return ws, c.session(ws), nil
+}
+
+// selectedEnvironment returns the id of the environment selected in a
+// workspace, or "" (also when it can't be read). It may name an environment
+// that no longer exists; the pipeline treats that as none.
+func (c *Core) selectedEnvironment(workspaceID string) string {
+	id, err := c.db.GetWorkspaceState(workspaceID, sqlite.StateSelectedEnvironment)
+	if err != nil {
+		c.log.Warn("read selected environment", "err", err)
+		return ""
+	}
+	return id
 }
 
 // setWorkspace replaces the open workspace, restarts the watcher and resets cookies.

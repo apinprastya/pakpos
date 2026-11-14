@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import App from "@/App";
 import { api, type WorkspaceChange } from "@/lib/api";
 import { emptyRequest } from "@/lib/model";
-import { col } from "@/test/fixtures";
+import { col, makeResult } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
 import { sendTab } from "@/features/request/actions";
 import { useHistoryStore } from "@/stores/history";
@@ -44,7 +44,7 @@ describe("workspace sync in the app", () => {
   it("refreshes history after a recorded send", async () => {
     resetTabs({ ...emptyRequest(), url: "https://x" });
     useHistoryStore.setState({ loaded: true });
-    vi.mocked(api.send).mockResolvedValue({ response: null, error: null, historyId: 3 });
+    vi.mocked(api.send).mockResolvedValue(makeResult({ response: null, error: null, historyId: 3 }));
     await sendTab("t1");
     expect(api.historyList).toHaveBeenCalled();
   });

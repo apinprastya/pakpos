@@ -19,7 +19,7 @@ func TestHistoryService(t *testing.T) {
 	defer srv.Close()
 	var ids []int64
 	for _, id := range []string{"a", "b", "c"} {
-		res, _ := h.req.Send(context.Background(), id, model.Request{URL: srv.URL + "/" + id})
+		res, _ := h.req.Send(context.Background(), id, model.Request{URL: srv.URL + "/" + id}, "")
 		ids = append(ids, res.HistoryID)
 	}
 	page, err := h.hist.List(sqlite.HistoryFilter{Text: "/b"})
@@ -86,7 +86,7 @@ func TestSettingsLowerRetentionPrunes(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer srv.Close()
 	for _, id := range []string{"a", "b", "c"} {
-		_, _ = h.req.Send(context.Background(), id, model.Request{URL: srv.URL})
+		_, _ = h.req.Send(context.Background(), id, model.Request{URL: srv.URL}, "")
 	}
 	s := h.set.Get()
 	s.HistoryRetention = 1
@@ -99,5 +99,47 @@ func TestSettingsLowerRetentionPrunes(t *testing.T) {
 	s.HistoryRetention = 0 // keep all: no pruning
 	if _, err := h.set.Set(s); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Retention is per workspace: a send trims only its own workspace's history.
+func TestRetentionIsPerWorkspace(t *testing.T) {
+	h := newHarness(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer srv.Close()
+	s := h.set.Get()
+	s.HistoryRetention = 2
+	if _, err := h.set.Set(s); err != nil {
+		t.Fatal(err)
+	}
+	send := func(id string) {
+		t.Helper()
+		if _, err := h.req.Send(context.Background(), id, model.Request{URL: srv.URL}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a := h.openWorkspace(t)
+	send("a1")
+	send("a2")
+	h.openWorkspace(t)
+	for _, id := range []string{"b1", "b2", "b3"} {
+		send(id)
+	}
+	if p, _ := h.hist.List(sqlite.HistoryFilter{}); p.Total != 2 {
+		t.Fatalf("workspace B kept %d", p.Total)
+	}
+	if _, err := h.ws.Open(a.Path); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := h.hist.List(sqlite.HistoryFilter{}); p.Total != 2 {
+		t.Fatalf("workspace A was trimmed by B's sends: %d", p.Total)
+	}
+	// Lowering the limit trims every workspace.
+	s.HistoryRetention = 1
+	if _, err := h.set.Set(s); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := h.hist.List(sqlite.HistoryFilter{}); p.Total != 1 {
+		t.Fatalf("workspace A after lowering = %d", p.Total)
 	}
 }

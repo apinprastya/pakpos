@@ -6,7 +6,9 @@
 //     environment, local); a later scope overrides an earlier one.
 //   - Only enabled rows with a non-empty key take part. Secret rows resolve
 //     like any other row: the caller fills their Value from the secret store
-//     before resolving, and leaves out a secret that has no stored value.
+//     before resolving. A secret with no value it can use goes in the
+//     scope's Unset list instead: it still shadows the same name in lower
+//     scopes, but references to it stay unresolved.
 //   - An unresolved reference stays in the text as written and its name is
 //     reported. Names are matched exactly (case-sensitive); whitespace inside
 //     the braces is ignored ({{ name }}).
@@ -60,6 +62,10 @@ type Scope struct {
 	ID        string           `json:"id"`
 	Name      string           `json:"name"`
 	Variables []model.Variable `json:"variables"`
+	// Unset names secret variables of this scope that have no usable value
+	// (not stored on this machine, or the store is locked). They win over
+	// lower scopes like any variable, but resolve to nothing.
+	Unset []string `json:"unset"`
 }
 
 // Match is the winning definition of a name.
@@ -71,6 +77,8 @@ type Match struct {
 	// ScopeID and ScopeName identify the scope the value came from.
 	ScopeID   string `json:"scopeId"`
 	ScopeName string `json:"scopeName"`
+	// Unset is true for a secret without a usable value (see Scope.Unset).
+	Unset bool `json:"unset"`
 }
 
 // Dynamic variable names (written as {{$guid}} etc.).
@@ -128,6 +136,11 @@ func New(scopes []Scope, opts ...Option) *Resolver {
 			r.vars[v.Key] = Match{
 				Name: v.Key, Value: v.Value, Secret: v.Secret,
 				Scope: s.Kind, ScopeID: s.ID, ScopeName: s.Name,
+			}
+		}
+		for _, name := range s.Unset {
+			if name != "" {
+				r.vars[name] = Match{Name: name, Secret: true, Scope: s.Kind, ScopeID: s.ID, ScopeName: s.Name, Unset: true}
 			}
 		}
 	}
@@ -210,7 +223,7 @@ func (r *Resolver) value(name string, stack []string, unresolved map[string]stru
 		return v, err == nil, err
 	}
 	m, ok := r.vars[name]
-	if !ok {
+	if !ok || m.Unset {
 		return "", false, nil
 	}
 	for i, n := range stack {

@@ -3,7 +3,16 @@ import { api } from "@/lib/api";
 import { emptyRequest, type SendResult } from "@/lib/model";
 import { useTabsStore } from "@/stores/tabs";
 import { activeTab, resetTabs } from "@/test/store";
-import { cancelTab, pickFile, saveResponseBody, saveTab, saveTabAs, sendTab } from "./actions";
+import {
+  cancelTab,
+  pickFile,
+  prepareForCollection,
+  saveResponseBody,
+  saveTab,
+  saveTabAs,
+  sendTab,
+} from "./actions";
+import { makeResult } from "@/test/fixtures";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -15,7 +24,7 @@ describe("request actions", () => {
   });
 
   it("sends a compacted request and stores the result", async () => {
-    vi.mocked(api.send).mockResolvedValue({ response: null, error: null, historyId: 7 });
+    vi.mocked(api.send).mockResolvedValue(makeResult({ response: null, error: null, historyId: 7 }));
     await sendTab("t1");
     const [sendId, req] = vi.mocked(api.send).mock.calls[0];
     expect(typeof sendId).toBe("string");
@@ -47,7 +56,7 @@ describe("request actions", () => {
     vi.mocked(api.send).mockReturnValue(new Promise((r) => (resolve = r)));
     const p = sendTab("t1");
     useTabsStore.getState().close("t1");
-    resolve({ response: null, error: null, historyId: 1 });
+    resolve(makeResult({ response: null, error: null, historyId: 1 }));
     await p;
     expect(useTabsStore.getState().tabs[0].result).toBeNull();
   });
@@ -97,6 +106,39 @@ describe("request actions", () => {
     expect(activeTab().parentId).toBe("c1");
     vi.mocked(api.saveAs).mockRejectedValue(new Error("x"));
     expect(await saveTabAs("t1", "c1", "Login")).toBe(false);
+  });
+
+  it("sends the tab's parent so drafts inherit", async () => {
+    resetTabs({ url: "{{baseUrl}}/x" }, { parentId: "f1" });
+    vi.mocked(api.send).mockResolvedValue(makeResult({ historyId: 2, unresolved: ["baseUrl"] }));
+    await sendTab("t1");
+    expect(vi.mocked(api.send).mock.calls[0][2]).toBe("f1");
+    expect(activeTab().result?.unresolved).toEqual(["baseUrl"]);
+  });
+
+  it("switches untouched auth to inherit when saving into a collection", async () => {
+    expect(await saveTabAs("t1", "c1", "Login")).toBe(true);
+    expect(vi.mocked(api.saveAs).mock.calls[0][2].auth.type).toBe("inherit");
+    expect(activeTab().request.auth.type).toBe("inherit");
+  });
+
+  it.each([
+    ["bearer", { type: "bearer" as const, token: "abc" }],
+    ["none with a leftover token", { type: "none" as const, token: "abc" }],
+    ["none with the key in the query", { type: "none" as const, apiIn: "query" as const }],
+    ["inherit", { type: "inherit" as const }],
+  ])("keeps auth the user set (%s)", async (_name, auth) => {
+    resetTabs({ url: "https://x.dev", auth: { ...emptyRequest().auth, ...auth } });
+    expect(await saveTabAs("t1", "c1", "Login")).toBe(true);
+    expect(vi.mocked(api.saveAs).mock.calls[0][2].auth).toEqual({ ...emptyRequest().auth, ...auth });
+  });
+
+  it("prepares only untouched auth for a collection", () => {
+    const req = emptyRequest();
+    expect(prepareForCollection(req).auth.type).toBe("inherit");
+    expect(req.auth.type).toBe("none");
+    const set = { ...req, auth: { ...req.auth, type: "basic" as const, username: "u" } };
+    expect(prepareForCollection(set)).toBe(set);
   });
 
   it("picks files and saves response bodies", async () => {

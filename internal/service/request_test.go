@@ -86,7 +86,7 @@ func TestSendRecordsHistory(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	res, err := h.req.Send(context.Background(), "s1", model.Request{ID: "R1", Name: "Ping", Method: "post", URL: srv.URL + "/ping"})
+	res, err := h.req.Send(context.Background(), "s1", model.Request{ID: "R1", Name: "Ping", Method: "post", URL: srv.URL + "/ping"}, "")
 	if err != nil || res.Error != nil || res.Response == nil || res.Response.StatusCode != 200 || res.HistoryID == 0 {
 		t.Fatalf("send = %+v %v", res, err)
 	}
@@ -106,7 +106,7 @@ func TestSendFailureIsResultNotError(t *testing.T) {
 	addr := ln.Addr().String()
 	_ = ln.Close()
 
-	res, err := h.req.Send(context.Background(), "s1", model.Request{URL: "http://" + addr})
+	res, err := h.req.Send(context.Background(), "s1", model.Request{URL: "http://" + addr}, "")
 	if err != nil || res.Response != nil || res.Error == nil || res.Error.Kind != httpexec.KindConnectionRefused {
 		t.Fatalf("res = %+v err=%v", res, err)
 	}
@@ -118,7 +118,7 @@ func TestSendFailureIsResultNotError(t *testing.T) {
 
 func TestSendValidationAndCancel(t *testing.T) {
 	h := newHarness(t)
-	if _, err := h.req.Send(context.Background(), " ", model.Request{}); err == nil {
+	if _, err := h.req.Send(context.Background(), " ", model.Request{}, ""); err == nil {
 		t.Fatal("empty send id should fail")
 	}
 
@@ -136,11 +136,11 @@ func TestSendValidationAndCancel(t *testing.T) {
 
 	done := make(chan SendResult)
 	go func() {
-		res, _ := h.req.Send(context.Background(), "slow", model.Request{URL: srv.URL})
+		res, _ := h.req.Send(context.Background(), "slow", model.Request{URL: srv.URL}, "")
 		done <- res
 	}()
 	<-started
-	if _, err := h.req.Send(context.Background(), "slow", model.Request{URL: srv.URL}); err == nil {
+	if _, err := h.req.Send(context.Background(), "slow", model.Request{URL: srv.URL}, ""); err == nil {
 		t.Fatal("duplicate send id should fail")
 	}
 	if !h.req.Cancel("slow") {
@@ -168,7 +168,7 @@ func TestSendRetentionAndRecordFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 4; i++ {
-		if _, err := h.req.Send(context.Background(), fmt.Sprint(i), model.Request{URL: srv.URL}); err != nil {
+		if _, err := h.req.Send(context.Background(), fmt.Sprint(i), model.Request{URL: srv.URL}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -177,7 +177,7 @@ func TestSendRetentionAndRecordFailure(t *testing.T) {
 	}
 
 	_ = h.core.db.Close()
-	res, err := h.req.Send(context.Background(), "x", model.Request{URL: srv.URL})
+	res, err := h.req.Send(context.Background(), "x", model.Request{URL: srv.URL}, "")
 	if err != nil || res.Response == nil || res.HistoryID != 0 {
 		t.Fatalf("send with broken history = %+v %v", res, err)
 	}
@@ -190,7 +190,7 @@ func TestSendTruncatedBodyMovesIntoHistory(t *testing.T) {
 		_, _ = w.Write([]byte(big))
 	}))
 	defer srv.Close()
-	res, err := h.req.Send(context.Background(), "big", model.Request{URL: srv.URL})
+	res, err := h.req.Send(context.Background(), "big", model.Request{URL: srv.URL}, "")
 	if err != nil || !res.Response.Truncated {
 		t.Fatalf("res = %+v %v", res.Error, err)
 	}
@@ -222,7 +222,7 @@ func TestCookiesPersistUntilWorkspaceSwitch(t *testing.T) {
 	}))
 	defer srv.Close()
 	send := func(id, path string) int {
-		res, err := h.req.Send(context.Background(), id, model.Request{URL: srv.URL + path})
+		res, err := h.req.Send(context.Background(), id, model.Request{URL: srv.URL + path}, "")
 		if err != nil || res.Response == nil {
 			t.Fatalf("send %s: %+v %v", id, res, err)
 		}

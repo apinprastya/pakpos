@@ -1,9 +1,9 @@
-import { CircleAlert, Loader2 } from "lucide-react";
+import { CircleAlert, Loader2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cancelTab } from "@/features/request/actions";
 import { modKeyLabel } from "@/lib/platform";
-import type { SendError } from "@/lib/model";
+import type { SendError, SendResult } from "@/lib/model";
 import { useSettingsStore } from "@/stores/settings";
 import { useActiveTab } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -72,8 +72,34 @@ export function ResponsePane() {
           Response
         </header>
       ) : null}
+      {!sending && result && <VariablesNotice result={result} />}
       <div className="min-h-0 flex-1">{content}</div>
     </section>
+  );
+}
+
+/** A quiet note when the request was sent with variables left as written. */
+export function VariablesNotice({ result }: { result: SendResult }) {
+  const { unresolved, secretsLocked } = result;
+  if (unresolved.length === 0 && !secretsLocked) return null;
+  return (
+    <div
+      role="note"
+      aria-label="Variables"
+      className="flex shrink-0 items-start gap-2 border-b px-3 py-1.5 text-xs text-muted-foreground"
+    >
+      <TriangleAlert aria-hidden className="mt-px size-3.5 shrink-0 text-status-client" />
+      <p className="min-w-0 break-words">
+        {secretsLocked && <span>Secrets are locked, so secret variables were sent as written. </span>}
+        {unresolved.length > 0 && (
+          <span>
+            Unresolved variables:{" "}
+            <span className="font-mono text-foreground">{unresolved.map((n) => `{{${n}}}`).join(", ")}</span>
+            {secretsLocked ? "" : ". They were sent as written."}
+          </span>
+        )}
+      </p>
+    </div>
   );
 }
 

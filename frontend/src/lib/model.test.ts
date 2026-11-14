@@ -1,4 +1,18 @@
-import { compactRequest, emptyRequest, normalizeRequest, normalizeSendResult, requestsEqual } from "./model";
+import {
+  compactRequest,
+  emptyAuth,
+  emptyRequest,
+  isUntouchedAuth,
+  normalizeEnvironment,
+  normalizeGlobals,
+  normalizePreview,
+  normalizeRequest,
+  normalizeSecretsStatus,
+  normalizeSendResult,
+  normalizeVariables,
+  requestsEqual,
+  type Auth,
+} from "./model";
 
 describe("model", () => {
   it("normalizes nulls and zero enums from Go", () => {
@@ -28,7 +42,18 @@ describe("model", () => {
   });
 
   it("normalizes send results", () => {
-    expect(normalizeSendResult(null)).toEqual({ response: null, error: null, historyId: 0 });
+    expect(normalizeSendResult(null)).toEqual({
+      response: null,
+      error: null,
+      historyId: 0,
+      unresolved: [],
+      secretsLocked: false,
+      environment: null,
+    });
+    expect(
+      normalizeSendResult({ unresolved: ["a"], secretsLocked: true, environment: { id: "e", name: "Dev" } }),
+    ).toMatchObject({ unresolved: ["a"], secretsLocked: true, environment: { id: "e", name: "Dev" } });
+    expect(normalizeSendResult({ environment: {} }).environment).toEqual({ id: "", name: "" });
     const res = normalizeSendResult({
       response: { statusCode: 200, headers: null, cookies: null, timings: { total: 5 } },
       error: null,
@@ -124,7 +149,17 @@ describe("sidebar model helpers", () => {
     const empty = normalizeHistoryEntry(undefined);
     expect(empty.method).toBe("GET");
     expect(empty.response).toBeNull();
-    expect(historyToResult(empty)).toEqual({ response: null, error: null, historyId: 0 });
+    expect(historyToResult(empty)).toEqual({
+      response: null,
+      error: null,
+      historyId: 0,
+      unresolved: [],
+      secretsLocked: false,
+      environment: null,
+    });
+    expect(empty.environmentName).toBe("");
+    const withEnv = normalizeHistoryEntry({ id: 9, environmentName: "Prod" });
+    expect(historyToResult(withEnv).environment).toEqual({ id: "", name: "Prod" });
 
     const ok = normalizeHistoryEntry({
       id: 7,
@@ -139,5 +174,109 @@ describe("sidebar model helpers", () => {
 
     const failed = normalizeHistoryEntry({ id: 8, errorKind: "dns", errorMessage: "no such host" });
     expect(historyToResult(failed).error).toEqual({ kind: "dns", message: "no such host" });
+  });
+});
+
+describe("auth defaults", () => {
+  it.each<[string, Partial<Auth>, boolean]>([
+    ["a new request's auth", {}, true],
+    ["an empty API key location", { apiIn: "" as Auth["apiIn"] }, true],
+    ["inherit", { type: "inherit" }, false],
+    ["bearer", { type: "bearer" }, false],
+    ["a username", { username: "u" }, false],
+    ["a password", { password: "p" }, false],
+    ["a token", { token: "t" }, false],
+    ["a prefix", { prefix: "Token" }, false],
+    ["an API key name", { apiKey: "k" }, false],
+    ["an API key value", { apiValue: "v" }, false],
+    ["the key sent in the query", { apiIn: "query" }, false],
+  ])("isUntouchedAuth with %s is %s", (_name, patch, want) => {
+    expect(isUntouchedAuth({ ...emptyAuth(), ...patch })).toBe(want);
+  });
+});
+
+describe("environment model", () => {
+  it("normalizes environments, globals and variables from Go", () => {
+    expect(normalizeEnvironment(null)).toEqual({ id: "", name: "", seq: 0, variables: [] });
+    expect(
+      normalizeEnvironment({
+        id: "e",
+        name: "Dev",
+        seq: 2,
+        variables: [{ key: "a", value: null, secret: true }],
+      }),
+    ).toEqual({
+      id: "e",
+      name: "Dev",
+      seq: 2,
+      variables: [{ key: "a", value: "", enabled: false, secret: true }],
+    });
+    expect(normalizeGlobals({ id: "g", variables: null })).toEqual({ id: "g", variables: [] });
+    expect(normalizeGlobals(undefined)).toEqual({ id: "", variables: [] });
+    expect(normalizeVariables(null)).toEqual([]);
+    expect(normalizeVariables([{}])).toEqual([{ key: "", value: "", enabled: false, secret: false }]);
+  });
+
+  it("normalizes the secret store status", () => {
+    expect(normalizeSecretsStatus(null)).toEqual({ backend: "keychain", hasPassword: false, locked: false });
+    expect(normalizeSecretsStatus({ backend: "file", hasPassword: true, locked: true })).toEqual({
+      backend: "file",
+      hasPassword: true,
+      locked: true,
+    });
+  });
+
+  it("normalizes a resolve preview and never keeps a secret value", () => {
+    const empty = normalizePreview(null);
+    expect(empty).toEqual({
+      headers: [],
+      auth: emptyAuth(),
+      authSource: null,
+      variables: [],
+      unresolved: [],
+      secretsLocked: false,
+      environment: null,
+      error: "",
+    });
+    const src = { kind: "folder", id: "f", name: "Admin" };
+    const p = normalizePreview({
+      headers: [{ key: "X", value: "1", source: src }],
+      auth: { type: "bearer", token: "{{token}}" },
+      authSource: src,
+      variables: [
+        {
+          key: "token",
+          value: "leak",
+          secret: true,
+          scope: "collection",
+          scopeId: "c",
+          scopeName: "API",
+          set: true,
+        },
+        {
+          key: "host",
+          value: "h",
+          secret: false,
+          scope: "global",
+          scopeId: "g",
+          scopeName: "Globals",
+          set: true,
+        },
+      ],
+      unresolved: ["x"],
+      secretsLocked: true,
+      environment: { id: "e", name: "Dev" },
+      error: "loop",
+    });
+    expect(p.headers[0].source).toEqual(src);
+    expect(p.auth).toMatchObject({ type: "bearer", token: "{{token}}", apiIn: "header" });
+    expect(p.authSource).toEqual(src);
+    expect(p.variables.map((v) => v.value)).toEqual(["", "h"]);
+    expect(p).toMatchObject({
+      unresolved: ["x"],
+      secretsLocked: true,
+      environment: { name: "Dev" },
+      error: "loop",
+    });
   });
 });

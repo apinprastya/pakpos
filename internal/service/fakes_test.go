@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"pakpos/internal/secrets"
 )
 
 type fakeDialogs struct {
@@ -54,20 +56,35 @@ type harness struct {
 	req     *RequestService
 	hist    *HistoryService
 	set     *SettingsService
+	env     *EnvService
+	secrets *secrets.Fake
 	dataDir string
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	h := &harness{dialogs: &fakeDialogs{}, events: &fakeEvents{}, dataDir: t.TempDir(), secrets: secrets.NewFake()}
+	return h.start(t, h.secrets)
+}
+
+// newHarnessWith uses store as the secret store (e.g. a real FileStore in a temp dir).
+func newHarnessWith(t *testing.T, store secrets.Store) *harness {
+	t.Helper()
 	h := &harness{dialogs: &fakeDialogs{}, events: &fakeEvents{}, dataDir: t.TempDir()}
+	return h.start(t, store)
+}
+
+func (h *harness) start(t *testing.T, store secrets.Store) *harness {
+	t.Helper()
 	c, err := NewCore(Config{DataDir: h.dataDir, Dialogs: h.dialogs, Events: h.events, WatchDebounce: 20 * time.Millisecond,
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		Secrets: store, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Close() })
 	h.core = c
 	h.ws, h.req, h.hist, h.set = NewWorkspaceService(c), NewRequestService(c), NewHistoryService(c), NewSettingsService(c)
+	h.env = NewEnvService(c)
 	return h
 }
 

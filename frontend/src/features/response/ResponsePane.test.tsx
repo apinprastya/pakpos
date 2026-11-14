@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import type { Response, SendResult } from "@/lib/model";
 import { editorText, editorView } from "@/test/editor";
-import { makeResponse } from "@/test/fixtures";
+import { makeResponse, makeResult } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
 import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -22,11 +22,8 @@ function show(result: SendResult | null, sendId: string | null = null) {
   );
 }
 
-const ok = (patch: Partial<Response> = {}, historyId = 5): SendResult => ({
-  response: makeResponse(patch),
-  error: null,
-  historyId,
-});
+const ok = (patch: Partial<Response> = {}, historyId = 5): SendResult =>
+  makeResult({ response: makeResponse(patch), historyId });
 
 describe("ResponsePane", () => {
   it("shows the empty state, noting a workspace is only needed to save", () => {
@@ -43,13 +40,13 @@ describe("ResponsePane", () => {
 
   it.each(["tls", "timeout", "too_many_redirects"])("offers Open settings for %s errors", async (kind) => {
     const user = userEvent.setup();
-    show({ response: null, error: { kind: kind as never, message: "x" }, historyId: 1 });
+    show(makeResult({ response: null, error: { kind: kind as never, message: "x" }, historyId: 1 }));
     await user.click(screen.getByRole("button", { name: "Open settings" }));
     expect(useSettingsStore.getState()).toMatchObject({ dialogOpen: true, section: "requests" });
   });
 
   it("doesn't offer settings for errors settings can't fix", () => {
-    show({ response: null, error: { kind: "dns", message: "no such host" }, historyId: 1 });
+    show(makeResult({ response: null, error: { kind: "dns", message: "no such host" }, historyId: 1 }));
     expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument();
   });
 
@@ -63,18 +60,16 @@ describe("ResponsePane", () => {
   });
 
   it("explains errors with a hint", () => {
-    show({
-      response: null,
-      error: { kind: "dns", message: "lookup nope.invalid: no such host" },
-      historyId: 0,
-    });
+    show(makeResult({ error: { kind: "dns", message: "lookup nope.invalid: no such host" } }));
     expect(screen.getByRole("heading", { name: "Couldn't find the server" })).toBeInTheDocument();
     expect(screen.getByText("lookup nope.invalid: no such host")).toBeInTheDocument();
     expect(screen.getByText(/Check the host name/)).toBeInTheDocument();
   });
 
   it("shows cancellation quietly", () => {
-    show({ response: null, error: { kind: "canceled", message: "context canceled" }, historyId: 0 });
+    show(
+      makeResult({ response: null, error: { kind: "canceled", message: "context canceled" }, historyId: 0 }),
+    );
     expect(screen.getByRole("heading", { name: "Request cancelled" })).toBeInTheDocument();
     expect(screen.queryByText("context canceled")).not.toBeInTheDocument();
   });
@@ -222,5 +217,40 @@ describe("ResponsePane", () => {
     expect(screen.getByText("The response has no headers.")).toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: /Cookies/ }));
     await waitFor(() => expect(screen.getByText("The response set no cookies.")).toBeInTheDocument());
+  });
+
+  it("notes unresolved variables without blocking the response", () => {
+    show({ ...ok(), unresolved: ["baseUrl", "token"] });
+    const note = screen.getByRole("note", { name: "Variables" });
+    expect(note).toHaveTextContent(
+      "Unresolved variables: {{baseUrl}}, {{token}}. They were sent as written.",
+    );
+    expect(screen.getByRole("tab", { name: /Body/ })).toBeInTheDocument();
+  });
+
+  it("says when secrets are locked", () => {
+    show(makeResult({ error: { kind: "dns", message: "x" }, unresolved: ["token"], secretsLocked: true }));
+    const note = screen.getByRole("note", { name: "Variables" });
+    expect(note).toHaveTextContent("Secrets are locked, so secret variables were sent as written.");
+    expect(note).toHaveTextContent("Unresolved variables: {{token}}");
+    expect(note).not.toHaveTextContent("They were sent as written.");
+  });
+
+  it("shows no note when every variable resolved, or while sending", () => {
+    const { unmount } = show(ok());
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    unmount();
+    show({ ...ok(), unresolved: ["a"] }, "s1");
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+  });
+
+  it("explains a variable loop", () => {
+    show(
+      makeResult({
+        error: { kind: "variables", message: "Variables refer to each other in a loop (a -> b -> a)." },
+      }),
+    );
+    expect(screen.getByRole("heading", { name: "Variables couldn't be resolved" })).toBeInTheDocument();
+    expect(screen.getByText(/a -> b -> a/)).toBeInTheDocument();
   });
 });

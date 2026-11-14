@@ -25,6 +25,9 @@ const (
 	KindCanceled          ErrorKind = "canceled"
 	KindTooManyRedirects  ErrorKind = "too_many_redirects"
 	KindNetwork           ErrorKind = "network"
+	// KindVariables means {{variables}} couldn't be resolved (a cycle or
+	// nesting that is too deep). Set by the send pipeline, not by Classify.
+	KindVariables ErrorKind = "variables"
 )
 
 // Error is a classified send failure. Message is written for end users.

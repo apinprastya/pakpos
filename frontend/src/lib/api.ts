@@ -6,6 +6,7 @@
 import { Events } from "@wailsio/runtime";
 import {
   AppService,
+  EnvService,
   HistoryService,
   RequestService,
   SettingsService,
@@ -14,6 +15,7 @@ import {
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
 import { WorkspaceChanged } from "../../bindings/events";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
+import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -23,7 +25,20 @@ import {
   normalizeRequest,
   normalizeSendResult,
   normalizeTree,
+  normalizeEnvironment,
+  normalizeGlobals,
+  normalizePreview,
+  normalizeSecretsStatus,
+  normalizeVariables,
   type CollectionNode,
+  type EnvRef,
+  type Environment,
+  type Globals,
+  type ResolvePreview,
+  type ScopeRef,
+  type SecretStatus,
+  type SecretsStatus,
+  type Variable,
   type HistoryEntry,
   type HistoryFilter,
   type HistoryPage,
@@ -36,6 +51,8 @@ import {
 } from "./model";
 
 const toBinding = (req: Request) => req as unknown as bm.Request;
+const toScope = (scope: ScopeRef) => scope as unknown as bp.ScopeRef;
+const toVars = (vars: Variable[]) => vars as unknown as bm.Variable[];
 
 export interface WorkspaceChange {
   workspaceId: string;
@@ -59,8 +76,9 @@ export const api = {
     return normalizeSettings(saved as Partial<AppSettings>, DEFAULT_SETTINGS);
   },
 
-  async send(sendId: string, req: Request): Promise<SendResult> {
-    return normalizeSendResult(await RequestService.Send(sendId, toBinding(req)));
+  /** Sends req. `parentId` is the collection or folder a draft belongs to, so it inherits ("" for none). */
+  async send(sendId: string, req: Request, parentId: string): Promise<SendResult> {
+    return normalizeSendResult(await RequestService.Send(sendId, toBinding(req), parentId));
   },
   async cancel(sendId: string): Promise<boolean> {
     return RequestService.Cancel(sendId);
@@ -160,9 +178,13 @@ export const api = {
     });
   },
 
+  /** Lists the open workspace's history (or entries sent without one). */
   async historyList(filter: HistoryFilter): Promise<HistoryPage> {
-    const page = await HistoryService.List(filter);
-    return { items: page.items ?? [], total: page.total };
+    const page = await HistoryService.List({ ...filter, workspaceId: "", noWorkspace: false });
+    return {
+      items: (page.items ?? []).map((i) => ({ ...i, environmentName: i.environmentName ?? "" })),
+      total: page.total,
+    };
   },
   async historyGet(id: number): Promise<HistoryEntry> {
     return normalizeHistoryEntry(await HistoryService.Get(id));
@@ -170,8 +192,85 @@ export const api = {
   async historyDelete(id: number): Promise<void> {
     return HistoryService.Delete(id);
   },
+  /** Clears the open workspace's history (or entries sent without one). */
   async historyClear(): Promise<void> {
     return HistoryService.Clear();
+  },
+
+  async listEnvironments(): Promise<Environment[]> {
+    return ((await EnvService.List()) ?? []).map(normalizeEnvironment);
+  },
+  async getEnvironment(id: string): Promise<Environment> {
+    return normalizeEnvironment(await EnvService.Get(id));
+  },
+  async createEnvironment(name: string): Promise<Environment> {
+    return normalizeEnvironment(await EnvService.Create(name));
+  },
+  async renameEnvironment(id: string, name: string): Promise<Environment> {
+    return normalizeEnvironment(await EnvService.Rename(id, name));
+  },
+  /** Copies an environment, including its secret values on this machine. */
+  async duplicateEnvironment(id: string): Promise<Environment> {
+    return normalizeEnvironment(await EnvService.Duplicate(id));
+  },
+  /** Deletes an environment and its secret values. */
+  async deleteEnvironment(id: string): Promise<void> {
+    return EnvService.Delete(id);
+  },
+  async reorderEnvironments(ids: string[]): Promise<void> {
+    return EnvService.Reorder(ids);
+  },
+  async getGlobals(): Promise<Globals> {
+    return normalizeGlobals(await EnvService.Globals());
+  },
+  async saveGlobals(vars: Variable[]): Promise<Globals> {
+    return normalizeGlobals(await EnvService.SaveGlobals(toVars(vars)));
+  },
+  /** Saves the variables of the globals, a collection or an environment; returns them as saved. */
+  async saveVariables(scope: ScopeRef, vars: Variable[]): Promise<Variable[]> {
+    return normalizeVariables(await EnvService.SaveVariables(toScope(scope), toVars(vars)));
+  },
+  async setSecret(scope: ScopeRef, key: string, value: string): Promise<void> {
+    return EnvService.SetSecret(toScope(scope), key, value);
+  },
+  async clearSecret(scope: ScopeRef, key: string): Promise<void> {
+    return EnvService.ClearSecret(toScope(scope), key);
+  },
+  /** Which secret variables of a scope have a value on this machine (never the values). */
+  async secretStatus(scope: ScopeRef): Promise<SecretStatus> {
+    const s = await EnvService.SecretStatus(toScope(scope));
+    return { set: s.set ?? [], locked: s.locked };
+  },
+  /** Selects an environment for the open workspace ("" for none). */
+  async selectEnvironment(id: string): Promise<void> {
+    return EnvService.Select(id);
+  },
+  async selectedEnvironment(): Promise<EnvRef | null> {
+    const e = await EnvService.Selected();
+    return e ? { id: e.id, name: e.name } : null;
+  },
+  async resolvePreview(req: Request, parentId: string): Promise<ResolvePreview> {
+    return normalizePreview(await EnvService.ResolvePreview(toBinding(req), parentId));
+  },
+  async secretsStatus(): Promise<SecretsStatus> {
+    return normalizeSecretsStatus(await EnvService.SecretsStatus());
+  },
+  async setMasterPassword(password: string): Promise<void> {
+    return EnvService.SetMasterPassword(password);
+  },
+  async changeMasterPassword(current: string, next: string): Promise<void> {
+    return EnvService.ChangeMasterPassword(current, next);
+  },
+  /** Rejects with "Wrong password, or the secrets file is damaged." on a wrong password. */
+  async unlockSecrets(password: string): Promise<void> {
+    return EnvService.Unlock(password);
+  },
+  async lockSecrets(): Promise<void> {
+    return EnvService.Lock();
+  },
+  /** Deletes every stored secret value (forgotten password or damaged file). */
+  async resetSecretStore(): Promise<void> {
+    return EnvService.ResetSecretStore();
   },
 };
 

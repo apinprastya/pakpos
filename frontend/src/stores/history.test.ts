@@ -23,6 +23,7 @@ const item = (id: number): HistorySummary => ({
   size: 1,
   errorKind: "",
   errorMessage: "",
+  environmentName: "",
 });
 
 beforeEach(() => {
@@ -36,7 +37,6 @@ describe("history store", () => {
     await s().load("users");
     expect(api.historyList).toHaveBeenCalledWith({
       text: "users",
-      workspaceId: "",
       offset: 0,
       limit: HISTORY_PAGE_SIZE,
     });
@@ -101,6 +101,9 @@ describe("history store", () => {
       response: null,
       error: { kind: "timeout", message: "too slow" },
       historyId: 4,
+      unresolved: [],
+      secretsLocked: false,
+      environment: null,
     });
     vi.mocked(api.historyGet).mockRejectedValue(new Error("gone"));
     await s().open(5);

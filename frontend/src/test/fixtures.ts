@@ -1,4 +1,45 @@
-import type { CollectionNode, FolderNode, RequestSummary, Response, TreeChild } from "@/lib/model";
+import type {
+  CollectionNode,
+  FolderNode,
+  HistorySummary,
+  RequestSummary,
+  Response,
+  SendResult,
+  TreeChild,
+} from "@/lib/model";
+
+/** A send result with no response, error or variable notes; patch what the test needs. */
+export function makeResult(patch: Partial<SendResult> = {}): SendResult {
+  return {
+    response: null,
+    error: null,
+    historyId: 0,
+    unresolved: [],
+    secretsLocked: false,
+    environment: null,
+    ...patch,
+  };
+}
+
+/** A history row; patch what the test needs. */
+export function makeHistorySummary(id: number, patch: Partial<HistorySummary> = {}): HistorySummary {
+  return {
+    id,
+    createdAt: "2026-11-14T10:00:00Z",
+    workspaceId: "",
+    requestId: "",
+    requestName: "",
+    method: "GET",
+    url: `https://x/${id}`,
+    status: 200,
+    durationMs: 1,
+    size: 1,
+    errorKind: "",
+    errorMessage: "",
+    environmentName: "",
+    ...patch,
+  };
+}
 
 export function makeResponse(patch: Partial<Response> = {}): Response {
   return {
