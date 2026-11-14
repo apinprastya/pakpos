@@ -193,8 +193,8 @@ describe("RequestPane", () => {
       await user.click(screen.getByRole("option", { name: label }));
     };
 
-    await pick("Inherit from collection");
-    expect(screen.getByText(/Uses the auth set on the collection/)).toBeInTheDocument();
+    await pick("Inherit from parent");
+    expect(screen.getByText(/isn't in a collection, so there's nothing to inherit/)).toBeInTheDocument();
 
     await pick("Basic auth");
     await user.type(screen.getByLabelText("Username"), "ada");

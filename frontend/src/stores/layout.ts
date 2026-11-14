@@ -4,7 +4,7 @@ import { persist } from "zustand/middleware";
 // splitOrientation is a first-paint cache of the Go "layout" setting; change it
 // through useSettingsStore.setLayout so it's saved.
 
-export type SidebarView = "collections" | "history";
+export type SidebarView = "collections" | "environments" | "history";
 /** "vertical" stacks response under request; "horizontal" puts them side by side. */
 export type SplitOrientation = "vertical" | "horizontal";
 

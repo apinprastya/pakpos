@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
-import { Info, Network, Palette, History, TriangleAlert, type LucideIcon } from "lucide-react";
+import { Info, KeyRound, Network, Palette, History, TriangleAlert, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,12 +19,14 @@ import { errorMessage } from "@/lib/errors";
 import { DEFAULT_SETTINGS, type AppSettings, type BuildInfo } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, type SettingsSection } from "@/stores/settings";
+import { SecretsSection } from "@/features/secrets/SecretsControls";
 import { fromDraft, lowersRetention, toDraft, type DraftErrors, type SettingsDraft } from "./settingsForm";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: LucideIcon }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "requests", label: "Requests", icon: Network },
   { id: "history", label: "History", icon: History },
+  { id: "secrets", label: "Secrets", icon: KeyRound },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -162,6 +164,7 @@ function SettingsDialogBody() {
             {section === "history" && (
               <HistorySection draft={draft} update={update} errors={errors} saved={saved} />
             )}
+            {section === "secrets" && <SecretsSection />}
             {section === "about" && <AboutSection build={build} />}
           </div>
         </div>

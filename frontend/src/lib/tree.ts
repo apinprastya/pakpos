@@ -176,3 +176,11 @@ export function destinations(collections: CollectionNode[], exclude?: string): D
   for (const c of collections) visit(c, 0, "");
   return out;
 }
+
+/** The collection a collection or folder belongs to ("" when it isn't in the tree). */
+export function collectionIdOf(collections: CollectionNode[], containerId: string): string {
+  const node = findContainer(collections, containerId);
+  if (!node) return "";
+  if (node.kind === "collection") return node.id;
+  return ancestorsOf(collections, "folder", containerId)[0]?.id ?? "";
+}

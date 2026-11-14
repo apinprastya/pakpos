@@ -16,6 +16,7 @@ import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
 import { WorkspaceChanged } from "../../bindings/events";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
+import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -30,12 +31,17 @@ import {
   normalizePreview,
   normalizeSecretsStatus,
   normalizeVariables,
+  normalizeCollection,
+  normalizeFolder,
+  type CollectionSettings,
+  type FolderSettings,
   type CollectionNode,
   type EnvRef,
   type Environment,
   type Globals,
   type ResolvePreview,
   type ScopeRef,
+  type SecretRename,
   type SecretStatus,
   type SecretsStatus,
   type Variable,
@@ -52,7 +58,15 @@ import {
 
 const toBinding = (req: Request) => req as unknown as bm.Request;
 const toScope = (scope: ScopeRef) => scope as unknown as bp.ScopeRef;
-const toVars = (vars: Variable[]) => vars as unknown as bm.Variable[];
+/** Drops the editor-only `origin` so only the file's fields reach Go. */
+const toVars = (vars: Variable[]) =>
+  vars.map(({ key, value, enabled, secret }) => ({
+    key,
+    value,
+    enabled,
+    secret,
+  })) as unknown as bm.Variable[];
+const toRenames = (renames: SecretRename[]) => renames as unknown as bp.SecretRename[];
 
 export interface WorkspaceChange {
   workspaceId: string;
@@ -171,6 +185,27 @@ export const api = {
   async reorder(parentId: string, ids: string[]): Promise<void> {
     return WorkspaceService.Reorder(parentId, ids);
   },
+  async getCollection(id: string): Promise<CollectionSettings> {
+    return normalizeCollection(await WorkspaceService.GetCollection(id));
+  },
+  /** Saves a collection's auth, headers and variables (secret values are never written). */
+  /** `renames` lists renamed secret variables, so Go moves their stored values (a locked store refuses). */
+  async saveCollection(
+    id: string,
+    settings: Pick<CollectionSettings, "auth" | "headers" | "variables">,
+    renames: SecretRename[] = [],
+  ): Promise<CollectionSettings> {
+    const body = { auth: settings.auth, headers: settings.headers, variables: toVars(settings.variables) };
+    return normalizeCollection(
+      await WorkspaceService.SaveCollection(id, body as unknown as bf.CollectionSettings, toRenames(renames)),
+    );
+  },
+  async getFolder(id: string): Promise<FolderSettings> {
+    return normalizeFolder(await WorkspaceService.GetFolder(id));
+  },
+  async saveFolder(id: string, settings: Pick<FolderSettings, "auth" | "headers">): Promise<FolderSettings> {
+    return normalizeFolder(await WorkspaceService.SaveFolder(id, settings as unknown as bf.FolderSettings));
+  },
   /** Subscribes to external workspace changes; returns the unsubscribe function. */
   onWorkspaceChanged(cb: (change: WorkspaceChange) => void): () => void {
     return Events.On(WorkspaceChanged, (ev) => {
@@ -223,12 +258,17 @@ export const api = {
   async getGlobals(): Promise<Globals> {
     return normalizeGlobals(await EnvService.Globals());
   },
-  async saveGlobals(vars: Variable[]): Promise<Globals> {
-    return normalizeGlobals(await EnvService.SaveGlobals(toVars(vars)));
+  async saveGlobals(vars: Variable[], renames: SecretRename[] = []): Promise<Globals> {
+    return normalizeGlobals(await EnvService.SaveGlobals(toVars(vars), toRenames(renames)));
   },
-  /** Saves the variables of the globals, a collection or an environment; returns them as saved. */
-  async saveVariables(scope: ScopeRef, vars: Variable[]): Promise<Variable[]> {
-    return normalizeVariables(await EnvService.SaveVariables(toScope(scope), toVars(vars)));
+  /**
+   * Saves the variables of the globals, a collection or an environment; returns them as saved.
+   * `renames` lists renamed secret variables, so Go moves their stored values (a locked store refuses).
+   */
+  async saveVariables(scope: ScopeRef, vars: Variable[], renames: SecretRename[] = []): Promise<Variable[]> {
+    return normalizeVariables(
+      await EnvService.SaveVariables(toScope(scope), toVars(vars), toRenames(renames)),
+    );
   },
   async setSecret(scope: ScopeRef, key: string, value: string): Promise<void> {
     return EnvService.SetSecret(toScope(scope), key, value);
@@ -240,6 +280,14 @@ export const api = {
   async secretStatus(scope: ScopeRef): Promise<SecretStatus> {
     const s = await EnvService.SecretStatus(toScope(scope));
     return { set: s.set ?? [], locked: s.locked };
+  },
+  /** Returns one secret value. Call it only when the user clicks to reveal; never store the result. */
+  async revealSecret(scope: ScopeRef, key: string): Promise<string> {
+    return EnvService.RevealSecret(toScope(scope), key);
+  },
+  /** Turns a saved secret into a plain variable (its value is written to the file in Go). */
+  async makeVariablePlain(scope: ScopeRef, key: string): Promise<Variable[]> {
+    return normalizeVariables(await EnvService.MakeVariablePlain(toScope(scope), key));
   },
   /** Selects an environment for the open workspace ("" for none). */
   async selectEnvironment(id: string): Promise<void> {

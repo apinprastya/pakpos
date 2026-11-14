@@ -135,3 +135,14 @@ describe("destinations", () => {
     expect(destinations(tree(), "tokens").map((d) => d.id)).toEqual(["a", "auth", "b", "c"]);
   });
 });
+
+describe("collectionIdOf", () => {
+  it("finds the collection of a collection or folder", async () => {
+    const { collectionIdOf } = await import("./tree");
+    const { col, folder } = await import("@/test/fixtures");
+    const cols = [col("c1", "Users", [folder("f1", "A", [folder("f2", "B")])])];
+    expect(collectionIdOf(cols, "c1")).toBe("c1");
+    expect(collectionIdOf(cols, "f2")).toBe("c1");
+    expect(collectionIdOf(cols, "nope")).toBe("");
+  });
+});

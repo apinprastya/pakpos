@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 
 	"pakpos/internal/core/model"
@@ -94,27 +95,31 @@ func (s *EnvService) Globals() (fsstore.Globals, error) {
 	return ws.GetGlobals(), nil
 }
 
-// SaveGlobals replaces the global variables.
-func (s *EnvService) SaveGlobals(vs []model.Variable) (fsstore.Globals, error) {
+// SaveGlobals replaces the global variables. renames lists secret
+// variables whose key changed, so their stored values move to the new key.
+func (s *EnvService) SaveGlobals(vs []model.Variable, renames []pipeline.SecretRename) (fsstore.Globals, error) {
 	ws, p, err := s.c.openSession()
 	if err != nil {
 		return fsstore.Globals{}, err
 	}
-	if _, err := p.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeGlobal}, vs); err != nil {
-		return fsstore.Globals{}, err
+	if _, err := p.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeGlobal}, vs, renames...); err != nil {
+		return fsstore.Globals{}, secrets.Explain(err)
 	}
 	return ws.GetGlobals(), nil
 }
 
 // SaveVariables replaces the variables of the globals, a collection or an
-// environment and returns them as saved (secret values empty). Stored values
-// of secrets that were removed, renamed or made non-secret are deleted.
-func (s *EnvService) SaveVariables(scope pipeline.ScopeRef, vs []model.Variable) ([]model.Variable, error) {
+// environment and returns them as saved (secret values empty). Secrets
+// renamed per renames keep their stored value under the new key (a locked
+// store refuses the save); stored values of secrets that were removed or
+// made non-secret are deleted.
+func (s *EnvService) SaveVariables(scope pipeline.ScopeRef, vs []model.Variable, renames []pipeline.SecretRename) ([]model.Variable, error) {
 	_, p, err := s.c.openSession()
 	if err != nil {
 		return nil, err
 	}
-	return p.SaveVariables(scope, vs)
+	saved, err := p.SaveVariables(scope, vs, renames...)
+	return saved, secrets.Explain(err)
 }
 
 // SetSecret stores the value of a secret variable on this machine.
@@ -133,6 +138,33 @@ func (s *EnvService) ClearSecret(scope pipeline.ScopeRef, key string) error {
 		return err
 	}
 	return secrets.Explain(p.ClearSecret(scope, key))
+}
+
+// RevealSecret returns the stored value of one secret variable. The UI calls
+// it only when the user clicks to reveal the value; nothing else returns
+// secret values.
+func (s *EnvService) RevealSecret(scope pipeline.ScopeRef, key string) (string, error) {
+	_, p, err := s.c.openSession()
+	if err != nil {
+		return "", err
+	}
+	v, err := p.RevealSecret(scope, key)
+	if errors.Is(err, secrets.ErrNotFound) {
+		return "", &secrets.UserError{Message: fmt.Sprintf("No value is stored for %s on this machine. Set one first.", key), Err: err}
+	}
+	return v, secrets.Explain(err)
+}
+
+// MakeVariablePlain turns a saved secret variable into a plain one: its
+// stored value is written to the workspace file in plain text and removed
+// from the secret store. It returns the scope's variables as saved.
+func (s *EnvService) MakeVariablePlain(scope pipeline.ScopeRef, key string) ([]model.Variable, error) {
+	_, p, err := s.c.openSession()
+	if err != nil {
+		return nil, err
+	}
+	vs, err := p.MakePlain(scope, key)
+	return vs, secrets.Explain(err)
 }
 
 // SecretStatus reports which secret variables of a scope have a value on
@@ -201,6 +233,9 @@ func (s *EnvService) passwordStore() (secrets.PasswordStore, error) {
 // SetMasterPassword sets the first master password of the encrypted file
 // store (or a new one while it is unlocked). The store is then unlocked.
 func (s *EnvService) SetMasterPassword(password string) error {
+	if err := secrets.CheckNewPassword(password); err != nil {
+		return secrets.Explain(err)
+	}
 	p, err := s.passwordStore()
 	if err != nil {
 		return err

@@ -29,16 +29,18 @@ func TestEnvServiceNeedsWorkspace(t *testing.T) {
 		"Delete":         func() error { return h.env.Delete("x") },
 		"Reorder":        func() error { return h.env.Reorder(nil) },
 		"Globals":        func() error { _, err := h.env.Globals(); return err },
-		"SaveGlobals":    func() error { _, err := h.env.SaveGlobals(nil); return err },
-		"SaveVariables":  func() error { _, err := h.env.SaveVariables(ref, nil); return err },
+		"SaveGlobals":    func() error { _, err := h.env.SaveGlobals(nil, nil); return err },
+		"SaveVariables":  func() error { _, err := h.env.SaveVariables(ref, nil, nil); return err },
 		"SetSecret":      func() error { return h.env.SetSecret(ref, "k", "v") },
 		"ClearSecret":    func() error { return h.env.ClearSecret(ref, "k") },
 		"SecretStatus":   func() error { _, err := h.env.SecretStatus(ref); return err },
+		"RevealSecret":   func() error { _, err := h.env.RevealSecret(ref, "k"); return err },
+		"MakePlain":      func() error { _, err := h.env.MakeVariablePlain(ref, "k"); return err },
 		"Select":         func() error { return h.env.Select("") },
 		"Selected":       func() error { _, err := h.env.Selected(); return err },
 		"ResolvePreview": func() error { _, err := h.env.ResolvePreview(model.Request{}, ""); return err },
 		"DeleteCol":      func() error { return h.ws.DeleteCollection("x") },
-		"SaveCol":        func() error { _, err := h.ws.SaveCollection("x", fsstore.CollectionSettings{}); return err },
+		"SaveCol":        func() error { _, err := h.ws.SaveCollection("x", fsstore.CollectionSettings{}, nil); return err },
 	}
 	for name, call := range calls {
 		if err := call(); !errors.Is(err, ErrNoWorkspace) {
@@ -62,7 +64,7 @@ func TestEnvServiceEnvironments(t *testing.T) {
 		t.Fatalf("get = %+v %v", got, err)
 	}
 	ref := pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}
-	if _, err := h.env.SaveVariables(ref, []model.Variable{{Key: "pw", Enabled: true, Secret: true}}); err != nil {
+	if _, err := h.env.SaveVariables(ref, []model.Variable{{Key: "pw", Enabled: true, Secret: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.env.SetSecret(ref, "pw", "dev-pw"); err != nil {
@@ -114,14 +116,14 @@ func TestEnvServiceEnvironments(t *testing.T) {
 	}
 
 	// Globals.
-	g, err := h.env.SaveGlobals([]model.Variable{{Key: "a", Value: "1", Enabled: true}})
+	g, err := h.env.SaveGlobals([]model.Variable{{Key: "a", Value: "1", Enabled: true}}, nil)
 	if err != nil || len(g.Variables) != 1 {
 		t.Fatalf("globals = %+v %v", g, err)
 	}
 	if g2, _ := h.env.Globals(); g2.ID != g.ID {
 		t.Fatal("globals id changed")
 	}
-	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "a", Value: "{{x", Enabled: true}}); err != nil {
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "a", Value: "{{x", Enabled: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -148,7 +150,7 @@ func TestEnvServiceResolvePreview(t *testing.T) {
 		Auth:      model.Auth{Type: model.AuthBearer, Token: "{{token}}"},
 		Headers:   []model.KeyValue{{Key: "X-Col", Value: "1", Enabled: true}},
 		Variables: []model.Variable{{Key: "token", Enabled: true, Secret: true}},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,8 +173,8 @@ func TestEnvServiceSecretStoreControlKeychain(t *testing.T) {
 		t.Fatalf("status = %+v", st)
 	}
 	for name, call := range map[string]func() error{
-		"set":    func() error { return h.env.SetMasterPassword("x") },
-		"change": func() error { return h.env.ChangeMasterPassword("x", "y") },
+		"set":    func() error { return h.env.SetMasterPassword("long-enough") },
+		"change": func() error { return h.env.ChangeMasterPassword("x", "long-enough") },
 		"unlock": func() error { return h.env.Unlock("x") },
 		"lock":   h.env.Lock,
 		"reset":  h.env.ResetSecretStore,
@@ -197,7 +199,10 @@ func TestEnvServiceSecretStoreControlFile(t *testing.T) {
 	if err := h.env.SetMasterPassword(""); err == nil || err.Error() != secrets.MsgEmptyPassword {
 		t.Fatalf("empty password: %v", err)
 	}
-	if err := h.env.SetMasterPassword("one"); err != nil {
+	if err := h.env.SetMasterPassword("seven77"); err == nil || err.Error() != secrets.MsgShortPassword {
+		t.Fatalf("short password: %v", err)
+	}
+	if err := h.env.SetMasterPassword("one-password"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,7 +213,7 @@ func TestEnvServiceSecretStoreControlFile(t *testing.T) {
 	t.Cleanup(srv.Close)
 	h.openWorkspace(t)
 	g := pipeline.ScopeRef{Kind: vars.ScopeGlobal}
-	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "token", Enabled: true, Secret: true}}); err != nil {
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "token", Enabled: true, Secret: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.env.SetSecret(g, "token", "file-secret"); err != nil {
@@ -238,17 +243,20 @@ func TestEnvServiceSecretStoreControlFile(t *testing.T) {
 	if err := h.env.Unlock("wrong"); err == nil || err.Error() != "Wrong password, or the secrets file is damaged." {
 		t.Fatalf("wrong password: %v", err)
 	}
-	if err := h.env.Unlock("one"); err != nil {
+	if err := h.env.Unlock("one-password"); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.env.ChangeMasterPassword("nope", "two"); err == nil || err.Error() != secrets.MsgWrongPassword {
+	if err := h.env.ChangeMasterPassword("one-password", "two"); err == nil || err.Error() != secrets.MsgShortPassword {
+		t.Fatalf("change to a short password: %v", err)
+	}
+	if err := h.env.ChangeMasterPassword("nope", "two-password"); err == nil || err.Error() != secrets.MsgWrongPassword {
 		t.Fatalf("change with wrong password: %v", err)
 	}
-	if err := h.env.ChangeMasterPassword("one", "two"); err != nil {
+	if err := h.env.ChangeMasterPassword("one-password", "two-password"); err != nil {
 		t.Fatal(err)
 	}
 	_ = h.env.Lock()
-	if err := h.env.Unlock("two"); err != nil {
+	if err := h.env.Unlock("two-password"); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.env.ResetSecretStore(); err != nil {
@@ -262,7 +270,7 @@ func TestEnvServiceSecretStoreControlFile(t *testing.T) {
 func TestSendVariableCycleIsSendError(t *testing.T) {
 	h := newHarness(t)
 	h.openWorkspace(t)
-	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "a", Value: "{{b}}", Enabled: true}, {Key: "b", Value: "{{a}}", Enabled: true}}); err != nil {
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "a", Value: "{{b}}", Enabled: true}, {Key: "b", Value: "{{a}}", Enabled: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	res, err := h.req.Send(context.Background(), "c", model.Request{URL: "http://x/{{a}}"}, "")
@@ -360,5 +368,80 @@ func TestNewCoreDefaultsToFileStore(t *testing.T) {
 	defer c.Close()
 	if st := NewEnvService(c).SecretsStatus(); st.Backend != secrets.BackendFile {
 		t.Fatalf("default store = %+v", st)
+	}
+}
+
+func TestEnvServiceRevealAndMakePlain(t *testing.T) {
+	h := newHarness(t)
+	h.openWorkspace(t)
+	g := pipeline.ScopeRef{Kind: vars.ScopeGlobal}
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "pw", Enabled: true, Secret: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.env.RevealSecret(g, "pw"); err == nil || err.Error() != "No value is stored for pw on this machine. Set one first." {
+		t.Fatalf("unset: %v", err)
+	}
+	if err := h.env.SetSecret(g, "pw", "hunter2"); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := h.env.RevealSecret(g, "pw"); err != nil || v != "hunter2" {
+		t.Fatalf("reveal = %q %v", v, err)
+	}
+	h.secrets.Err = secrets.ErrLocked
+	if _, err := h.env.RevealSecret(g, "pw"); err == nil || err.Error() != secrets.MsgLocked {
+		t.Fatalf("locked reveal: %v", err)
+	}
+	if _, err := h.env.MakeVariablePlain(g, "pw"); err == nil || err.Error() != secrets.MsgLocked {
+		t.Fatalf("locked make plain: %v", err)
+	}
+	h.secrets.Err = nil
+	vs, err := h.env.MakeVariablePlain(g, "pw")
+	if err != nil || len(vs) != 1 || vs[0].Secret || vs[0].Value != "hunter2" {
+		t.Fatalf("make plain = %+v %v", vs, err)
+	}
+	if keys := h.secrets.Keys(); len(keys) != 0 {
+		t.Fatalf("stored value left: %v", keys)
+	}
+}
+
+func TestEnvServiceSaveMovesRenamedSecrets(t *testing.T) {
+	h := newHarness(t)
+	h.openWorkspace(t)
+	g := pipeline.ScopeRef{Kind: vars.ScopeGlobal}
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "pw", Enabled: true, Secret: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = h.env.SetSecret(g, "pw", "hunter2")
+	h.secrets.Err = secrets.ErrLocked
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "password", Enabled: true, Secret: true}}, []pipeline.SecretRename{{From: "pw", To: "password"}}); err == nil || err.Error() != secrets.MsgLocked {
+		t.Fatalf("locked globals save: %v", err)
+	}
+	if _, err := h.env.SaveVariables(g, []model.Variable{{Key: "password", Enabled: true, Secret: true}}, []pipeline.SecretRename{{From: "pw", To: "password"}}); err == nil || err.Error() != secrets.MsgLocked {
+		t.Fatalf("locked save: %v", err)
+	}
+	h.secrets.Err = nil
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "password", Enabled: true, Secret: true}}, []pipeline.SecretRename{{From: "pw", To: "password"}}); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := h.env.RevealSecret(g, "password"); err != nil || v != "hunter2" {
+		t.Fatalf("moved = %q %v", v, err)
+	}
+
+	col, _ := h.ws.CreateCollection("Users")
+	c := pipeline.ScopeRef{Kind: vars.ScopeCollection, ID: col.ID}
+	if _, err := h.ws.SaveCollection(col.ID, fsstore.CollectionSettings{Variables: []model.Variable{{Key: "a", Enabled: true, Secret: true}}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = h.env.SetSecret(c, "a", "va")
+	h.secrets.Err = secrets.ErrLocked
+	if _, err := h.ws.SaveCollection(col.ID, fsstore.CollectionSettings{Variables: []model.Variable{{Key: "b", Enabled: true, Secret: true}}}, []pipeline.SecretRename{{From: "a", To: "b"}}); err == nil || err.Error() != secrets.MsgLocked {
+		t.Fatalf("locked collection save: %v", err)
+	}
+	h.secrets.Err = nil
+	if _, err := h.ws.SaveCollection(col.ID, fsstore.CollectionSettings{Variables: []model.Variable{{Key: "b", Enabled: true, Secret: true}}}, []pipeline.SecretRename{{From: "a", To: "b"}}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := h.env.RevealSecret(c, "b"); v != "va" {
+		t.Fatalf("collection moved = %q", v)
 	}
 }

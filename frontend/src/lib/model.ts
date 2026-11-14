@@ -464,6 +464,17 @@ export interface Variable {
   value: string;
   enabled: boolean;
   secret: boolean;
+  /**
+   * Editor only, never sent to Go: the key a secret row had when its key was
+   * first edited, so a save can move its stored value (see `SecretRename`).
+   */
+  origin?: string;
+}
+
+/** A secret variable renamed in a save: Go moves its stored value from `from` to `to`. */
+export interface SecretRename {
+  from: string;
+  to: string;
 }
 
 export interface Environment {
@@ -579,6 +590,66 @@ export function normalizePreview(input: unknown): ResolvePreview {
     environment: normalizeEnvRef(p.environment),
     error: p.error ?? "",
   };
+}
+
+/** A collection's settings: what its folders and requests inherit, plus its variables. */
+export interface CollectionSettings {
+  id: string;
+  name: string;
+  auth: Auth;
+  headers: KeyValue[];
+  variables: Variable[];
+}
+
+/** A folder's settings: what its folders and requests inherit. Folders have no variables. */
+export interface FolderSettings {
+  id: string;
+  name: string;
+  auth: Auth;
+  headers: KeyValue[];
+}
+
+/** Fills defaults in a collection from Go. Nothing is above a collection, so an empty auth type is "none". */
+export function normalizeCollection(input: unknown): CollectionSettings {
+  const c = (input ?? {}) as {
+    id?: string | null;
+    name?: string | null;
+    auth?: Loose<Auth> | null;
+    headers?: Loose<KeyValue>[] | null;
+    variables?: Loose<Variable>[] | null;
+  };
+  return {
+    id: c.id ?? "",
+    name: c.name ?? "",
+    // `inherit` means nothing on a collection, the same as an empty type.
+    auth: containerAuth(c.auth?.type === "inherit" ? { ...c.auth, type: "" as AuthType } : c.auth, "none"),
+    headers: kvList(c.headers),
+    variables: varList(c.variables),
+  };
+}
+
+export function normalizeFolder(input: unknown): FolderSettings {
+  const f = (input ?? {}) as {
+    id?: string | null;
+    name?: string | null;
+    auth?: Loose<Auth> | null;
+    headers?: Loose<KeyValue>[] | null;
+  };
+  return {
+    id: f.id ?? "",
+    name: f.name ?? "",
+    auth: containerAuth(f.auth, "inherit"),
+    headers: kvList(f.headers),
+  };
+}
+
+/**
+ * On a folder an empty auth type counts as `inherit` (Go's core/inherit); on a
+ * collection it means nothing is set, which requests see as `none`.
+ */
+function containerAuth(a: Loose<Auth> | null | undefined, empty: AuthType): Auth {
+  const auth = normalizeRequest({ auth: a }).auth;
+  return a?.type ? auth : { ...auth, type: empty };
 }
 
 /** Drops table rows with neither key nor value (the editor's blank rows). */

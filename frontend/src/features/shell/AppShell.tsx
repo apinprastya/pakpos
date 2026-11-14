@@ -13,11 +13,17 @@ import { useWorkspaceSync } from "@/hooks/useWorkspaceSync";
 import { SettingsDialog } from "@/features/settings/SettingsDialog";
 import { useSettingsStore } from "@/stores/settings";
 import { useEffect } from "react";
+import { useActiveTab } from "@/stores/tabs";
+import { DocEditor } from "@/features/scopes/DocEditor";
+import { useScopeSync } from "@/features/scopes/useScopeSync";
+import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
   useShortcuts();
   useWorkspaceSync();
+  useScopeSync();
+  const active = useActiveTab();
   useEffect(() => {
     void useSettingsStore.getState().load();
   }, []);
@@ -34,19 +40,23 @@ export function AppShell() {
           <ResizablePanel id="workspace" minSize="40">
             <main className="flex h-full min-w-0 flex-col">
               <TabBar />
-              <ResizablePanelGroup
-                key={orientation}
-                orientation={orientation === "vertical" ? "vertical" : "horizontal"}
-                id={`pakpos-split-${orientation}`}
-              >
-                <ResizablePanel id="request" defaultSize="50" minSize="20">
-                  <RequestPane />
-                </ResizablePanel>
-                <ResizableHandle />
-                <ResizablePanel id="response" defaultSize="50" minSize="20">
-                  <ResponsePane />
-                </ResizablePanel>
-              </ResizablePanelGroup>
+              {active.doc ? (
+                <DocEditor key={active.id} tab={active} />
+              ) : (
+                <ResizablePanelGroup
+                  key={orientation}
+                  orientation={orientation === "vertical" ? "vertical" : "horizontal"}
+                  id={`pakpos-split-${orientation}`}
+                >
+                  <ResizablePanel id="request" defaultSize="50" minSize="20">
+                    <RequestPane />
+                  </ResizablePanel>
+                  <ResizableHandle />
+                  <ResizablePanel id="response" defaultSize="50" minSize="20">
+                    <ResponsePane />
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+              )}
             </main>
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -55,6 +65,7 @@ export function AppShell() {
       <CloseTabDialog />
       <SaveRequestDialog />
       <SettingsDialog />
+      <SecretsDialogs />
     </div>
   );
 }

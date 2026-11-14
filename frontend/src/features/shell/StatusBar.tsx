@@ -1,4 +1,6 @@
-import { Columns2, Folder, Rows2 } from "lucide-react";
+import { Columns2, Folder, Layers, Rows2 } from "lucide-react";
+import { LockIndicator } from "@/features/secrets/SecretsControls";
+import { useSelectedEnvironment } from "@/stores/environments";
 import { useLayoutStore } from "@/stores/layout";
 import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -8,6 +10,7 @@ export function StatusBar() {
   const setLayout = useSettingsStore((s) => s.setLayout);
   const toggle = () => void setLayout(orientation === "vertical" ? "horizontal" : "vertical");
   const workspace = useWorkspaceStore((s) => s.workspace);
+  const environment = useSelectedEnvironment();
   const nextLabel =
     orientation === "vertical" ? "Show response beside request" : "Show response below request";
 
@@ -17,15 +20,30 @@ export function StatusBar() {
         {workspace && <Folder className="size-3 shrink-0" aria-hidden />}
         <span className="truncate">{workspace ? workspace.name : "No workspace"}</span>
       </span>
-      <button
-        type="button"
-        onClick={toggle}
-        aria-label={nextLabel}
-        title={nextLabel}
-        className="flex items-center gap-1 rounded px-1 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-      >
-        {orientation === "vertical" ? <Rows2 className="size-3.5" /> : <Columns2 className="size-3.5" />}
-      </button>
+      <span className="flex shrink-0 items-center gap-2">
+        {workspace && (
+          <button
+            type="button"
+            title="Manage environments"
+            aria-label={`Environment: ${environment?.name ?? "none"}. Manage environments`}
+            onClick={() => useLayoutStore.getState().setSidebarView("environments")}
+            className="flex max-w-48 items-center gap-1 rounded px-1 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          >
+            <Layers aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">{environment?.name ?? "No environment"}</span>
+          </button>
+        )}
+        <LockIndicator />
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={nextLabel}
+          title={nextLabel}
+          className="flex items-center gap-1 rounded px-1 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          {orientation === "vertical" ? <Rows2 className="size-3.5" /> : <Columns2 className="size-3.5" />}
+        </button>
+      </span>
     </footer>
   );
 }

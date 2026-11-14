@@ -1,4 +1,8 @@
+import { emptyAuth } from "@/lib/model";
 import type {
+  Environment,
+  ResolvePreview,
+  Variable,
   CollectionNode,
   FolderNode,
   HistorySummary,
@@ -79,4 +83,29 @@ export function col(id: string, name = id, children: TreeChild[] = []): Collecti
 
 function withParent(children: TreeChild[], parentId: string): TreeChild[] {
   return children.map((c, i) => ({ ...c, parentId, seq: i + 1 }));
+}
+
+/** A variable row; `secret` rows never carry a value. */
+export function makeVar(key: string, value = "", patch: Partial<Variable> = {}): Variable {
+  const v = { key, value, enabled: true, secret: false, ...patch };
+  return v.secret ? { ...v, value: "" } : v;
+}
+
+export function makeEnv(id: string, name = id, variables: Variable[] = []): Environment {
+  return { id, name, seq: 0, variables };
+}
+
+/** A resolve preview with nothing inherited; patch what the test needs. */
+export function makePreview(patch: Partial<ResolvePreview> = {}): ResolvePreview {
+  return {
+    headers: [],
+    auth: emptyAuth(),
+    authSource: null,
+    variables: [],
+    unresolved: [],
+    secretsLocked: false,
+    environment: null,
+    error: "",
+    ...patch,
+  };
 }

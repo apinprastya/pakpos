@@ -1,6 +1,63 @@
 import { create } from "zustand";
 import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
-import { emptyRequest, normalizeRequest, requestsEqual, type Request, type SendResult } from "@/lib/model";
+import {
+  emptyAuth,
+  emptyRequest,
+  normalizeRequest,
+  requestsEqual,
+  type Auth,
+  type KeyValue,
+  type Request,
+  type SendResult,
+  type Variable,
+} from "@/lib/model";
+
+/** What a non-request tab edits. */
+export type DocKind = "environment" | "globals" | "collection" | "folder";
+
+/**
+ * The editable part of an environment, the globals, or a collection's or
+ * folder's settings. Environments and globals use only `variables`; folders
+ * have no `variables`. Secret variables never carry a value here.
+ */
+export interface DocDraft {
+  auth: Auth;
+  headers: KeyValue[];
+  variables: Variable[];
+}
+
+/** State of an environment, globals, collection or folder settings tab. */
+export interface DocState {
+  kind: DocKind;
+  /** Environment, collection or folder id ("" for the globals). */
+  targetId: string;
+  /** Name shown in the tab (kept in step with the sidebar). */
+  name: string;
+  /** Null until loaded from Go. */
+  draft: DocDraft | null;
+  saved: DocDraft | null;
+  /** The target was deleted outside the app while the tab had edits. */
+  missing: boolean;
+}
+
+export function emptyDocDraft(): DocDraft {
+  return { auth: emptyAuth(), headers: [], variables: [] };
+}
+
+/** Drops the editor's blank rows so they don't count as changes. */
+export function compactDraft(d: DocDraft): DocDraft {
+  return {
+    auth: d.auth,
+    headers: d.headers.filter((h) => h.key !== "" || h.value !== ""),
+    variables: d.variables
+      .filter((v) => v.key !== "" || v.value !== "")
+      .map(({ key, value, enabled, secret }) => ({ key, value, enabled, secret })),
+  };
+}
+
+export function draftsEqual(a: DocDraft, b: DocDraft): boolean {
+  return JSON.stringify(compactDraft(a)) === JSON.stringify(compactDraft(b));
+}
 
 export interface Tab {
   id: string;
@@ -16,6 +73,11 @@ export interface Tab {
   sendId: string | null;
   /** Last send result for this tab (not persisted). */
   result: SendResult | null;
+  /**
+   * Set for environment, globals, collection and folder settings tabs; null
+   * for request tabs (whose request fields are then unused).
+   */
+  doc: DocState | null;
 }
 
 interface TabsState {
@@ -53,6 +115,17 @@ interface TabsState {
   setResult: (id: string, result: SendResult | null) => void;
   openSaveDialog: (tabId: string, closeAfter?: boolean) => void;
   closeSaveDialog: () => void;
+
+  /** Opens an environment, globals, collection or folder settings tab, or focuses the open one. */
+  openDoc: (kind: DocKind, targetId: string, name: string, workspaceId: string) => string;
+  updateDoc: (id: string, update: (draft: DocDraft) => DocDraft) => void;
+  /** Sets what was loaded or saved: the draft and its saved copy both become `saved`. */
+  markDocSaved: (id: string, saved: DocDraft, name?: string) => void;
+  /** Like applyDiskVersion: a clean tab shows the disk version, an edited one keeps its edits. */
+  applyDocDisk: (id: string, disk: DocDraft) => void;
+  /** Replaces only the saved copy (after an immediate change on disk, e.g. making a secret plain). */
+  setDocSaved: (id: string, saved: DocDraft) => void;
+  patchDoc: (id: string, patch: Partial<Pick<DocState, "name" | "missing">>) => void;
 }
 
 let counter = 0;
@@ -70,16 +143,33 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
     workspaceId: "",
     sendId: null,
     result: null,
+    doc: null,
     ...partial,
   };
 }
 
 export function isDirty(tab: Tab): boolean {
+  if (tab.doc) {
+    const { draft, saved } = tab.doc;
+    return draft !== null && saved !== null && !draftsEqual(draft, saved);
+  }
   return !requestsEqual(tab.request, tab.saved ?? emptyRequest());
 }
 
+const DOC_TITLES: Record<DocKind, (name: string) => string> = {
+  environment: (name) => name || "Environment",
+  globals: () => "Globals",
+  collection: (name) => `${name || "Collection"} settings`,
+  folder: (name) => `${name || "Folder"} settings`,
+};
+
 export function tabTitle(tab: Tab): string {
+  if (tab.doc) return DOC_TITLES[tab.doc.kind](tab.doc.name);
   return tab.request.name || "Untitled request";
+}
+
+function mapDoc(tabs: Tab[], id: string, update: (doc: DocState) => DocState): Tab[] {
+  return tabs.map((t) => (t.id === id && t.doc ? { ...t, doc: update(t.doc) } : t));
 }
 
 /** localStorage that never throws (private windows, blocked storage). */
@@ -241,6 +331,51 @@ export const useTabsStore = create<TabsState>()(
 
       openSaveDialog: (tabId, closeAfter = false) => set({ saveDialog: { tabId, closeAfter } }),
       closeSaveDialog: () => set({ saveDialog: null }),
+
+      openDoc: (kind, targetId, name, workspaceId) => {
+        const existing = get().tabs.find(
+          (t) =>
+            t.doc?.kind === kind &&
+            t.doc.targetId === targetId &&
+            (t.workspaceId === workspaceId || !workspaceId),
+        );
+        if (existing) {
+          set({ activeId: existing.id });
+          return existing.id;
+        }
+        const doc: DocState = { kind, targetId, name, draft: null, saved: null, missing: false };
+        const tab = makeTab({ doc, workspaceId });
+        set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
+        return tab.id;
+      },
+
+      updateDoc: (id, update) =>
+        set((s) => ({ tabs: mapDoc(s.tabs, id, (d) => (d.draft ? { ...d, draft: update(d.draft) } : d)) })),
+
+      markDocSaved: (id, saved, name) =>
+        set((s) => ({
+          tabs: mapDoc(s.tabs, id, (d) => ({
+            ...d,
+            draft: saved,
+            saved,
+            name: name ?? d.name,
+            missing: false,
+          })),
+        })),
+
+      applyDocDisk: (id, disk) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) => {
+            if (t.id !== id || !t.doc) return t;
+            return isDirty(t)
+              ? { ...t, doc: { ...t.doc, saved: disk } }
+              : { ...t, doc: { ...t.doc, draft: disk, saved: disk } };
+          }),
+        })),
+
+      setDocSaved: (id, saved) => set((s) => ({ tabs: mapDoc(s.tabs, id, (d) => ({ ...d, saved })) })),
+
+      patchDoc: (id, patch) => set((s) => ({ tabs: mapDoc(s.tabs, id, (d) => ({ ...d, ...patch })) })),
     }),
     {
       name: "pakpos-tabs",
@@ -252,8 +387,13 @@ export const useTabsStore = create<TabsState>()(
         tabs: s.tabs.map((t) => ({ ...t, sendId: null, result: null })),
       }),
       merge: (persisted, current) => {
-        // Tabs saved before nested folders have `collectionId` instead of `parentId`.
-        type StoredTab = Omit<Tab, "parentId"> & { parentId?: string; collectionId?: string };
+        // Tabs saved before nested folders have `collectionId` instead of `parentId`;
+        // tabs saved before M4 have no `doc` (they're all request tabs).
+        type StoredTab = Omit<Tab, "parentId" | "doc"> & {
+          parentId?: string;
+          collectionId?: string;
+          doc?: Partial<DocState> | null;
+        };
         const p = persisted as { tabs?: StoredTab[]; activeId?: string } | undefined;
         if (!p?.tabs?.length) return current;
         const tabs = p.tabs.map(({ collectionId, ...t }) =>
@@ -264,6 +404,7 @@ export const useTabsStore = create<TabsState>()(
             saved: t.saved ? normalizeRequest(t.saved) : null,
             sendId: null,
             result: null,
+            doc: restoreDoc(t.doc),
           }),
         );
         const activeIdx = p.tabs.findIndex((t) => t.id === p.activeId);
@@ -275,4 +416,31 @@ export const useTabsStore = create<TabsState>()(
 
 export function useActiveTab(): Tab {
   return useTabsStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0]);
+}
+
+const DOC_KINDS: DocKind[] = ["environment", "globals", "collection", "folder"];
+
+function restoreDraft(d: Partial<DocDraft> | null | undefined): DocDraft | null {
+  if (!d) return null;
+  return {
+    auth: { ...emptyAuth(), ...d.auth },
+    headers: Array.isArray(d.headers) ? d.headers : [],
+    variables: Array.isArray(d.variables) ? d.variables : [],
+  };
+}
+
+/** Restores a persisted doc tab; anything unrecognised becomes a request tab. */
+function restoreDoc(d: Partial<DocState> | null | undefined): DocState | null {
+  if (!d || !d.kind || !DOC_KINDS.includes(d.kind)) return null;
+  const draft = restoreDraft(d.draft);
+  const saved = restoreDraft(d.saved);
+  return {
+    kind: d.kind,
+    targetId: d.targetId ?? "",
+    name: d.name ?? "",
+    // A draft without its saved copy can't be compared; reload both from disk.
+    draft: saved ? draft : null,
+    saved: draft ? saved : null,
+    missing: false,
+  };
 }

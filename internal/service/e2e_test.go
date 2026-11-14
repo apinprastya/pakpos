@@ -288,7 +288,7 @@ func TestEndToEndNestedFolders(t *testing.T) {
 	_, err = h.ws.SaveCollection(users.ID, fsstore.CollectionSettings{
 		Auth:      model.Auth{Type: model.AuthBearer, Token: "{{token}}"},
 		Variables: []model.Variable{{Key: "token", Value: "hunter2", Enabled: true, Secret: true}},
-	})
+	}, nil)
 	must(err)
 	_, err = h.ws.SaveFolder(auth.ID, fsstore.FolderSettings{Headers: []model.KeyValue{{Key: "X-Auth", Value: "1", Enabled: true}}})
 	must(err)
@@ -472,7 +472,7 @@ func TestEndToEndSendPipeline(t *testing.T) {
 		Auth:      model.Auth{Type: model.AuthBearer, Token: "{{token}}"},
 		Headers:   []model.KeyValue{{Key: "X-Team", Value: "platform", Enabled: true}, {Key: "X-Trace", Value: "col", Enabled: true}},
 		Variables: []model.Variable{{Key: "token", Enabled: true, Secret: true}},
-	})
+	}, nil)
 	must(err)
 	must(h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeCollection, ID: col.ID}, "token", secretValue))
 	admin, err := h.ws.CreateFolder(col.ID, "Admin")
@@ -484,21 +484,21 @@ func TestEndToEndSendPipeline(t *testing.T) {
 	_, err = h.env.SaveGlobals([]model.Variable{
 		{Key: "baseUrl", Value: srvA.URL + "/global", Enabled: true},
 		{Key: "who", Value: "global", Enabled: true},
-	})
+	}, nil)
 	must(err)
 	dev, err := h.env.Create("Dev")
 	must(err)
 	_, err = h.env.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}, []model.Variable{
 		{Key: "baseUrl", Value: srvA.URL + "/dev", Enabled: true},
 		{Key: "apiKey", Enabled: true, Secret: true},
-	})
+	}, nil)
 	must(err)
 	prod, err := h.env.Create("Prod")
 	must(err)
 	_, err = h.env.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: prod.ID}, []model.Variable{
 		{Key: "baseUrl", Value: srvB.URL + "/prod", Enabled: true},
 		{Key: "apiKey", Enabled: true, Secret: true},
-	})
+	}, nil)
 	must(err)
 	must(h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: prod.ID}, "apiKey", "prod-key-77"))
 
@@ -650,7 +650,7 @@ func TestEndToEndUnsetSecretShadowsGlobals(t *testing.T) {
 	t.Cleanup(srv.Close)
 	h := newHarness(t)
 	h.openWorkspace(t)
-	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "token", Value: "global-token", Enabled: true}}); err != nil {
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "token", Value: "global-token", Enabled: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	dev, err := h.env.Create("Dev")
@@ -658,7 +658,7 @@ func TestEndToEndUnsetSecretShadowsGlobals(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := h.env.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID},
-		[]model.Variable{{Key: "token", Enabled: true, Secret: true}}); err != nil {
+		[]model.Variable{{Key: "token", Enabled: true, Secret: true}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	req := model.Request{URL: srv.URL, Auth: model.Auth{Type: model.AuthBearer, Token: "{{token}}"}}
@@ -681,5 +681,46 @@ func TestEndToEndUnsetSecretShadowsGlobals(t *testing.T) {
 	pv, err := h.env.ResolvePreview(req, "")
 	if err != nil || len(pv.Variables) != 1 || pv.Variables[0].Scope != vars.ScopeEnvironment || pv.Variables[0].Set {
 		t.Fatalf("preview = %+v %v", pv.Variables, err)
+	}
+}
+
+// Renaming a secret environment variable keeps its value: the request still
+// sends it under the new name, and the old key is gone from the store.
+func TestEndToEndRenamedSecretKeepsValue(t *testing.T) {
+	var auth atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		auth.Store(r.Header.Get("Authorization"))
+	}))
+	t.Cleanup(srv.Close)
+	h := newHarness(t)
+	h.openWorkspace(t)
+	dev, err := h.env.Create("Dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}
+	if _, err := h.env.SaveVariables(ref, []model.Variable{{Key: "token", Enabled: true, Secret: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(ref, "token", "dev-secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.Select(dev.ID); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := h.env.SaveVariables(ref, []model.Variable{{Key: "apiToken", Enabled: true, Secret: true}},
+		[]pipeline.SecretRename{{From: "token", To: "apiToken"}})
+	if err != nil || len(saved) != 1 || saved[0].Value != "" {
+		t.Fatalf("saved = %+v %v", saved, err)
+	}
+	req := model.Request{URL: srv.URL, Auth: model.Auth{Type: model.AuthBearer, Token: "{{apiToken}}"}}
+	if res, err := h.req.Send(context.Background(), "r", req, ""); err != nil || res.Error != nil || len(res.Unresolved) != 0 {
+		t.Fatalf("send: %+v %v", res, err)
+	}
+	if got := auth.Load(); got != "Bearer dev-secret" {
+		t.Fatalf("sent %q", got)
+	}
+	if keys := h.secrets.Keys(); len(keys) != 1 {
+		t.Fatalf("stored keys = %v, want only the new one", keys)
 	}
 }

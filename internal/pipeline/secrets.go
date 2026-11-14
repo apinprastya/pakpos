@@ -50,12 +50,60 @@ func (s *Session) cleanup(scopeID string, keys []string) {
 	}
 }
 
+// SecretRename says that the secret variable From was renamed to To in a
+// save. The UI knows which row's key changed, so it passes these explicitly.
+type SecretRename struct {
+	From string `json:"from"`
+	To   string `json:"to"`
+}
+
+// moveRenamed carries the stored values of renamed secrets to their new keys
+// before the save that renames them, so the cleanup after the save (which
+// deletes the old keys) loses nothing. A pair counts only when From is a
+// secret in before and To is a secret in after. Values are all read first,
+// so swapping two names works. A locked store refuses (ErrLocked) before
+// anything is written; a secret without a stored value is skipped.
+func (s *Session) moveRenamed(scopeID string, before, after []model.Variable, renames []SecretRename) error {
+	was, now := map[string]bool{}, map[string]bool{}
+	for _, k := range secrets.SecretKeys(before) {
+		was[k] = true
+	}
+	for _, k := range secrets.SecretKeys(after) {
+		now[k] = true
+	}
+	moves := map[string]string{} // new key -> value
+	for _, r := range renames {
+		from, to := strings.TrimSpace(r.From), strings.TrimSpace(r.To)
+		if from == to || !was[from] || !now[to] {
+			continue
+		}
+		v, err := s.sec.Get(secrets.Key(s.workspaceID(), scopeID, from))
+		switch {
+		case err == nil:
+			moves[to] = v
+		case errors.Is(err, secrets.ErrNotFound), errors.Is(err, secrets.ErrNoPassword):
+		default:
+			return fmt.Errorf("move secret %s to %s: %w", from, to, err)
+		}
+	}
+	for to, v := range moves {
+		if err := s.sec.Set(secrets.Key(s.workspaceID(), scopeID, to), v); err != nil {
+			return fmt.Errorf("move secret to %s: %w", to, err)
+		}
+	}
+	return nil
+}
+
 // SaveVariables replaces a scope's variables. Secret values are never
-// written to the workspace. The stored values of secrets that were removed,
+// written to the workspace. Renamed secrets (renames) keep their stored
+// value under the new key; the stored values of secrets that were removed,
 // renamed or made non-secret are deleted.
-func (s *Session) SaveVariables(ref ScopeRef, vs []model.Variable) ([]model.Variable, error) {
+func (s *Session) SaveVariables(ref ScopeRef, vs []model.Variable, renames ...SecretRename) ([]model.Variable, error) {
 	scopeID, before, err := s.scope(ref)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.moveRenamed(scopeID, before, vs, renames); err != nil {
 		return nil, err
 	}
 	var saved []model.Variable
@@ -87,11 +135,15 @@ func (s *Session) SaveVariables(ref ScopeRef, vs []model.Variable) ([]model.Vari
 	return saved, nil
 }
 
-// SaveCollection replaces a collection's auth, headers and variables and
-// deletes the stored values of secrets it no longer has.
-func (s *Session) SaveCollection(id string, settings fsstore.CollectionSettings) (fsstore.Collection, error) {
+// SaveCollection replaces a collection's auth, headers and variables, moves
+// the stored values of renamed secrets, and deletes those of secrets it no
+// longer has.
+func (s *Session) SaveCollection(id string, settings fsstore.CollectionSettings, renames ...SecretRename) (fsstore.Collection, error) {
 	before, err := s.ws.GetCollection(id)
 	if err != nil {
+		return fsstore.Collection{}, err
+	}
+	if err := s.moveRenamed(before.ID, before.Variables, settings.Variables, renames); err != nil {
 		return fsstore.Collection{}, err
 	}
 	if _, err := s.saveCollection(id, settings, before.Variables); err != nil {
@@ -214,4 +266,65 @@ func (s *Session) SecretStatus(ref ScopeRef) (SecretStatus, error) {
 		}
 	}
 	return st, nil
+}
+
+// ErrNotSecret is returned when a key isn't a secret variable of the scope.
+var ErrNotSecret = errors.New("not a secret variable")
+
+// secretIn returns the scope's id and variables, after checking that key is
+// a secret variable there.
+func (s *Session) secretIn(ref ScopeRef, key string) (string, []model.Variable, string, error) {
+	scopeID, vs, err := s.scope(ref)
+	if err != nil {
+		return "", nil, "", err
+	}
+	if key, err = cleanKey(key); err != nil {
+		return "", nil, "", err
+	}
+	for _, v := range vs {
+		if v.Secret && v.Key == key {
+			return scopeID, vs, key, nil
+		}
+	}
+	return "", nil, "", fmt.Errorf("%q: %w", key, ErrNotSecret)
+}
+
+// RevealSecret returns the stored value of one secret variable. It is only
+// called when the user asks to see the value. A secret with no value on this
+// machine returns secrets.ErrNotFound.
+func (s *Session) RevealSecret(ref ScopeRef, key string) (string, error) {
+	scopeID, _, key, err := s.secretIn(ref, key)
+	if err != nil {
+		return "", err
+	}
+	v, err := s.sec.Get(secrets.Key(s.workspaceID(), scopeID, key))
+	if errors.Is(err, secrets.ErrNoPassword) {
+		err = secrets.ErrNotFound
+	}
+	return v, err
+}
+
+// MakePlain turns a secret variable into a plain one: its stored value (or
+// "" when there is none) is written to the workspace file, and the stored
+// value is deleted. The value never leaves Go. It returns the scope's
+// variables as saved.
+func (s *Session) MakePlain(ref ScopeRef, key string) ([]model.Variable, error) {
+	scopeID, vs, key, err := s.secretIn(ref, key)
+	if err != nil {
+		return nil, err
+	}
+	val, err := s.sec.Get(secrets.Key(s.workspaceID(), scopeID, key))
+	switch {
+	case err == nil, errors.Is(err, secrets.ErrNotFound), errors.Is(err, secrets.ErrNoPassword):
+	default:
+		return nil, err
+	}
+	next := make([]model.Variable, len(vs))
+	for i, v := range vs {
+		if v.Secret && v.Key == key {
+			v.Secret, v.Value = false, val
+		}
+		next[i] = v
+	}
+	return s.SaveVariables(ref, next)
 }

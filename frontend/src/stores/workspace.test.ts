@@ -191,6 +191,7 @@ describe("workspace store: tabs follow the workspace", () => {
           workspaceId: "old",
           sendId: null,
           result: null,
+          doc: null,
         },
         {
           id: "b",
@@ -200,6 +201,7 @@ describe("workspace store: tabs follow the workspace", () => {
           workspaceId: "old",
           sendId: null,
           result: null,
+          doc: null,
         },
       ],
       activeId: "a",
@@ -224,6 +226,7 @@ describe("workspace store: tabs follow the workspace", () => {
           workspaceId: "w1",
           sendId: null,
           result: null,
+          doc: null,
         },
         {
           id: "b",
@@ -233,6 +236,7 @@ describe("workspace store: tabs follow the workspace", () => {
           workspaceId: "",
           sendId: null,
           result: null,
+          doc: null,
         },
         {
           id: "c",
@@ -242,6 +246,7 @@ describe("workspace store: tabs follow the workspace", () => {
           workspaceId: "w1",
           sendId: null,
           result: null,
+          doc: null,
         },
       ],
       activeId: "a",
@@ -297,6 +302,7 @@ describe("workspace store: tabs follow the workspace", () => {
           workspaceId: "w1",
           sendId: null,
           result: null,
+          doc: null,
         },
       ],
       activeId: "a",
@@ -358,6 +364,7 @@ describe("workspace store: collections and requests", () => {
           workspaceId: "w1",
           sendId: null,
           result: null,
+          doc: null,
         },
         {
           id: "b",
@@ -367,6 +374,7 @@ describe("workspace store: collections and requests", () => {
           workspaceId: "w1",
           sendId: null,
           result: null,
+          doc: null,
         },
       ],
       activeId: "a",
@@ -505,6 +513,7 @@ describe("workspace store: folders", () => {
           workspaceId: "w1",
           sendId: null,
           result: null,
+          doc: null,
         },
       ],
     }));
