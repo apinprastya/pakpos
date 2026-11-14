@@ -9,7 +9,7 @@ Pakpos is a desktop REST API client for Linux, macOS and Windows, built with Go,
 - Requests are sent from Go, so there are no CORS limits.
 - History, settings and recent workspaces are kept locally in SQLite.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PLAN-TIER1.md](docs/PLAN-TIER1.md) and the release checklist [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md).
+See [docs/ROADMAP.md](docs/ROADMAP.md) (feature tiers), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PLAN-TIER1.md](docs/PLAN-TIER1.md) and the release checklist [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md).
 
 ## Install
 

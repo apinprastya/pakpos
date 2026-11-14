@@ -4,6 +4,7 @@ Guidance for AI coding agents working on **Pakpos**, a desktop REST API client (
 
 Read before larger changes:
 - `docs/ARCHITECTURE.md`: decisions and layering
+- `docs/ROADMAP.md`: feature tiers (Tier 1 done; Tier 2 next)
 - `docs/PLAN-TIER1.md`: current milestones and scope
 
 ## Stack

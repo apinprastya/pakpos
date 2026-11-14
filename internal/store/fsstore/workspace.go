@@ -23,10 +23,20 @@ const (
 	ManifestFile   = "pakpos.yaml"
 	CollectionsDir = "collections"
 	CollectionFile = "_collection.yaml"
+	// EnvironmentsDir holds one file per environment plus GlobalsFile.
+	EnvironmentsDir = "environments"
+	GlobalsFile     = "_globals.yaml"
 	// LocalDir holds machine-local state and is git-ignored.
 	LocalDir = ".pakpos"
-	// FormatVersion is the newest workspace format this build understands.
-	FormatVersion = 1
+	// FormatVersion is the newest workspace format this build understands
+	// and the version new workspaces are created with.
+	//
+	// v2 adds environments/, globals, secret variables and (later) nested
+	// folders; every change is additive, so a v1 workspace opens as is. Its
+	// manifest is only rewritten to v2 when the app first writes something
+	// v2-specific (an environment or the globals), so merely opening a
+	// Tier 1 workspace never changes it.
+	FormatVersion = 2
 )
 
 // Errors returned by the store. Wrap-checked with errors.Is.
@@ -45,14 +55,16 @@ type Manifest struct {
 }
 
 // Collection is the content of a collection's _collection.yaml. Auth,
-// Headers and Variables are inherited by its requests (resolved in Tier 2).
+// Headers are inherited by its requests (see core/inherit) and Variables
+// form the collection scope (see core/vars). v1 files, whose variable rows
+// have no secret flag, load unchanged.
 type Collection struct {
 	ID        string           `json:"id" yaml:"id"`
 	Name      string           `json:"name" yaml:"name"`
 	Seq       int              `json:"seq" yaml:"seq"`
 	Auth      model.Auth       `json:"auth" yaml:"auth,omitempty"`
 	Headers   []model.KeyValue `json:"headers" yaml:"headers,omitempty"`
-	Variables []model.KeyValue `json:"variables" yaml:"variables,omitempty"`
+	Variables []model.Variable `json:"variables" yaml:"variables,omitempty"`
 }
 
 // RequestSummary is what the sidebar tree needs for one request.
@@ -105,7 +117,12 @@ type Workspace struct {
 	mu          sync.Mutex
 	collections map[string]*colEntry
 	requests    map[string]*reqEntry
-	problems    []Problem
+	envs        map[string]*envEntry
+	globals     *Globals // nil until _globals.yaml exists
+	// pendingGlobalsID is handed out by GetGlobals before the globals file
+	// exists, so the scope ID (used in secret keys) is stable until saved.
+	pendingGlobalsID string
+	problems         []Problem
 
 	writesMu sync.Mutex
 	writes   map[string]time.Time // absolute path -> time of our own write
@@ -178,6 +195,7 @@ func newWorkspace(root string, m Manifest) *Workspace {
 		manifest:    m,
 		collections: map[string]*colEntry{},
 		requests:    map[string]*reqEntry{},
+		envs:        map[string]*envEntry{},
 		writes:      map[string]time.Time{},
 		watchers:    map[*Watcher]struct{}{},
 	}
@@ -187,7 +205,27 @@ func newWorkspace(root string, m Manifest) *Workspace {
 func (w *Workspace) Root() string { return w.root }
 
 // Manifest returns the workspace manifest.
-func (w *Workspace) Manifest() Manifest { return w.manifest }
+func (w *Workspace) Manifest() Manifest {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.manifest
+}
+
+// upgradeManifestLocked rewrites a v1 manifest as v2. It runs before the
+// first v2-specific write, so a Tier 1 build refuses the workspace instead of
+// silently ignoring the new data. Callers hold w.mu.
+func (w *Workspace) upgradeManifestLocked() error {
+	if w.manifest.Version >= FormatVersion {
+		return nil
+	}
+	m := w.manifest
+	m.Version = FormatVersion
+	if err := w.writeYAML(filepath.Join(w.root, ManifestFile), m); err != nil {
+		return fmt.Errorf("upgrade %s to version %d: %w", ManifestFile, FormatVersion, err)
+	}
+	w.manifest = m
+	return nil
+}
 
 // Reload rescans the workspace from disk and returns files that could not be loaded.
 //
@@ -239,7 +277,15 @@ func (w *Workspace) Reload() []Problem {
 		w.loadRequests(meta.ID, dirPath, reqs, addProblem)
 	}
 
+	envs, globals := w.loadEnvironments(addProblem)
+
 	w.collections, w.requests, w.problems = cols, reqs, problems
+	if globals == nil && w.globals != nil {
+		// _globals.yaml vanished (e.g. git checkout): keep its ID, so a later
+		// save reuses it and secret keys stay valid.
+		w.pendingGlobalsID = w.globals.ID
+	}
+	w.envs, w.globals = envs, globals
 	return problems
 }
 
