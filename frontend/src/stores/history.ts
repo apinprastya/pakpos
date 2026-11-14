@@ -40,7 +40,6 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     try {
       const page = await api.historyList({
         text: query,
-        workspaceId: "",
         offset: 0,
         limit: HISTORY_PAGE_SIZE,
       });
@@ -61,7 +60,6 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     try {
       const page = await api.historyList({
         text: query,
-        workspaceId: "",
         offset: items.length,
         limit: HISTORY_PAGE_SIZE,
       });

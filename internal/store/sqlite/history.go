@@ -36,6 +36,10 @@ type HistorySummary struct {
 	Size         int64     `json:"size"`
 	ErrorKind    string    `json:"errorKind"`
 	ErrorMessage string    `json:"errorMessage"`
+	// EnvironmentName is the environment selected when the request was sent
+	// ("" for none). The request is stored as written, with {{variables}}
+	// unresolved, so secret values never reach the database.
+	EnvironmentName string `json:"environmentName"`
 }
 
 // HistoryEntry is a full history record: the request as sent and the
@@ -52,7 +56,10 @@ type HistoryFilter struct {
 	Text string `json:"text"`
 	// WorkspaceID limits results to one workspace when non-empty.
 	WorkspaceID string `json:"workspaceId"`
-	Offset      int    `json:"offset"`
+	// NoWorkspace limits results to entries sent without a workspace. It
+	// takes precedence over WorkspaceID.
+	NoWorkspace bool `json:"noWorkspace"`
+	Offset      int  `json:"offset"`
 	// Limit defaults to DefaultHistoryLimit when <= 0.
 	Limit int `json:"limit"`
 }
@@ -90,10 +97,10 @@ func (s *Store) AddHistory(e HistoryEntry) (int64, error) {
 	}
 
 	res, err := s.db.Exec(`INSERT INTO history (created_at, workspace_id, request_id, request_name, method, url,
-		status, duration_ms, size, error_kind, error_message, request_json, response_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		status, duration_ms, size, error_kind, error_message, environment_name, request_json, response_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.CreatedAt.UnixMilli(), nullable(e.WorkspaceID), e.RequestID, e.RequestName, e.Method, e.URL,
-		e.Status, e.DurationMs, e.Size, e.ErrorKind, e.ErrorMessage, string(reqJSON), respJSON)
+		e.Status, e.DurationMs, e.Size, e.ErrorKind, e.ErrorMessage, e.EnvironmentName, string(reqJSON), respJSON)
 	if err != nil {
 		return 0, fmt.Errorf("add history: %w", err)
 	}
@@ -182,7 +189,9 @@ func (s *Store) GetHistory(id int64) (HistoryEntry, error) {
 // ListHistory returns summaries, newest first.
 func (s *Store) ListHistory(f HistoryFilter) (HistoryPage, error) {
 	where, args := []string{"1=1"}, []any{}
-	if f.WorkspaceID != "" {
+	if f.NoWorkspace {
+		where = append(where, "workspace_id IS NULL")
+	} else if f.WorkspaceID != "" {
 		where = append(where, "workspace_id = ?")
 		args = append(args, f.WorkspaceID)
 	}
@@ -231,31 +240,76 @@ func (s *Store) ClearHistory(workspaceID string) error {
 	return s.deleteWhere(`1=1`)
 }
 
-// PruneHistory keeps only the newest keep entries. keep <= 0 disables pruning.
-// It returns how many entries were removed.
+// ClearHistoryWithoutWorkspace removes the entries sent without a workspace
+// and their body files.
+func (s *Store) ClearHistoryWithoutWorkspace() error {
+	return s.deleteWhere(`workspace_id IS NULL`)
+}
+
+// PruneHistory applies the retention limit to every workspace: each
+// workspace keeps its newest keep entries, and the entries sent without a
+// workspace count as one more group. keep <= 0 disables pruning. It returns
+// how many entries were removed.
 func (s *Store) PruneHistory(keep int) (int, error) {
 	if keep <= 0 {
 		return 0, nil
 	}
+	rows, err := s.db.Query(`SELECT DISTINCT COALESCE(workspace_id, '') FROM history`)
+	if err != nil {
+		return 0, fmt.Errorf("prune history: %w", err)
+	}
+	var groups []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			_ = rows.Close()
+			return 0, fmt.Errorf("prune history: %w", err)
+		}
+		groups = append(groups, g)
+	}
+	_ = rows.Close()
+	total := 0
+	for _, g := range groups {
+		n, err := s.PruneWorkspaceHistory(g, keep)
+		total += n
+		if err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
+// PruneWorkspaceHistory keeps only the newest keep entries of one workspace
+// ("" means the entries sent without a workspace). keep <= 0 disables
+// pruning. It returns how many entries were removed.
+func (s *Store) PruneWorkspaceHistory(workspaceID string, keep int) (int, error) {
+	if keep <= 0 {
+		return 0, nil
+	}
+	group, gargs := `workspace_id = ?`, []any{workspaceID}
+	if workspaceID == "" {
+		group, gargs = `workspace_id IS NULL`, nil
+	}
 	var cutoffID int64
 	var cutoffAt int64
-	err := s.db.QueryRow(`SELECT id, created_at FROM history ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?`,
-		keep-1).Scan(&cutoffID, &cutoffAt)
+	err := s.db.QueryRow(`SELECT id, created_at FROM history WHERE `+group+ //nolint:gosec // group is a constant fragment
+		` ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET ?`, append(gargs, keep-1)...).Scan(&cutoffID, &cutoffAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	if err != nil {
 		return 0, fmt.Errorf("prune history: %w", err)
 	}
-	cond := `(created_at < ? OR (created_at = ? AND id < ?))`
+	cond := group + ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+	args := append(append([]any{}, gargs...), cutoffAt, cutoffAt, cutoffID)
 	var n int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM history WHERE `+cond, cutoffAt, cutoffAt, cutoffID).Scan(&n); err != nil {
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM history WHERE `+cond, args...).Scan(&n); err != nil { //nolint:gosec // cond is built from constant fragments
 		return 0, fmt.Errorf("prune history: %w", err)
 	}
 	if n == 0 {
 		return 0, nil
 	}
-	return n, s.deleteWhere(cond, cutoffAt, cutoffAt, cutoffID)
+	return n, s.deleteWhere(cond, args...)
 }
 
 func (s *Store) deleteWhere(cond string, args ...any) error {
@@ -317,7 +371,7 @@ func (s *Store) CleanupOrphanBodies() (int, error) {
 }
 
 const summaryCols = `id, created_at, COALESCE(workspace_id, ''), request_id, request_name, method, url,
-	status, duration_ms, size, error_kind, error_message`
+	status, duration_ms, size, error_kind, error_message, environment_name`
 
 // summaryScan scans summaryCols, converting created_at from unix ms.
 type summaryScan struct {
@@ -327,7 +381,7 @@ type summaryScan struct {
 
 func (sc *summaryScan) dest() []any {
 	return []any{&sc.ID, &sc.createdMs, &sc.WorkspaceID, &sc.RequestID, &sc.RequestName, &sc.Method, &sc.URL,
-		&sc.Status, &sc.DurationMs, &sc.Size, &sc.ErrorKind, &sc.ErrorMessage}
+		&sc.Status, &sc.DurationMs, &sc.Size, &sc.ErrorKind, &sc.ErrorMessage, &sc.EnvironmentName}
 }
 
 func (sc *summaryScan) summary() HistorySummary {

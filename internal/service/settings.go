@@ -19,7 +19,8 @@ func (s *SettingsService) Defaults() settings.Settings {
 }
 
 // Set validates, saves and applies new settings, and returns them.
-// Network settings apply to the next send; lowering history retention prunes now.
+// Network settings apply to the next send; lowering history retention prunes
+// every workspace's history now (the limit is per workspace).
 func (s *SettingsService) Set(next settings.Settings) (settings.Settings, error) {
 	if err := next.Validate(); err != nil {
 		return settings.Settings{}, err

@@ -41,7 +41,8 @@ type Settings struct {
 	FollowRedirects bool `json:"followRedirects"`
 	MaxRedirects    int  `json:"maxRedirects"`
 	VerifyTLS       bool `json:"verifyTls"`
-	// HistoryRetention is how many history entries to keep; 0 keeps all.
+	// HistoryRetention is how many history entries to keep per workspace
+	// (entries sent without a workspace count as one more); 0 keeps all.
 	HistoryRetention int    `json:"historyRetention"`
 	Layout           Layout `json:"layout"`
 }

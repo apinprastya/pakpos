@@ -6,6 +6,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
+	"pakpos/internal/secrets"
 	"pakpos/internal/service"
 )
 
@@ -27,7 +28,10 @@ func main() {
 	// the services, so the adapters hold a pointer filled in after New.
 	dialogs := &wailsDialogs{}
 	events := &wailsEvents{}
-	core, err := service.NewCore(service.Config{DataDir: dataDir, Dialogs: dialogs, Events: events})
+	// Secret values go to the OS keychain when it works (probed once), else to
+	// the encrypted file <data>/secrets.enc unlocked with a master password.
+	store := secrets.Select(secrets.NewKeyring(), secrets.NewFileStore(dataDir))
+	core, err := service.NewCore(service.Config{DataDir: dataDir, Dialogs: dialogs, Events: events, Secrets: store})
 	if err != nil {
 		log.Fatalf("start pakpos: %v", err)
 	}
@@ -41,6 +45,7 @@ func main() {
 			application.NewService(service.NewRequestService(core)),
 			application.NewService(service.NewHistoryService(core)),
 			application.NewService(service.NewSettingsService(core)),
+			application.NewService(service.NewEnvService(core)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

@@ -121,13 +121,14 @@ func (s *WorkspaceService) RenameCollection(id, name string) (fsstore.Collection
 	return ws.RenameCollection(id, name)
 }
 
-// DeleteCollection deletes a collection and all its requests.
+// DeleteCollection deletes a collection and all its requests, and the
+// stored values of its secret variables.
 func (s *WorkspaceService) DeleteCollection(id string) error {
-	ws, err := s.c.workspace()
+	_, p, err := s.c.openSession()
 	if err != nil {
 		return err
 	}
-	return ws.DeleteCollection(id)
+	return p.DeleteCollection(id)
 }
 
 // ReorderCollections sets the collection order.
@@ -149,13 +150,14 @@ func (s *WorkspaceService) GetCollection(id string) (fsstore.Collection, error) 
 }
 
 // SaveCollection replaces a collection's auth, headers and variables.
-// Secret variable values are never written to the workspace.
+// Secret variable values are never written to the workspace; the stored
+// values of secrets that were removed or renamed are deleted.
 func (s *WorkspaceService) SaveCollection(id string, settings fsstore.CollectionSettings) (fsstore.Collection, error) {
-	ws, err := s.c.workspace()
+	_, p, err := s.c.openSession()
 	if err != nil {
 		return fsstore.Collection{}, err
 	}
-	return ws.SaveCollection(id, settings)
+	return p.SaveCollection(id, settings)
 }
 
 // CreateFolder adds a folder at the end of a collection or folder.

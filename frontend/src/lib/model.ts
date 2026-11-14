@@ -112,11 +112,19 @@ export type SendErrorKind =
   | "timeout"
   | "canceled"
   | "too_many_redirects"
-  | "network";
+  | "network"
+  /** {{variables}} couldn't be resolved (a loop, or nested too deeply). */
+  | "variables";
 
 export interface SendError {
   kind: SendErrorKind;
   message: string;
+}
+
+/** An environment by id and name. */
+export interface EnvRef {
+  id: string;
+  name: string;
 }
 
 export interface SendResult {
@@ -124,6 +132,12 @@ export interface SendResult {
   error: SendError | null;
   /** 0 when the send was not recorded in history. */
   historyId: number;
+  /** `{{names}}` that had no value; they were sent as written. */
+  unresolved: string[];
+  /** The request uses secrets that couldn't be read because the secret store is locked. */
+  secretsLocked: boolean;
+  /** Environment the request was sent with, or null for none. */
+  environment: EnvRef | null;
 }
 
 /** A saved request in the sidebar tree. */
@@ -195,6 +209,8 @@ export interface HistorySummary {
   size: number;
   errorKind: string;
   errorMessage: string;
+  /** Environment selected when the request was sent ("" for none). */
+  environmentName: string;
 }
 
 export interface HistoryEntry extends HistorySummary {
@@ -202,9 +218,9 @@ export interface HistoryEntry extends HistorySummary {
   response: Response | null;
 }
 
+/** History is per workspace: Go lists the open workspace's entries (or those sent without one). */
 export interface HistoryFilter {
   text: string;
-  workspaceId: string;
   offset: number;
   limit: number;
 }
@@ -333,12 +349,19 @@ export function normalizeResponse(input: unknown): Response {
   };
 }
 
+function normalizeEnvRef(input: Loose<EnvRef> | null | undefined): EnvRef | null {
+  return input ? { id: input.id ?? "", name: input.name ?? "" } : null;
+}
+
 export function normalizeSendResult(input: unknown): SendResult {
   const r = (input ?? {}) as Loose<SendResult>;
   return {
     response: r.response ? normalizeResponse(r.response) : null,
     error: r.error ? { kind: r.error.kind, message: r.error.message } : null,
     historyId: r.historyId ?? 0,
+    unresolved: r.unresolved ?? [],
+    secretsLocked: r.secretsLocked ?? false,
+    environment: normalizeEnvRef(r.environment),
   };
 }
 
@@ -385,6 +408,9 @@ export function historyToResult(entry: HistoryEntry): SendResult {
     response: entry.response,
     error: entry.errorKind ? { kind: entry.errorKind as SendErrorKind, message: entry.errorMessage } : null,
     historyId: entry.id,
+    unresolved: [],
+    secretsLocked: false,
+    environment: entry.environmentName ? { id: "", name: entry.environmentName } : null,
   };
 }
 
@@ -403,8 +429,155 @@ export function normalizeHistoryEntry(input: unknown): HistoryEntry {
     size: e.size ?? 0,
     errorKind: e.errorKind ?? "",
     errorMessage: e.errorMessage ?? "",
+    environmentName: e.environmentName ?? "",
     request: normalizeRequest(e.request),
     response: e.response ? normalizeResponse(e.response) : null,
+  };
+}
+
+/**
+ * True when auth is still what a new request starts with: type none and every
+ * field empty (the API key location at its default). Such a draft switches to
+ * `inherit` when it's saved into a collection or folder; auth the user set is
+ * never changed.
+ */
+export function isUntouchedAuth(a: Auth): boolean {
+  return (
+    a.type === "none" &&
+    !a.username &&
+    !a.password &&
+    !a.token &&
+    !a.prefix &&
+    !a.apiKey &&
+    !a.apiValue &&
+    (a.apiIn === "header" || !a.apiIn)
+  );
+}
+
+/* ---- Environments, variables and secrets (EnvService) ---- */
+
+export type ScopeKind = "global" | "collection" | "environment" | "local";
+
+/** A variable row. Secret values are never sent from Go (value is ""). */
+export interface Variable {
+  key: string;
+  value: string;
+  enabled: boolean;
+  secret: boolean;
+}
+
+export interface Environment {
+  id: string;
+  name: string;
+  seq: number;
+  variables: Variable[];
+}
+
+export interface Globals {
+  id: string;
+  variables: Variable[];
+}
+
+/** A scope that stores variables: the globals (id ignored), a collection or an environment. */
+export interface ScopeRef {
+  kind: ScopeKind;
+  id: string;
+}
+
+/** Which secret variables of a scope have a value on this machine. */
+export interface SecretStatus {
+  set: string[];
+  /** The store is locked, so `set` can't be known. */
+  locked: boolean;
+}
+
+/** The secret store in use. `hasPassword` and `locked` apply to the file store only. */
+export interface SecretsStatus {
+  backend: "keychain" | "file";
+  hasPassword: boolean;
+  locked: boolean;
+}
+
+export interface InheritSource {
+  kind: "collection" | "folder";
+  id: string;
+  name: string;
+}
+
+export interface InheritedHeader {
+  key: string;
+  value: string;
+  source: InheritSource;
+}
+
+/** A variable visible to a request (the winning definition). Secret values are always "". */
+export interface PreviewVariable {
+  key: string;
+  value: string;
+  secret: boolean;
+  scope: ScopeKind;
+  scopeId: string;
+  scopeName: string;
+  /** False for a secret with no value on this machine. */
+  set: boolean;
+}
+
+/** How a request resolves, for the headers tab and variable hover. */
+export interface ResolvePreview {
+  headers: InheritedHeader[];
+  auth: Auth;
+  authSource: InheritSource | null;
+  variables: PreviewVariable[];
+  unresolved: string[];
+  secretsLocked: boolean;
+  environment: EnvRef | null;
+  /** Why variables can't be resolved (a loop), or "". */
+  error: string;
+}
+
+function varList(rows: Loose<Variable>[] | null | undefined): Variable[] {
+  return (rows ?? []).map((r) => ({
+    key: r.key ?? "",
+    value: r.value ?? "",
+    enabled: r.enabled ?? false,
+    secret: r.secret ?? false,
+  }));
+}
+
+export function normalizeVariables(input: unknown): Variable[] {
+  return varList(input as Loose<Variable>[] | null | undefined);
+}
+
+export function normalizeEnvironment(input: unknown): Environment {
+  const e = (input ?? {}) as Omit<Loose<Environment>, "variables"> & { variables?: Loose<Variable>[] | null };
+  return { id: e.id ?? "", name: e.name ?? "", seq: e.seq ?? 0, variables: varList(e.variables) };
+}
+
+export function normalizeGlobals(input: unknown): Globals {
+  const g = (input ?? {}) as { id?: string | null; variables?: Loose<Variable>[] | null };
+  return { id: g.id ?? "", variables: varList(g.variables) };
+}
+
+export function normalizeSecretsStatus(input: unknown): SecretsStatus {
+  const s = (input ?? {}) as Loose<SecretsStatus>;
+  return {
+    backend: s.backend === "file" ? "file" : "keychain",
+    hasPassword: s.hasPassword ?? false,
+    locked: s.locked ?? false,
+  };
+}
+
+export function normalizePreview(input: unknown): ResolvePreview {
+  const p = (input ?? {}) as Omit<Loose<ResolvePreview>, "auth"> & { auth?: Loose<Auth> | null };
+  return {
+    headers: (p.headers ?? []).map((h) => ({ key: h.key, value: h.value, source: { ...h.source } })),
+    auth: normalizeRequest({ auth: p.auth }).auth,
+    authSource: p.authSource ? { ...p.authSource } : null,
+    variables: (p.variables ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
+    unresolved: p.unresolved ?? [],
+    secretsLocked: p.secretsLocked ?? false,
+    environment: normalizeEnvRef(p.environment),
+    error: p.error ?? "",
   };
 }
 

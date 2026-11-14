@@ -96,6 +96,10 @@ const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
     settings: "requests",
   },
   network: { title: "The request failed", hint: "Check your network connection and try again." },
+  variables: {
+    title: "Variables couldn't be resolved",
+    hint: "Nothing was sent. Fix the variables named above, then send again.",
+  },
 };
 
 export function errorCopy(kind: string): ErrorCopy {

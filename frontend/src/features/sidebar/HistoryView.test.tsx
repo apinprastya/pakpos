@@ -7,6 +7,7 @@ import { emptyRequest, type HistorySummary } from "@/lib/model";
 import { activeTab, resetTabs } from "@/test/store";
 import { useHistoryStore } from "@/stores/history";
 import { useLayoutStore } from "@/stores/layout";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 const now = new Date();
 const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
@@ -29,6 +30,7 @@ const entry = (id: number, extra: Partial<HistorySummary> = {}): HistorySummary 
   size: 10,
   errorKind: "",
   errorMessage: "",
+  environmentName: "",
   ...extra,
 });
 
@@ -112,7 +114,7 @@ describe("history view", () => {
     await screen.findByRole("region", { name: "Today" });
     await user.click(screen.getByRole("button", { name: "Clear history" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText(/This deletes 2 entries from every workspace/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/This deletes 2 entries sent without a workspace/)).toBeInTheDocument();
     vi.mocked(api.historyList).mockResolvedValue({ items: [], total: 0 });
     await user.click(within(dialog).getByRole("button", { name: "Clear history" }));
     expect(api.historyClear).toHaveBeenCalled();
@@ -126,5 +128,41 @@ describe("history view", () => {
     vi.mocked(api.historyList).mockResolvedValue({ items: [entry(7)], total: 1 });
     await act(() => useHistoryStore.getState().refresh());
     expect(await screen.findByRole("button", { name: /items\/7,/ })).toBeInTheDocument();
+  });
+
+  it("shows the environment a request was sent with", async () => {
+    vi.mocked(api.historyList).mockResolvedValue({
+      items: [entry(1, { environmentName: "Staging" })],
+      total: 1,
+    });
+    renderHistory();
+    const row = await screen.findByRole("button", { name: /items\/1, 200, 5m ago, Staging/ });
+    expect(within(row).getByText("Staging")).toBeInTheDocument();
+  });
+
+  it("lists the open workspace's history and clears only that", async () => {
+    const user = userEvent.setup();
+    useWorkspaceStore.setState({ workspace: { id: "w1", name: "Shop API", path: "/w1" } });
+    vi.mocked(api.historyList).mockResolvedValue({ items: [entry(1)], total: 1 });
+    renderHistory();
+    await screen.findByRole("region", { name: "Today" });
+    await user.click(screen.getByRole("button", { name: "Clear history" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Clear history of Shop API?")).toBeInTheDocument();
+    expect(within(dialog).getByText(/1 entry sent in this workspace. Other workspaces/)).toBeInTheDocument();
+    vi.mocked(api.historyList).mockResolvedValue({ items: [], total: 0 });
+    await user.click(within(dialog).getByRole("button", { name: "Clear history" }));
+    expect(await screen.findByText(/Every request you send in this workspace/)).toBeInTheDocument();
+  });
+
+  it("reloads when another workspace opens", async () => {
+    vi.mocked(api.historyList).mockResolvedValue({ items: [entry(1)], total: 1 });
+    renderHistory();
+    await screen.findByRole("region", { name: "Today" });
+    const calls = vi.mocked(api.historyList).mock.calls.length;
+    vi.mocked(api.historyList).mockResolvedValue({ items: [entry(2)], total: 1 });
+    act(() => useWorkspaceStore.setState({ workspace: { id: "w2", name: "Other", path: "/w2" } }));
+    await waitFor(() => expect(vi.mocked(api.historyList).mock.calls.length).toBeGreaterThan(calls));
+    expect(await screen.findByRole("button", { name: /items\/2/ })).toBeInTheDocument();
   });
 });

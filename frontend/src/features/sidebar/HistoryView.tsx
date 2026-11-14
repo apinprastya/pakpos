@@ -8,6 +8,7 @@ import { methodShortLabel, methodTextClass } from "@/lib/http";
 import type { HistorySummary } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/stores/history";
+import { useWorkspaceStore } from "@/stores/workspace";
 import { ConfirmDeleteDialog, type DeleteTarget } from "./ConfirmDeleteDialog";
 import { EmptyState } from "./EmptyState";
 import { displayUrl, groupByDay, statusLabel, timeLabel } from "./historyFormat";
@@ -23,10 +24,13 @@ export function HistoryView() {
   const store = useHistoryStore.getState;
   const [input, setInput] = useState(query);
   const [pendingClear, setPendingClear] = useState<DeleteTarget | null>(null);
+  const workspace = useWorkspaceStore((s) => s.workspace);
+  const workspaceId = workspace?.id ?? "";
 
+  // History is per workspace: reload when another one opens or it closes.
   useEffect(() => {
     void store().load();
-  }, [store]);
+  }, [store, workspaceId]);
 
   useEffect(() => {
     if (input === store().query) return;
@@ -40,8 +44,10 @@ export function HistoryView() {
 
   const confirmClear = () =>
     setPendingClear({
-      title: "Clear all history?",
-      description: `This deletes ${plural(total, "entry", "entries")} from every workspace. Saved requests aren't affected.`,
+      title: workspace ? `Clear history of ${workspace.name}?` : "Clear history?",
+      description: workspace
+        ? `This deletes ${plural(total, "entry", "entries")} sent in this workspace. Other workspaces and saved requests aren't affected.`
+        : `This deletes ${plural(total, "entry", "entries")} sent without a workspace. Workspace history and saved requests aren't affected.`,
       confirmLabel: "Clear history",
       onConfirm: () => void store().clear(),
     });
@@ -104,7 +110,11 @@ export function HistoryView() {
             <EmptyState
               icon={<History className="size-6" />}
               title="No requests sent yet"
-              body="Every request you send is listed here, so you can reopen it later."
+              body={
+                workspace
+                  ? "Every request you send in this workspace is listed here, so you can reopen it later."
+                  : "Every request you send is listed here, so you can reopen it later."
+              }
             />
           )
         ) : (
@@ -143,7 +153,7 @@ function HistoryRow({ item, now }: { item: HistorySummary; now: Date }) {
         type="button"
         onClick={() => void store().open(item.id)}
         title={item.url}
-        aria-label={`${item.method} ${item.url}, ${statusLabel(item)}, ${timeLabel(when, now)}`}
+        aria-label={`${item.method} ${item.url}, ${statusLabel(item)}, ${timeLabel(when, now)}${item.environmentName ? `, ${item.environmentName}` : ""}`}
         className="flex w-full flex-col gap-0.5 rounded-md py-1.5 pr-7 pl-2 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
       >
         <span className="flex w-full items-center gap-2">
@@ -167,6 +177,14 @@ function HistoryRow({ item, now }: { item: HistorySummary; now: Date }) {
           <time dateTime={item.createdAt} className="text-muted-foreground">
             {timeLabel(when, now)}
           </time>
+          {item.environmentName && (
+            <span
+              className="min-w-0 truncate text-muted-foreground"
+              title={`Environment: ${item.environmentName}`}
+            >
+              {item.environmentName}
+            </span>
+          )}
         </span>
       </button>
       <button

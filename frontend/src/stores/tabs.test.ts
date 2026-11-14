@@ -1,9 +1,10 @@
 import { emptyRequest, type SendResult } from "@/lib/model";
 import { activeTab, resetTabs } from "@/test/store";
 import { isDirty, tabTitle, useTabsStore } from "./tabs";
+import { makeResult } from "@/test/fixtures";
 
 const s = () => useTabsStore.getState();
-const result: SendResult = { response: null, error: { kind: "dns", message: "x" }, historyId: 0 };
+const result: SendResult = makeResult({ response: null, error: { kind: "dns", message: "x" }, historyId: 0 });
 
 describe("tabs store", () => {
   beforeEach(() => resetTabs());

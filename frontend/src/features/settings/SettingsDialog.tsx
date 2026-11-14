@@ -384,7 +384,7 @@ function HistorySection({
     <section aria-label="History" className="flex flex-col gap-5">
       <NumberField
         label="Requests to keep"
-        hint="Older entries are deleted. 0 keeps everything."
+        hint="Per workspace. Older entries are deleted. 0 keeps everything."
         suffix="entries"
         value={draft.historyRetention}
         onChange={(v) => update({ historyRetention: v })}
@@ -392,7 +392,8 @@ function HistorySection({
       />
       {!errors.historyRetention && lowersRetention(draft, saved) && (
         <p role="note" className="text-xs text-muted-foreground">
-          Saving deletes everything older than the newest {draft.historyRetention.trim()} entries.
+          Saving deletes everything older than the newest {draft.historyRetention.trim()} entries in each
+          workspace.
         </p>
       )}
     </section>

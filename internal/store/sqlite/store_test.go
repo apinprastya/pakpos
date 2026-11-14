@@ -25,7 +25,7 @@ func TestOpenMigratesOnceAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.SchemaVersion(); err != nil || v != 1 {
+	if v, err := s.SchemaVersion(); err != nil || v != 2 {
 		t.Fatalf("version = %d, %v", v, err)
 	}
 	if s.DataDir() != dir {
@@ -66,14 +66,15 @@ func TestOpenErrors(t *testing.T) {
 func TestMigrations(t *testing.T) {
 	s := openTest(t)
 	good := fstest.MapFS{
-		"migrations/0001_init.sql": {Data: []byte("SELECT 1")},
-		"migrations/0002_more.sql": {Data: []byte("CREATE TABLE extra (x INTEGER)")},
-		"migrations/README.md":     {Data: []byte("ignored")},
+		"migrations/0001_init.sql":  {Data: []byte("SELECT 1")},
+		"migrations/0002_state.sql": {Data: []byte("SELECT 1")},
+		"migrations/0003_more.sql":  {Data: []byte("CREATE TABLE extra (x INTEGER)")},
+		"migrations/README.md":      {Data: []byte("ignored")},
 	}
 	if err := s.migrate(good); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := s.SchemaVersion(); v != 2 {
+	if v, _ := s.SchemaVersion(); v != 3 {
 		t.Fatalf("version = %d", v)
 	}
 	if err := s.migrate(good); err != nil { // idempotent
@@ -83,7 +84,7 @@ func TestMigrations(t *testing.T) {
 	cases := map[string]fstest.MapFS{
 		"bad name": {"migrations/abc.sql": {Data: []byte("SELECT 1")}},
 		"zero":     {"migrations/0000_x.sql": {Data: []byte("SELECT 1")}},
-		"bad sql":  {"migrations/0003_bad.sql": {Data: []byte("CREATE TABLE")}},
+		"bad sql":  {"migrations/0004_bad.sql": {Data: []byte("CREATE TABLE")}},
 		"no dir":   {},
 	}
 	for name, fsys := range cases {
@@ -93,7 +94,7 @@ func TestMigrations(t *testing.T) {
 			}
 		})
 	}
-	if v, _ := s.SchemaVersion(); v != 2 {
+	if v, _ := s.SchemaVersion(); v != 3 {
 		t.Fatalf("failed migration must not bump version, got %d", v)
 	}
 }

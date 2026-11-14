@@ -14,6 +14,7 @@ import (
 
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/model"
+	"pakpos/internal/pipeline"
 	"pakpos/internal/store/sqlite"
 )
 
@@ -24,6 +25,14 @@ type SendResult struct {
 	Response  *model.Response `json:"response"`
 	Error     *httpexec.Error `json:"error"`
 	HistoryID int64           `json:"historyId"`
+	// Unresolved lists the {{names}} that had no value; they were sent as
+	// written. Never nil.
+	Unresolved []string `json:"unresolved"`
+	// SecretsLocked is true when the request uses secret variables that
+	// couldn't be read because the secret store is locked.
+	SecretsLocked bool `json:"secretsLocked"`
+	// Environment is the environment the request was sent with, or nil.
+	Environment *pipeline.EnvRef `json:"environment"`
 }
 
 // RequestService saves requests in the workspace and sends them.
@@ -113,9 +122,16 @@ func (s *RequestService) Reorder(parentID string, ids []string) error {
 }
 
 // Send sends req and records it in history. sendID identifies the send for
-// Cancel and must be unique among running sends. Send failures (DNS,
-// timeout…) are returned in SendResult.Error, not as a Go error.
-func (s *RequestService) Send(ctx context.Context, sendID string, req model.Request) (SendResult, error) {
+// Cancel and must be unique among running sends. parentID is the collection
+// or folder an unsaved draft belongs to ("" for none); a saved request
+// inherits from its parent on disk. Send failures (DNS, timeout, a variable
+// cycle…) are returned in SendResult.Error, not as a Go error.
+//
+// The pipeline: inherit auth and headers, build the variable scopes (globals,
+// collection, selected environment, local) with secrets, resolve, send.
+// History stores req as written (variables unresolved) with the environment
+// name, so secret values never reach the database.
+func (s *RequestService) Send(ctx context.Context, sendID string, req model.Request, parentID string) (SendResult, error) {
 	if strings.TrimSpace(sendID) == "" {
 		return SendResult{}, errors.New("send id is required")
 	}
@@ -129,33 +145,54 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 	// Record against the workspace open when the send started, even if the
 	// user switches workspace while it runs.
 	wsID := ""
+	started := s.now()
+	var prepared pipeline.Prepared
+	var perr error
 	if ws, err := s.c.workspace(); err == nil {
 		wsID = ws.Manifest().ID
+		prepared, perr = s.c.session(ws).Prepare(req, parentID, s.c.selectedEnvironment(wsID))
+	} else {
+		prepared, perr = pipeline.PrepareWithoutWorkspace(req)
 	}
-	started := s.now()
-	resp, err := s.c.executor().Execute(ctx, "", req)
+	result := SendResult{Unresolved: prepared.Unresolved, SecretsLocked: prepared.SecretsLocked, Environment: prepared.Environment}
+	if result.Unresolved == nil {
+		result.Unresolved = []string{}
+	}
+	envName := ""
+	if prepared.Environment != nil {
+		envName = prepared.Environment.Name
+	}
+	if perr != nil {
+		result.Error = &httpexec.Error{Kind: httpexec.KindVariables, Message: pipeline.VariableMessage(perr), Err: perr}
+		result.HistoryID = s.record(wsID, envName, req, nil, result.Error, started)
+		return result, nil
+	}
+
+	resp, err := s.c.executor().Execute(ctx, "", prepared.Request)
 	sendErr := httpexec.Classify(err)
-	result := SendResult{Response: resp, Error: sendErr}
+	result.Response, result.Error = resp, sendErr
 	if sendErr != nil && sendErr.Kind == httpexec.KindCanceled {
 		return result, nil
 	}
 
-	result.HistoryID = s.record(wsID, req, resp, sendErr, started)
+	result.HistoryID = s.record(wsID, envName, req, resp, sendErr, started)
 	return result, nil
 }
 
-func (s *RequestService) record(wsID string, req model.Request, resp *model.Response, sendErr *httpexec.Error, started time.Time) int64 {
+// record stores the request as written (never the resolved copy).
+func (s *RequestService) record(wsID, envName string, req model.Request, resp *model.Response, sendErr *httpexec.Error, started time.Time) int64 {
 	method := strings.ToUpper(strings.TrimSpace(req.Method))
 	if method == "" {
 		method = "GET"
 	}
 	e := sqlite.HistoryEntry{
 		HistorySummary: sqlite.HistorySummary{
-			CreatedAt:   started,
-			RequestID:   req.ID,
-			RequestName: req.Name,
-			Method:      method,
-			URL:         req.URL,
+			CreatedAt:       started,
+			RequestID:       req.ID,
+			RequestName:     req.Name,
+			Method:          method,
+			URL:             req.URL,
+			EnvironmentName: envName,
 		},
 		Request:  req,
 		Response: resp,
@@ -173,7 +210,8 @@ func (s *RequestService) record(wsID string, req model.Request, resp *model.Resp
 		return 0
 	}
 	if keep := s.c.currentSettings().HistoryRetention; keep > 0 {
-		if _, err := s.c.db.PruneHistory(keep); err != nil {
+		// Retention is per workspace: only this send's group is trimmed.
+		if _, err := s.c.db.PruneWorkspaceHistory(wsID, keep); err != nil {
 			s.c.log.Warn("prune history", "err", err)
 		}
 	}

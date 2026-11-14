@@ -1,6 +1,6 @@
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { compactRequest, type SendResult } from "@/lib/model";
+import { compactRequest, isUntouchedAuth, type Request, type SendResult } from "@/lib/model";
 import { useHistoryStore } from "@/stores/history";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -24,9 +24,16 @@ export async function sendTab(tabId: string): Promise<void> {
   store.setSending(tabId, sendId);
   let result: SendResult;
   try {
-    result = await api.send(sendId, compactRequest(tab.request));
+    result = await api.send(sendId, compactRequest(tab.request), tab.parentId);
   } catch (e) {
-    result = { response: null, error: { kind: "network", message: errorMessage(e) }, historyId: 0 };
+    result = {
+      response: null,
+      error: { kind: "network", message: errorMessage(e) },
+      historyId: 0,
+      unresolved: [],
+      secretsLocked: false,
+      environment: null,
+    };
   }
   // Ignore results for tabs that were closed or re-sent meanwhile.
   const current = useTabsStore.getState().tabs.find((t) => t.id === tabId);
@@ -69,12 +76,22 @@ export async function saveTab(tabId: string, closeAfter = false): Promise<boolea
   }
 }
 
+/**
+ * What a draft becomes when it's saved into a collection or folder: auth the
+ * user never touched switches to `inherit`, so the request picks up the
+ * collection's or folder's auth. Auth the user set is kept.
+ */
+export function prepareForCollection(req: Request): Request {
+  return isUntouchedAuth(req.auth) ? { ...req, auth: { ...req.auth, type: "inherit" } } : req;
+}
+
 /** Saves a new request into a collection or folder (used by the Save dialog). */
 export async function saveTabAs(tabId: string, parentId: string, name: string): Promise<boolean> {
   const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId);
   if (!tab) return false;
   try {
-    const saved = await api.saveAs(parentId, name, compactRequest({ ...tab.request, name }));
+    const req = prepareForCollection(compactRequest({ ...tab.request, name }));
+    const saved = await api.saveAs(parentId, name, req);
     const workspaceId = useWorkspaceStore.getState().workspace?.id ?? "";
     useTabsStore.getState().markSaved(tabId, saved, parentId, workspaceId);
     toast.success("Request saved");
