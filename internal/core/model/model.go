@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/oklog/ulid/v2"
+	"gopkg.in/yaml.v3"
 )
 
 // NewID returns a new ULID string. ULIDs are sortable by creation time and
@@ -21,6 +22,49 @@ type KeyValue struct {
 	Key     string `json:"key" yaml:"key"`
 	Value   string `json:"value" yaml:"value"`
 	Enabled bool   `json:"enabled" yaml:"enabled"`
+}
+
+// Variable is one row of a variable table (global, collection or environment
+// scope). When Secret is true the value lives in the secret store, never in
+// the workspace file: Value is omitted from YAML (and cleared when a file is
+// read). JSON keeps Value so services can hand a resolved secret to the UI.
+type Variable struct {
+	Key     string `json:"key" yaml:"key"`
+	Value   string `json:"value" yaml:"value"`
+	Enabled bool   `json:"enabled" yaml:"enabled"`
+	Secret  bool   `json:"secret" yaml:"secret,omitempty"`
+}
+
+// variableYAML is Variable's on-disk shape: value is dropped for secrets.
+type variableYAML struct {
+	Key     string `yaml:"key"`
+	Value   string `yaml:"value,omitempty"`
+	Enabled bool   `yaml:"enabled"`
+	Secret  bool   `yaml:"secret,omitempty"`
+}
+
+// MarshalYAML writes the row without its value when it is a secret.
+func (v Variable) MarshalYAML() (any, error) {
+	out := variableYAML(v)
+	if v.Secret {
+		out.Value = ""
+	}
+	return out, nil
+}
+
+// UnmarshalYAML reads a row. A value found next to secret: true (e.g. a
+// hand-edited file) is dropped, so a secret's value only ever comes from the
+// secret store.
+func (v *Variable) UnmarshalYAML(node *yaml.Node) error {
+	var in variableYAML
+	if err := node.Decode(&in); err != nil {
+		return err
+	}
+	*v = Variable(in)
+	if v.Secret {
+		v.Value = ""
+	}
+	return nil
 }
 
 // Request is a saved or in-progress HTTP request.
@@ -99,8 +143,10 @@ type AuthType string
 
 const (
 	AuthNone AuthType = "none"
-	// AuthInherit takes auth from the parent folder/collection (Tier 2).
-	// Until inheritance is resolved upstream it behaves like AuthNone.
+	// AuthInherit takes auth from the enclosing folder(s) and collection:
+	// inherit.Effective walks up from the request and uses the first scope
+	// whose type is not inherit, or AuthNone when there is none. Code that
+	// sees it unresolved (e.g. auth.Apply) treats it like AuthNone.
 	AuthInherit AuthType = "inherit"
 	AuthBasic   AuthType = "basic"
 	AuthBearer  AuthType = "bearer"

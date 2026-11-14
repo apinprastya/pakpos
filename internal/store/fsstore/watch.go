@@ -11,7 +11,7 @@ import (
 )
 
 // Watcher reloads the workspace when files change outside the app (git pull,
-// editor) and notifies a callback, debounced. Changes made through the
+// editor) in collections/, environments/ or the manifest, and notifies a callback, debounced. Changes made through the
 // Workspace itself are ignored.
 type Watcher struct {
 	ws       *Workspace
@@ -75,10 +75,11 @@ func (wt *Watcher) add(dir string) {
 	_ = wt.fsw.Add(dir) // directories that vanish or can't be watched are skipped
 }
 
-// resync (re-)adds watches for the collections dir and every collection
-// folder. fsnotify drops a folder's watch when the folder is renamed, so this
+// resync (re-)adds watches for the environments dir, the collections dir
+// and every collection folder. fsnotify drops a folder's watch when the folder is renamed, so this
 // runs after renames/removals. Adding an already-watched path is a no-op.
 func (wt *Watcher) resync() {
+	wt.add(filepath.Join(wt.ws.root, EnvironmentsDir))
 	colRoot := filepath.Join(wt.ws.root, CollectionsDir)
 	wt.add(colRoot)
 	entries, err := os.ReadDir(colRoot)
@@ -113,8 +114,9 @@ func (wt *Watcher) loop() {
 // the adder field docs); watch changes are queued instead.
 func (wt *Watcher) handle(ev fsnotify.Event) {
 	colRoot := filepath.Join(wt.ws.root, CollectionsDir)
+	envDir := filepath.Join(wt.ws.root, EnvironmentsDir)
 	switch {
-	case ev.Name == colRoot && (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
+	case (ev.Name == colRoot || ev.Name == envDir) && (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
 		wt.queueResync()
 	case wt.watchable(ev.Name) && (ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
 		wt.queueResync()
@@ -202,7 +204,7 @@ func (wt *Watcher) relevant(path string) bool {
 		return false
 	}
 	first := strings.Split(filepath.ToSlash(rel), "/")[0]
-	return first == CollectionsDir || rel == ManifestFile
+	return first == CollectionsDir || first == EnvironmentsDir || rel == ManifestFile
 }
 
 func (wt *Watcher) schedule() {
