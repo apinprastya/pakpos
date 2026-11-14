@@ -369,9 +369,11 @@ func (w *Workspace) RenameFolder(id, name string) (Folder, error) {
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
 		w.unwatchDir(oldPath)
-		if err := os.Rename(oldPath, newPath); err != nil {
+		rerr := os.Rename(oldPath, newPath)
+		w.resumeDir(oldPath)
+		if rerr != nil {
 			w.watchDir(oldPath)
-			return Folder{}, fmt.Errorf("rename folder %q: %w", f.meta.Name, err)
+			return Folder{}, fmt.Errorf("rename folder %q: %w", f.meta.Name, rerr)
 		}
 		f.dir = newDir
 		w.watchDir(newPath)
@@ -425,9 +427,11 @@ func (w *Workspace) DeleteFolder(id string) error {
 	}
 	w.markTree(dir)
 	w.unwatchDir(dir)
-	if err := os.RemoveAll(dir); err != nil {
+	rerr := os.RemoveAll(dir)
+	w.resumeDir(dir)
+	if rerr != nil {
 		w.watchDir(dir)
-		return fmt.Errorf("delete folder %q: %w", f.meta.Name, err)
+		return fmt.Errorf("delete folder %q: %w", f.meta.Name, rerr)
 	}
 	w.dropSubtreeLocked(id)
 	return nil
@@ -608,9 +612,11 @@ func (w *Workspace) MoveFolder(id, toParentID string, index int) (Folder, error)
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
 		w.unwatchDir(oldPath)
-		if err := os.Rename(oldPath, newPath); err != nil {
+		rerr := os.Rename(oldPath, newPath)
+		w.resumeDir(oldPath)
+		if rerr != nil {
 			w.watchDir(oldPath)
-			return Folder{}, fmt.Errorf("move folder %q: %w", f.meta.Name, err)
+			return Folder{}, fmt.Errorf("move folder %q: %w", f.meta.Name, rerr)
 		}
 		from := f.parentID
 		f.parentID, f.dir = toParentID, newDir

@@ -85,11 +85,37 @@ func (w *Workspace) watchDir(dir string) {
 // the app releases the watches before renaming or moving a folder and
 // re-adds them afterwards with watchDir.
 func (w *Workspace) unwatchDir(dir string) {
+	// Suspend first: a queued add from the watcher's event loop must not
+	// re-open the directory between here and the rename.
+	w.suspMu.Lock()
+	if w.suspended == nil {
+		w.suspended = map[string]struct{}{}
+	}
+	w.suspended[dir] = struct{}{}
+	w.suspMu.Unlock()
 	w.watchersMu.Lock()
 	defer w.watchersMu.Unlock()
 	for wt := range w.watchers {
 		wt.removeTree(dir)
 	}
+}
+
+// resumeDir lifts the suspension set by unwatchDir.
+func (w *Workspace) resumeDir(dir string) {
+	w.suspMu.Lock()
+	delete(w.suspended, dir)
+	w.suspMu.Unlock()
+}
+
+func (w *Workspace) isSuspended(path string) bool {
+	w.suspMu.Lock()
+	defer w.suspMu.Unlock()
+	for d := range w.suspended {
+		if path == d || strings.HasPrefix(path, d+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (wt *Watcher) removeTree(dir string) {
@@ -103,6 +129,9 @@ func (wt *Watcher) removeTree(dir string) {
 }
 
 func (wt *Watcher) add(dir string) {
+	if wt.ws.isSuspended(dir) {
+		return
+	}
 	_ = wt.fsw.Add(dir) // directories that vanish or can't be watched are skipped
 }
 

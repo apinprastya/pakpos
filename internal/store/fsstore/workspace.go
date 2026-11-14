@@ -134,6 +134,11 @@ type Workspace struct {
 
 	watchersMu sync.Mutex
 	watchers   map[*Watcher]struct{}
+
+	// Directories about to be renamed or deleted; no watch is added below
+	// them until resumeDir (see unwatchDir).
+	suspMu    sync.Mutex
+	suspended map[string]struct{}
 }
 
 // Create initialises a new workspace in root (created if missing).
@@ -456,8 +461,11 @@ func (w *Workspace) RenameCollection(id, name string) (Collection, error) {
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
 		w.unwatchDir(oldPath)
-		if err := os.Rename(oldPath, newPath); err != nil {
+		rerr := os.Rename(oldPath, newPath)
+		w.resumeDir(oldPath)
+		if rerr != nil {
 			w.watchDir(oldPath)
+			err := rerr
 			return Collection{}, fmt.Errorf("rename collection folder: %w", err)
 		}
 		c.dir = newDir
@@ -522,9 +530,11 @@ func (w *Workspace) DeleteCollection(id string) error {
 	dirPath := filepath.Join(w.root, CollectionsDir, c.dir)
 	w.markTree(dirPath)
 	w.unwatchDir(dirPath)
-	if err := os.RemoveAll(dirPath); err != nil {
+	rerr := os.RemoveAll(dirPath)
+	w.resumeDir(dirPath)
+	if rerr != nil {
 		w.watchDir(dirPath)
-		return fmt.Errorf("delete collection: %w", err)
+		return fmt.Errorf("delete collection: %w", rerr)
 	}
 	w.dropSubtreeLocked(id)
 	delete(w.collections, id)

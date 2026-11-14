@@ -3,6 +3,7 @@ package fsstore
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,6 +71,12 @@ func TestWatcherNestedExternalChanges(t *testing.T) {
 	waitFor(t, requestLoaded(ws, "R2"))
 
 	// Rename the middle folder: watches follow, so later writes inside are seen.
+	if runtime.GOOS == "windows" {
+		// Windows refuses to rename a directory tree that is being watched,
+		// so release it first (what an editor would not be able to do).
+		ws.unwatchDir(filepath.Join(colDir, "a"))
+		defer ws.resumeDir(filepath.Join(colDir, "a"))
+	}
 	if err := os.Rename(filepath.Join(colDir, "a"), filepath.Join(colDir, "renamed")); err != nil {
 		t.Fatal(err)
 	}
