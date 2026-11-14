@@ -287,7 +287,13 @@ func TestEnvironmentLoadProblems(t *testing.T) {
 func TestEnvironmentsDirUnreadable(t *testing.T) {
 	ws := newWS(t)
 	// environments is a file: reported as a problem, and writes fail cleanly.
-	_ = os.WriteFile(filepath.Join(ws.Root(), EnvironmentsDir), []byte("x"), 0o644)
+	envDir := filepath.Join(ws.Root(), EnvironmentsDir)
+	if err := os.RemoveAll(envDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envDir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	problems := ws.Reload()
 	if len(problems) != 1 || problems[0].Path != EnvironmentsDir {
 		t.Fatalf("problems = %+v", problems)
