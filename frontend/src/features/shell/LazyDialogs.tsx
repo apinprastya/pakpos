@@ -1,21 +1,16 @@
-import { lazy, Suspense, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { usePaletteStore } from "@/stores/palette";
 import { useSettingsStore } from "@/stores/settings";
+import { loadCode, loadImportCurl, loadPalette, loadSettings, schedulePreload } from "./dialogChunks";
 
 // Rarely opened dialogs are separate chunks, loaded the first time they open,
 // so they (and cmdk, the settings form, the code generator UI) stay out of the
 // startup bundle.
-const SettingsDialog = lazy(() =>
-  import("@/features/settings/SettingsDialog").then((m) => ({ default: m.SettingsDialog })),
-);
-const ImportCurlDialog = lazy(() =>
-  import("@/features/code/ImportCurlDialog").then((m) => ({ default: m.ImportCurlDialog })),
-);
-const CodeDialog = lazy(() => import("@/features/code/CodeDialog").then((m) => ({ default: m.CodeDialog })));
-const CommandPalette = lazy(() =>
-  import("@/features/palette/CommandPalette").then((m) => ({ default: m.CommandPalette })),
-);
+const SettingsDialog = lazy(() => loadSettings().then((m) => ({ default: m.SettingsDialog })));
+const ImportCurlDialog = lazy(() => loadImportCurl().then((m) => ({ default: m.ImportCurlDialog })));
+const CodeDialog = lazy(() => loadCode().then((m) => ({ default: m.CodeDialog })));
+const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
 
 /**
  * Mounts `children` from the first time `open` is true and keeps them mounted
@@ -32,6 +27,8 @@ export function LazyDialogs() {
   const importCurl = useCodeDialogsStore((s) => s.importOpen);
   const code = useCodeDialogsStore((s) => !!s.codeTabId);
   const palette = usePaletteStore((s) => s.open);
+  // Not under Vitest: tests mount the shell many times and open dialogs explicitly.
+  useEffect(() => (import.meta.env.MODE === "test" ? undefined : schedulePreload()), []);
   return (
     <>
       <MountWhenOpened open={settings}>
