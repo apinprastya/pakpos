@@ -424,7 +424,9 @@ func (w *Workspace) DeleteFolder(id string) error {
 		return err
 	}
 	w.markTree(dir)
+	w.unwatchDir(dir)
 	if err := os.RemoveAll(dir); err != nil {
+		w.watchDir(dir)
 		return fmt.Errorf("delete folder %q: %w", f.meta.Name, err)
 	}
 	w.dropSubtreeLocked(id)
