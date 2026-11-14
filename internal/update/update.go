@@ -29,7 +29,7 @@ import (
 // signed with. Generate the pair with `go -C tools run ./updatesign keygen`
 // (see README "Releasing"); the private key is the UPDATE_SIGNING_KEY
 // secret. Empty disables installing (checking still works).
-var PublicKey = ""
+var PublicKey = "ZlXaiGnDaPoaXNZkhVYRPPYjZoIjDCYB3halfT/n6Zs="
 
 // Repo is the GitHub repository releases are published to.
 const Repo = "apinprastya/pakpos"
