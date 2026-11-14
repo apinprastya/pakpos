@@ -47,6 +47,7 @@ internal/
   service/               Wails-bound services (thin) + Core (shared state: db, workspace, executor, secrets)
   buildinfo/             Version info (set via -ldflags)
   update/                in-app updater: GitHub Releases, signed SHA256SUMS, install per OS; no Wails
+  windowstate/           remembers window size/position/maximised (Tracker); main.go wires the Wails window; no Wails
   core/                  pure Go, no I/O beyond HTTP:
     model, urlx, auth, httpexec, settings
     vars/                {{variable}} scopes, nesting, dynamic variables
@@ -99,6 +100,7 @@ docs/                    architecture and plans
   - `EnvService.RevealSecret` and `MakeVariablePlain` are the only ways a value leaves the store; everything else returns a `set` flag.
   - New master passwords go through `secrets.CheckNewPassword` (8 characters); user-facing store errors through `secrets.Explain`.
   - Real-keychain tests run only with `PAKPOS_TEST_KEYRING=1`. Services take `Config.Secrets`; tests use `newHarness` (`secrets.Fake`) or `newHarnessWith` (e.g. a real `FileStore` in a temp dir).
+- **Window and UI state:** the window's normal bounds plus maximised/fullscreen live in the settings table under `windowstate.Key` (saved 500 ms after changes settle and on close; never restored minimised; the position is applied on first show only if still on a screen, and Wayland ignores it). App-wide UI state (panel layouts, column splits) is the `ui_state` table via `UIStateService` (JSON values, validated).
 - History is per workspace (list, clear and retention). The selected environment lives in SQLite `workspace_state`, never in the workspace.
 - **httpexec** sets `Accept-Encoding: gzip, deflate, br` (`httpexec.AcceptEncoding`) unless the user set one, and decodes the body itself (`decodedBody`); a body that doesn't match its coding is `KindDecode`. Keep `features/request/autoHeaders.ts` in step with the headers `Build` adds (`model.Body.DefaultContentType` is shared with codegen).
 - **Codegen:** golden files per language (`go test ./internal/core/codegen -update` regenerates them); `PAKPOS_CODEGEN_SYNTAX=1` compiles every case with real toolchains (CI runs it on Linux). Secrets stay `{{name}}` (`vars.KeepSecrets`) unless revealed; revealed code lives only in the code dialog's state. Shared helpers: `auth.Materialize`, `urlx.SendURL`, `curl.SuggestName`.
@@ -136,6 +138,7 @@ docs/                    architecture and plans
 - Component state goes in Zustand stores (`src/stores`). Persist only UI preferences to `localStorage`. Real data comes from Go services.
   - `stores/tabs.ts` is the exception: it keeps open tabs and drafts in localStorage as a convenience (never results). Storage access is wrapped so it never throws.
 - **Tabs:** request tabs have `parentId` (collection or folder) and `workspaceId`. `Tab.doc` is set for non-request tabs (environment, globals, collection or folder settings): check `tab.doc` before using request fields; `saveTab` routes doc tabs to `saveDocTab`.
+- **Remembered UI state** (`stores/uiState.ts`, Go-backed, loaded in `main.tsx` before the first render, writes debounced per key): resizable panel groups spread `usePanelLayout(id)`; tables with a key/value split use `useColumnSplit(table, default)` (CSS vars `--col-a`/`--col-b` in the grid template so memo rows don't re-render), mark the two header cells with `SPLIT_A`/`SPLIT_B` and put a `<ColumnResizer>` in the first. Key/value tables share the `keyValue` split.
 - **Stores** (besides tabs, workspace, history, settings): `update.ts` (update check/install; the skipped version is a localStorage preference), `environments.ts` (bumps `version` on every change so previews re-resolve), `secrets.ts` (call `ensureReady()` before any secret-store call; it opens the set-password or unlock dialog), `tree.ts` (expand state; use `revealInTree`, never focus rows directly), `examples.ts` (+ `useExamplesSync`, reloaded after every tree reload), `palette.ts`, `codeDialogs.ts`.
 - **Palette commands** go in `features/palette/actions.ts` (id, label, group, shortcut, `enabled(ctx)`, `run(ctx)`). `useShortcuts` listens in the capture phase and ignores everything but Mod+K while the palette is open. Taken shortcuts: Mod+K, Mod+I (variable info), Mod+Shift+C (generate code), Mod+Enter, Mod+S, Mod+T, Mod+W, Mod+,.
 - **`src/lib/api.ts` is the only module that imports `frontend/bindings`.** It converts the binding types into `src/lib/model.ts` types: string unions instead of TS enums, and non-null arrays. Add new service calls there and mock them in `src/test/apiMock.ts`.

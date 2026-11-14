@@ -3,12 +3,16 @@ package main
 import (
 	"embed"
 	"log"
+	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"pakpos/internal/secrets"
 	"pakpos/internal/service"
 	"pakpos/internal/update"
+	"pakpos/internal/windowstate"
 )
 
 //go:embed all:frontend/dist
@@ -49,6 +53,11 @@ func main() {
 		App:     control,
 	})
 
+	// The window opens with the size and state it had when it was last closed.
+	windowLimits := windowstate.Limits{MinWidth: 900, MinHeight: 560, DefaultWidth: 1280, DefaultHeight: 800}
+	savedWindow := windowstate.Load(core.WindowStateStore(), windowLimits)
+	windowTracker := windowstate.NewTracker(core.WindowStateStore(), savedWindow, 500*time.Millisecond, nil)
+
 	app := application.New(application.Options{
 		Name:        "Pakpos",
 		Description: "Desktop REST API client",
@@ -60,6 +69,7 @@ func main() {
 			application.NewService(service.NewSettingsService(core)),
 			application.NewService(service.NewEnvService(core)),
 			application.NewService(service.NewExampleService(core)),
+			application.NewService(service.NewUIStateService(core)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{
@@ -69,6 +79,10 @@ func main() {
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
 		OnShutdown: func() {
+			// Normally saved on close already; this covers quitting without one.
+			if err := windowTracker.Flush(); err != nil {
+				log.Printf("save window state: %v", err)
+			}
 			if err := core.Close(); err != nil {
 				log.Printf("close: %v", err)
 			}
@@ -76,18 +90,76 @@ func main() {
 	})
 	dialogs.app, events.app, control.app = app, app, app
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Pakpos",
-		Width:     1280,
-		Height:    800,
-		MinWidth:  900,
-		MinHeight: 560,
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Title:      "Pakpos",
+		Width:      savedWindow.Width,
+		Height:     savedWindow.Height,
+		MinWidth:   windowLimits.MinWidth,
+		MinHeight:  windowLimits.MinHeight,
+		StartState: startState(savedWindow),
 		// Matches the light theme background to avoid a flash before the UI paints.
 		BackgroundColour: application.NewRGB(247, 248, 250),
 		URL:              "/",
 	})
+	trackWindow(app, window, windowTracker, savedWindow)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// startState is the window state to open in. The app never starts minimised.
+func startState(s windowstate.State) application.WindowState {
+	switch {
+	case s.Fullscreen:
+		return application.WindowStateFullscreen
+	case s.Maximised:
+		return application.WindowStateMaximised
+	default:
+		return application.WindowStateNormal
+	}
+}
+
+// trackWindow saves the window's state as it changes and on close, and moves
+// it to its saved position once it is shown (if that position is still on a
+// screen). Window positions are absolute, which every platform's
+// SetPosition/Position agree on; WindowXY start options do not. Wayland
+// ignores positions, so there only the size and state are restored.
+func trackWindow(app *application.App, win *application.WebviewWindow, t *windowstate.Tracker, saved windowstate.State) {
+	t.Attach(win)
+	for _, e := range []events.WindowEventType{
+		events.Common.WindowDidMove, events.Common.WindowDidResize,
+		events.Common.WindowMaximise, events.Common.WindowUnMaximise,
+		events.Common.WindowFullscreen, events.Common.WindowUnFullscreen,
+		events.Common.WindowRestore,
+	} {
+		win.OnWindowEvent(e, func(*application.WindowEvent) { t.Changed() })
+	}
+	// A hook runs before the window is destroyed, so it can still be read.
+	win.RegisterHook(events.Common.WindowClosing, func(*application.WindowEvent) {
+		if err := t.Flush(); err != nil {
+			log.Printf("save window state: %v", err)
+		}
+	})
+
+	var placed sync.Once
+	win.OnWindowEvent(events.Common.WindowShow, func(*application.WindowEvent) {
+		placed.Do(func() {
+			if saved.Maximised || saved.Fullscreen {
+				return
+			}
+			var screens []windowstate.Rect
+			for _, sc := range app.Screen.GetAll() {
+				screens = append(screens, windowstate.Rect{X: sc.WorkArea.X, Y: sc.WorkArea.Y,
+					Width: sc.WorkArea.Width, Height: sc.WorkArea.Height})
+			}
+			fit := saved.FitTo(screens)
+			if fit.Width != saved.Width || fit.Height != saved.Height {
+				win.SetSize(fit.Width, fit.Height)
+			}
+			if fit.OnScreen(screens) {
+				win.SetPosition(fit.X, fit.Y)
+			}
+		})
+	})
 }

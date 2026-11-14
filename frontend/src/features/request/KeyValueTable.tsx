@@ -5,6 +5,8 @@ import { VarInput } from "@/components/editor/VarInput";
 import { parsePastedPairs } from "@/lib/pairs";
 import type { KeyValue } from "@/lib/model";
 import { cn } from "@/lib/utils";
+import { SPLIT_A, SPLIT_B, useColumnSplit } from "@/hooks/useColumnSplit";
+import { ColumnResizer } from "@/components/table/ColumnResizer";
 
 export interface KeyValueTableProps {
   rows: KeyValue[];
@@ -15,6 +17,8 @@ export interface KeyValueTableProps {
   valuePlaceholder?: string;
   /** Keys are fixed (e.g. path params): no adding, deleting or key editing. */
   fixedKeys?: boolean;
+  /** Which remembered column widths to use; key/value tables share one by default. */
+  columns?: string;
 }
 
 const BLANK: KeyValue = { key: "", value: "", enabled: true };
@@ -25,7 +29,8 @@ const inputClass =
 /** Value cells: static text with highlighted {{variables}}, an editor while focused. */
 export const varCellClass = "h-7 w-full min-w-0 rounded-sm px-2 text-[12.5px]";
 
-const GRID = "grid grid-cols-[28px_minmax(0,2fr)_minmax(0,3fr)_28px] items-center";
+// --col-a/--col-b come from useColumnSplit on the table, so resizing doesn't re-render rows.
+const GRID = "grid grid-cols-[28px_minmax(0,var(--col-a,2fr))_minmax(0,var(--col-b,3fr))_28px] items-center";
 
 interface RowHandlers {
   update: (index: number, patch: Partial<KeyValue>) => void;
@@ -48,7 +53,9 @@ export function KeyValueTable({
   keyPlaceholder = "Key",
   valuePlaceholder = "Value",
   fixedKeys = false,
+  columns = "keyValue",
 }: KeyValueTableProps) {
+  const split = useColumnSplit(columns, 0.4);
   const tableRef = useRef<HTMLDivElement>(null);
   const display = fixedKeys ? rows : [...rows, BLANK];
   const latest = useRef({ rows, onChange });
@@ -90,16 +97,17 @@ export function KeyValueTable({
   );
 
   return (
-    <div ref={tableRef} role="table" aria-label={label} className="text-sm">
+    <div ref={tableRef} role="table" aria-label={label} className="text-sm" style={split.style}>
       <div role="rowgroup">
         <div role="row" className={cn(GRID, "border-b px-1 py-1 text-xs text-muted-foreground")}>
           <span role="columnheader">
             <span className="sr-only">Enabled</span>
           </span>
-          <span role="columnheader" className="px-2">
+          <span role="columnheader" className="relative px-2" {...SPLIT_A}>
             {keyPlaceholder}
+            <ColumnResizer column={keyPlaceholder} split={split} />
           </span>
-          <span role="columnheader" className="px-2">
+          <span role="columnheader" className="px-2" {...SPLIT_B}>
             {valuePlaceholder}
           </span>
           <span role="columnheader">

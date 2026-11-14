@@ -25,7 +25,7 @@ func TestOpenMigratesOnceAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.SchemaVersion(); err != nil || v != 2 {
+	if v, err := s.SchemaVersion(); err != nil || v != 3 {
 		t.Fatalf("version = %d, %v", v, err)
 	}
 	if s.DataDir() != dir {

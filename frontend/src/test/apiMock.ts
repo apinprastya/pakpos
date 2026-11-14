@@ -25,6 +25,8 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     getSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
     defaultSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
     setSettings: vi.fn(async (s) => s),
+    getUiState: vi.fn().mockResolvedValue({}),
+    setUiState: vi.fn().mockResolvedValue(undefined),
     send: vi.fn().mockResolvedValue({
       response: null,
       error: null,

@@ -11,6 +11,7 @@ import {
   HistoryService,
   RequestService,
   SettingsService,
+  UIStateService,
   UpdateService,
   WorkspaceService,
 } from "../../bindings/pakpos/internal/service";
@@ -130,6 +131,18 @@ export const api = {
   async setSettings(next: AppSettings): Promise<AppSettings> {
     const saved = await SettingsService.Set(next as unknown as bs.Settings);
     return normalizeSettings(saved as Partial<AppSettings>, DEFAULT_SETTINGS);
+  },
+
+  /** App-wide UI state (panel sizes, column widths): JSON strings by key. */
+  async getUiState(): Promise<Record<string, string>> {
+    const raw = (await UIStateService.Get()) ?? {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw)) if (typeof v === "string") out[k] = v;
+    return out;
+  },
+  /** Stores a JSON value under key; "" removes it. */
+  async setUiState(key: string, value: string): Promise<void> {
+    await UIStateService.Set(key, value);
   },
 
   /** Sends req. `parentId` is the collection or folder a draft belongs to, so it inherits ("" for none). */
