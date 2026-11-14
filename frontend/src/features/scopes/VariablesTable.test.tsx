@@ -7,6 +7,7 @@ import type { ScopeRef, Variable } from "@/lib/model";
 import { makeVar } from "@/test/fixtures";
 import { useSecretsStore } from "@/stores/secrets";
 import { VariablesTable } from "./VariablesTable";
+import { typeInField } from "@/test/editor";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() } }));
 
@@ -48,7 +49,7 @@ beforeEach(() => {
 describe("VariablesTable: plain rows", () => {
   it("edits, adds, toggles, deletes and pastes rows", async () => {
     const user = setup([makeVar("a", "1")]);
-    await user.type(screen.getByLabelText("Value 1"), "0");
+    typeInField("Value 1", "0");
     expect(current.rows[0].value).toBe("10");
     await user.type(screen.getByLabelText("Variable 2"), "b");
     expect(current.rows).toHaveLength(2);

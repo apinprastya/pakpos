@@ -251,7 +251,7 @@ func (s *Session) Preview(req model.Request, parentID, envID string) Preview {
 	eff := inherit.Effective(chain, req)
 	pv := Preview{
 		Headers: eff.Headers, Auth: eff.Request.Auth, AuthSource: eff.AuthSource,
-		Variables: []PreviewVariable{}, Unresolved: []string{},
+		Unresolved: []string{},
 	}
 	env := s.Environment(envID)
 	if env != nil {
@@ -259,27 +259,7 @@ func (s *Session) Preview(req model.Request, parentID, envID string) Preview {
 	}
 	scopes := s.BuildScopes(collectionOf(chain), env)
 	res := vars.New(scopes.List, s.opts...)
-
-	seen := map[string]bool{}
-	add := func(name string) {
-		if name == "" || seen[name] {
-			return
-		}
-		seen[name] = true
-		m, _ := res.Lookup(name) // the winner: an unset secret shadows lower scopes
-		pv.Variables = append(pv.Variables, previewVar(m))
-	}
-	for _, sc := range scopes.List {
-		for _, v := range sc.Variables {
-			if v.Enabled {
-				add(v.Key)
-			}
-		}
-		for _, n := range sc.Unset {
-			add(n)
-		}
-	}
-	sort.Slice(pv.Variables, func(i, j int) bool { return pv.Variables[i].Key < pv.Variables[j].Key })
+	pv.Variables = visible(res, scopes)
 
 	_, unresolved, err := res.ResolveRequest(eff.Request)
 	if err != nil {
@@ -291,6 +271,56 @@ func (s *Session) Preview(req model.Request, parentID, envID string) Preview {
 	}
 	pv.SecretsLocked = anyLocked(res, pv.Unresolved, scopes.Locked)
 	return pv
+}
+
+// Visible is what an editor needs to highlight, describe and complete
+// {{variables}}: the variables visible from a collection or folder (or none)
+// with an environment, secret values masked.
+type Visible struct {
+	Variables   []PreviewVariable `json:"variables"`
+	Environment *EnvRef           `json:"environment"`
+}
+
+// VisibleVariables returns the variables visible from parentID (a collection,
+// a folder, or "" for none) with the environment envID ("" or an unknown id
+// for none). Unlike Preview it needs no request, so editors of environments,
+// globals and collection settings can use it too.
+func (s *Session) VisibleVariables(parentID, envID string) Visible {
+	out := Visible{}
+	env := s.Environment(envID)
+	if env != nil {
+		out.Environment = &EnvRef{ID: env.ID, Name: env.Name}
+	}
+	scopes := s.BuildScopes(collectionOf(s.Chain(model.Request{}, parentID)), env)
+	out.Variables = visible(vars.New(scopes.List, s.opts...), scopes)
+	return out
+}
+
+// visible lists the winning definition of every name defined in scopes
+// (an unset secret shadows lower scopes), sorted by key, never nil.
+func visible(res *vars.Resolver, scopes Scopes) []PreviewVariable {
+	out := []PreviewVariable{}
+	seen := map[string]bool{}
+	add := func(name string) {
+		if name == "" || seen[name] {
+			return
+		}
+		seen[name] = true
+		m, _ := res.Lookup(name)
+		out = append(out, previewVar(m))
+	}
+	for _, sc := range scopes.List {
+		for _, v := range sc.Variables {
+			if v.Enabled {
+				add(v.Key)
+			}
+		}
+		for _, n := range sc.Unset {
+			add(n)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
 }
 
 func previewVar(m vars.Match) PreviewVariable {

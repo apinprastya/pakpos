@@ -1,9 +1,11 @@
 import { X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VarInput } from "@/components/editor/VarInput";
 import type { FormField, FormFieldKind } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { FilePicker } from "./FilePicker";
+import { varCellClass } from "./KeyValueTable";
 
 const BLANK: FormField = { key: "", kind: "text", value: "", filePath: "", contentType: "", enabled: true };
 const inputClass =
@@ -96,13 +98,12 @@ export function FormDataTable({ rows, onChange }: Props) {
                   />
                 </div>
               ) : (
-                <input
-                  aria-label={`Value ${n}`}
-                  className={inputClass}
+                <VarInput
+                  ariaLabel={`Value ${n}`}
+                  className={varCellClass}
                   value={row.value}
                   placeholder={blank ? "Value" : ""}
-                  spellCheck={false}
-                  onChange={(e) => update(i, { value: e.target.value })}
+                  onChange={(value) => update(i, { value })}
                 />
               )}
             </span>

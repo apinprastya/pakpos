@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import { emptyBody } from "@/lib/model";
-import { editorText, setEditorText } from "@/test/editor";
+import { editorText, setEditorText, setFieldText, typeInField } from "@/test/editor";
 import { activeTab, resetTabs } from "@/test/store";
 import { useTabsStore } from "@/stores/tabs";
 import { RequestPane } from "./RequestPane";
@@ -38,9 +38,7 @@ describe("RequestPane", () => {
 
     // Edit a value in the table: the URL is rewritten.
     const query = screen.getByRole("table", { name: "Query parameters" });
-    const page = within(query).getByRole("textbox", { name: "Value 1" });
-    await user.clear(page);
-    await user.type(page, "5");
+    setFieldText("Value 1", "5", query);
     expect(editorText("Request URL")).toBe("https://api.dev/users/:id?page=5&q=a%20b");
 
     // Disabling a row drops it from the URL but keeps it in place.
@@ -51,7 +49,7 @@ describe("RequestPane", () => {
     // Path params are editable by value only.
     const path = screen.getByRole("table", { name: "Path parameters" });
     expect(within(path).getByRole("textbox", { name: "Name 1" })).toHaveAttribute("readonly");
-    await user.type(within(path).getByRole("textbox", { name: "Value 1" }), "42");
+    typeInField("Value 1", "42", path);
     expect(activeTab().request.pathParams[0].value).toBe("42");
   });
 
@@ -61,7 +59,7 @@ describe("RequestPane", () => {
     const query = () => screen.getByRole("table", { name: "Query parameters" });
     await user.type(within(query()).getByRole("textbox", { name: "Key 1" }), "a");
     expect(activeTab().request.query).toEqual([{ key: "a", value: "", enabled: true }]);
-    await user.type(within(query()).getByRole("textbox", { name: "Value 2" }), "v");
+    typeInField("Value 2", "v", query());
     expect(activeTab().request.query[1]).toEqual({ key: "", value: "v", enabled: true });
 
     await user.click(within(query()).getByRole("button", { name: "Delete row 2" }));
@@ -165,7 +163,7 @@ describe("RequestPane", () => {
     await user.click(section("Body"));
     const table = () => screen.getByRole("table", { name: "Form fields" });
     await user.type(within(table()).getByRole("textbox", { name: "Key 1" }), "name");
-    await user.type(within(table()).getByRole("textbox", { name: "Value 1" }), "Ada");
+    typeInField("Value 1", "Ada", table());
     expect(activeTab().request.body.formData[0]).toMatchObject({ key: "name", value: "Ada", kind: "text" });
 
     await user.click(within(table()).getByRole("checkbox", { name: "Enable field 1" }));
@@ -197,7 +195,7 @@ describe("RequestPane", () => {
     expect(screen.getByText(/isn't in a collection, so there's nothing to inherit/)).toBeInTheDocument();
 
     await pick("Basic auth");
-    await user.type(screen.getByLabelText("Username"), "ada");
+    typeInField("Username", "ada");
     const pw = screen.getByLabelText("Password");
     expect(pw).toHaveAttribute("type", "password");
     await user.type(pw, "s3cret");
@@ -208,11 +206,11 @@ describe("RequestPane", () => {
 
     await pick("Bearer token");
     await user.type(screen.getByLabelText("Token"), "tok");
-    await user.type(screen.getByLabelText("Prefix"), "Token");
+    typeInField("Prefix", "Token");
     expect(activeTab().request.auth).toMatchObject({ token: "tok", prefix: "Token" });
 
     await pick("API key");
-    await user.type(screen.getByLabelText("Key"), "X-Key");
+    typeInField("Key", "X-Key");
     await user.type(screen.getByLabelText("Value"), "v");
     await user.click(screen.getByRole("combobox", { name: "Send in" }));
     await user.click(screen.getByRole("option", { name: "Query parameter" }));

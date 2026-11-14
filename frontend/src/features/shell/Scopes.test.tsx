@@ -4,6 +4,7 @@ import App from "@/App";
 import { api, type WorkspaceChange } from "@/lib/api";
 import { emptyAuth } from "@/lib/model";
 import { col, folder, makeEnv, makeResult, makeVar } from "@/test/fixtures";
+import { typeInField } from "@/test/editor";
 import { activeTab, resetTabs } from "@/test/store";
 import { VariablesNotice } from "@/features/response/ResponsePane";
 import { useLayoutStore } from "@/stores/layout";
@@ -79,7 +80,8 @@ describe("environments in the app", () => {
       within(screen.getByRole("tablist", { name: "Open tabs" })).getByRole("tab", { name: "Dev" }),
     ).toBeInTheDocument();
 
-    await user.type(value, "2");
+    expect(value).toHaveTextContent("1");
+    typeInField("Value 1", "2");
     fireEvent.keyDown(window, { key: "s", ctrlKey: true });
     await waitFor(() =>
       expect(api.saveVariables).toHaveBeenCalledWith(
@@ -89,7 +91,7 @@ describe("environments in the app", () => {
       ),
     );
 
-    await user.type(screen.getByLabelText("Value 1"), "3");
+    typeInField("Value 1", "3");
     await user.click(screen.getByRole("button", { name: "Close Dev (unsaved changes)" }));
     const dialog = await screen.findByRole("alertdialog", { name: "Save changes to Dev?" });
     await user.click(within(dialog).getByRole("button", { name: "Save" }));

@@ -219,6 +219,21 @@ func (s *EnvService) ResolvePreview(req model.Request, parentID string) (pipelin
 	return p.Preview(req, parentID, s.c.selectedEnvironment(ws.Manifest().ID)), nil
 }
 
+// VisibleVariables returns the variables an editor can reference from
+// parentID (a collection or folder, "" for none), for highlighting, hover and
+// autocomplete. environmentID picks the environment ("" for the selected one);
+// an environment's own editor passes its id. Secret values are never returned.
+func (s *EnvService) VisibleVariables(parentID, environmentID string) (pipeline.Visible, error) {
+	ws, p, err := s.c.openSession()
+	if err != nil {
+		return pipeline.Visible{}, err
+	}
+	if environmentID == "" {
+		environmentID = s.c.selectedEnvironment(ws.Manifest().ID)
+	}
+	return p.VisibleVariables(parentID, environmentID), nil
+}
+
 // SecretsStatus reports the secret store in use: the keychain, or the
 // encrypted file with whether a master password is set and it is locked.
 func (s *EnvService) SecretsStatus() secrets.Status {

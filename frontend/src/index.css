@@ -110,6 +110,15 @@
   --syntax-attr: #8a5a00;
   --syntax-comment: #7a8394;
   --syntax-punct: #5d6677;
+  /* {{variables}}: resolved, unresolved, dynamic */
+  --syntax-var-resolved: #0b6e82;
+  --syntax-var-resolved-bg: #e3f3f6;
+  --syntax-var-unresolved: #b93a2c;
+  --syntax-var-unresolved-bg: #fbecea;
+  --syntax-var-dynamic: #7c3fc4;
+  --syntax-var-dynamic-bg: #f1eafb;
+  --syntax-var-warn: #8a5300;
+  --syntax-var-warn-bg: #fbf0d9;
   --editor-selection: #cfdafc;
   --editor-active-line: #f0f2f6;
 }
@@ -160,6 +169,14 @@
   --syntax-attr: #e8c27a;
   --syntax-comment: #7d8697;
   --syntax-punct: #939caf;
+  --syntax-var-resolved: #67cfe0;
+  --syntax-var-resolved-bg: #17323a;
+  --syntax-var-unresolved: #f2877d;
+  --syntax-var-unresolved-bg: #3a2124;
+  --syntax-var-dynamic: #c3a6ff;
+  --syntax-var-dynamic-bg: #2c2443;
+  --syntax-var-warn: #ebc06e;
+  --syntax-var-warn-bg: #362b14;
   --editor-selection: #2f3f66;
   --editor-active-line: #1f2633;
 }
@@ -206,5 +223,80 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/*
+ * {{variable}} references, in CodeMirror (mark decorations) and in the static
+ * cells of tables (VarText). Inner syntax spans (e.g. a JSON string) take the
+ * variable's colour.
+ */
+@layer components {
+  .var-token {
+    border-radius: 3px;
+    box-decoration-break: clone;
+  }
+  .var-token * {
+    color: inherit !important;
+  }
+  .var-resolved,
+  .var-pending {
+    color: var(--syntax-var-resolved);
+  }
+  .var-resolved {
+    background-color: var(--syntax-var-resolved-bg);
+  }
+  .var-unresolved {
+    color: var(--syntax-var-unresolved);
+    background-color: var(--syntax-var-unresolved-bg);
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+  }
+  /* Defined, but its value uses an undefined name or loops. */
+  .var-warn {
+    color: var(--syntax-var-warn);
+    background-color: var(--syntax-var-warn-bg);
+    text-decoration: underline wavy;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  .var-dynamic {
+    color: var(--syntax-var-dynamic);
+    background-color: var(--syntax-var-dynamic-bg);
+  }
+  /* Tooltip shown on hover or Mod+I. */
+  .var-info {
+    display: flex;
+    max-width: 22rem;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px;
+    font-family: var(--font-sans);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .var-info-name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    background: none;
+    text-decoration: none;
+  }
+  .var-info-value {
+    font-family: var(--font-mono);
+    color: var(--popover-foreground);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+  .var-info-note,
+  .var-info-source,
+  .var-info-hint {
+    color: var(--muted-foreground);
+  }
+  .var-info-note {
+    font-style: italic;
+  }
+  .var-info-note.var-info-warn {
+    font-style: normal;
+    color: var(--syntax-var-warn);
   }
 }

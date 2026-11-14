@@ -1,6 +1,7 @@
 import { emptyAuth } from "@/lib/model";
 import type {
   Environment,
+  PreviewVariable,
   ResolvePreview,
   Variable,
   CollectionNode,
@@ -108,4 +109,23 @@ export function makePreview(patch: Partial<ResolvePreview> = {}): ResolvePreview
     error: "",
     ...patch,
   };
+}
+
+/** A visible variable as Go's preview returns it (secret values are always ""). */
+export function makePreviewVar(
+  key: string,
+  value = "",
+  patch: Partial<PreviewVariable> = {},
+): PreviewVariable {
+  const v: PreviewVariable = {
+    key,
+    value,
+    secret: false,
+    scope: "environment",
+    scopeId: "e1",
+    scopeName: "Dev",
+    set: true,
+    ...patch,
+  };
+  return v.secret ? { ...v, value: "" } : v;
 }

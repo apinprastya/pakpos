@@ -12,6 +12,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { VarInput } from "@/components/editor/VarInput";
+import { varCellClass } from "@/features/request/KeyValueTable";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { parsePastedPairs } from "@/lib/pairs";
@@ -231,7 +233,7 @@ export function VariablesTable({
                   }}
                 />
               </span>
-              <span role="cell">
+              <span role="cell" className="min-w-0">
                 {row.secret && !isBlank ? (
                   <SecretValueCell
                     scope={scope}
@@ -245,21 +247,15 @@ export function VariablesTable({
                     }}
                   />
                 ) : (
-                  <input
-                    aria-label={`Value ${n}`}
-                    data-row={i}
-                    data-col="value"
-                    className={cellInputClass}
+                  <VarInput
+                    ariaLabel={`Value ${n}`}
+                    dataRow={i}
+                    dataCol="value"
+                    className={cn(varCellClass, !row.enabled && !isBlank && "line-through")}
                     value={row.value}
                     placeholder={isBlank ? "Value" : ""}
-                    spellCheck={false}
-                    onChange={(e) => update(i, { value: e.target.value })}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        focusCell(i + 1, "key");
-                      }
-                    }}
+                    onChange={(value) => update(i, { value })}
+                    onEnter={() => focusCell(i + 1, "key")}
                   />
                 )}
               </span>

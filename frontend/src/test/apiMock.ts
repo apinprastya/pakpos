@@ -90,6 +90,7 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
       environment: null,
       error: "",
     }),
+    visibleVariables: vi.fn().mockResolvedValue({ variables: [], environment: null }),
     secretsStatus: vi.fn().mockResolvedValue({ backend: "keychain", hasPassword: false, locked: false }),
     setMasterPassword: vi.fn().mockResolvedValue(undefined),
     changeMasterPassword: vi.fn().mockResolvedValue(undefined),

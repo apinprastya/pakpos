@@ -592,6 +592,20 @@ export function normalizePreview(input: unknown): ResolvePreview {
   };
 }
 
+/** The variables an editor can reference (no request needed); secret values are always "". */
+export interface VisibleVariables {
+  variables: PreviewVariable[];
+  environment: EnvRef | null;
+}
+
+export function normalizeVisible(input: unknown): VisibleVariables {
+  const p = (input ?? {}) as Loose<VisibleVariables>;
+  return {
+    variables: (p.variables ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
+    environment: normalizeEnvRef(p.environment),
+  };
+}
+
 /** A collection's settings: what its folders and requests inherit, plus its variables. */
 export interface CollectionSettings {
   id: string;
