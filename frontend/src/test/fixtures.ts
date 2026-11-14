@@ -1,5 +1,6 @@
 import { emptyAuth, emptyRequest } from "@/lib/model";
 import type {
+  UpdateInfo,
   CodeResult,
   Example,
   ExampleSummary,
@@ -187,4 +188,20 @@ export function makeExample(id: string, patch: Partial<Example> = {}): Example {
 /** What `saveExample` returns when it saved `summary`. */
 export function savedExample(summary: ExampleSummary): SaveExampleResult {
   return { example: summary, secretsFound: [], secretsLocked: false };
+}
+
+/** A newer, installable release (override fields per test). */
+export function makeUpdateInfo(over: Partial<UpdateInfo> = {}): UpdateInfo {
+  return {
+    current: "26.11.1",
+    latest: "26.11.2",
+    available: true,
+    name: "Pakpos 26.11.2",
+    notes: "Fixes",
+    url: "https://github.com/apinprastya/pakpos/releases/tag/v26.11.2",
+    publishedAt: "2026-11-10T00:00:00Z",
+    canInstall: true,
+    reason: "",
+    ...over,
+  };
 }

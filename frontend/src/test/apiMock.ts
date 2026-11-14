@@ -6,6 +6,22 @@ import { DEFAULT_SETTINGS } from "@/lib/model";
 export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } {
   return {
     buildInfo: vi.fn().mockResolvedValue({ version: "test", commit: "", os: "linux", arch: "amd64" }),
+    checkForUpdates: vi.fn().mockResolvedValue({
+      current: "26.11.1",
+      latest: "26.11.1",
+      available: false,
+      name: "",
+      notes: "",
+      url: "",
+      publishedAt: "",
+      canInstall: false,
+      reason: "",
+    }),
+    installUpdate: vi.fn().mockResolvedValue(undefined),
+    cancelUpdate: vi.fn().mockResolvedValue(true),
+    restartToUpdate: vi.fn().mockResolvedValue(undefined),
+    openReleasePage: vi.fn().mockResolvedValue(undefined),
+    onUpdateProgress: vi.fn().mockReturnValue(() => {}),
     getSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
     defaultSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
     setSettings: vi.fn(async (s) => s),

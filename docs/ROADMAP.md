@@ -10,6 +10,9 @@ tier gets its own plan document (`docs/PLAN-TIER<N>.md`) before work starts.
 | 3 | Power features: scripting, runner, advanced auth & network | **Next** (plan to be written: `PLAN-TIER3.md`) |
 | 4 | Nice-to-have | Later |
 
+In-app updates (signed `SHA256SUMS`, as in Lontar) were pulled forward from
+Tier 4 and are done.
+
 Out of scope for now: importing Postman collections. Non-REST protocols
 (GraphQL, gRPC, WebSocket) are not planned.
 
@@ -110,7 +113,6 @@ Carried over from Tier 2 (see PLAN-TIER2.md for the full lists):
 - JSONPath / JMESPath filter on responses.
 - Response validation against JSON Schema or OpenAPI.
 - OpenAPI 3.x and HAR import.
-- In-app updates, with signed `SHA256SUMS` as in Lontar.
 - Team sharing and sync. This needs a backend and is the largest item; git
   workspaces already cover basic sharing.
 

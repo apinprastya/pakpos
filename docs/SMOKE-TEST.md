@@ -139,6 +139,16 @@ Copy the checklist per OS and tick as you go: `[ ]` → `[x]`.
 - [ ] History shows only the open workspace's sends, each with its environment name. Clear history names the workspace and leaves other workspaces' history alone. With no workspace open, only sends made without one are listed.
 - [ ] History entries keep `{{variables}}` as written (open one: the URL still says `{{baseUrl}}`).
 
+## In-app updates
+
+Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).
+
+- [ ] About ten seconds after start, a toast says the new version is available; **View update** opens the dialog with the release notes. The status bar shows **Update available**.
+- [ ] **Download and install** shows progress; **Cancel download** stops it and leaves the installed app alone. Installing again finishes, and **Restart now** starts the new version with open tabs and drafts kept (Settings → About shows the new version).
+- [ ] Per OS: the AppImage, the per-user Windows install, the portable `pakpos.exe` and `pakpos.app` in /Applications update in place. A `.deb`/`.rpm` install only offers the release page, with a note to use the package manager.
+- [ ] **Skip this version** stops the toast and the status bar notice for that version; "Check for updates" in the palette still shows it.
+- [ ] With "Check for updates automatically" off (Settings → About), nothing is checked at startup. Offline, a manual check says it couldn't check and offers **Try again**.
+
 ## Platform specifics
 
 - [ ] **Linux:** the app appears under Development in the application menu (.desktop categories), and WebKitGTK renders fonts and editors correctly.

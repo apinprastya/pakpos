@@ -10,6 +10,7 @@ import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { useTreeStore } from "@/stores/tree";
 import { useExamplesStore } from "@/stores/examples";
 import { usePaletteStore } from "@/stores/palette";
+import { resetUpdateAnnouncements, useUpdateStore } from "@/stores/update";
 
 const workspaceInitial = useWorkspaceStore.getState();
 const historyInitial = useHistoryStore.getState();
@@ -19,6 +20,7 @@ const codeDialogsInitial = useCodeDialogsStore.getState();
 const treeInitial = useTreeStore.getState();
 const examplesInitial = useExamplesStore.getState();
 const paletteInitial = usePaletteStore.getState();
+const updateInitial = useUpdateStore.getState();
 
 /** Puts the workspace and history stores back to their start state (run before each test). */
 export function resetSidebarStores(): void {
@@ -30,6 +32,8 @@ export function resetSidebarStores(): void {
   useTreeStore.setState(treeInitial, true);
   useExamplesStore.setState(examplesInitial, true);
   usePaletteStore.setState(paletteInitial, true);
+  useUpdateStore.setState({ ...updateInitial, skipped: "" }, true);
+  resetUpdateAnnouncements();
   useSettingsStore.setState({
     settings: { ...DEFAULT_SETTINGS },
     loaded: false,

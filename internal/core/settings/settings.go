@@ -45,6 +45,9 @@ type Settings struct {
 	// (entries sent without a workspace count as one more); 0 keeps all.
 	HistoryRetention int    `json:"historyRetention"`
 	Layout           Layout `json:"layout"`
+	// CheckForUpdates lets the app look for a new release at startup and
+	// once a day. Installing always waits for the user.
+	CheckForUpdates bool `json:"checkForUpdates"`
 }
 
 // Defaults returns the settings of a fresh install.
@@ -57,6 +60,7 @@ func Defaults() Settings {
 		VerifyTLS:        true,
 		HistoryRetention: 500,
 		Layout:           LayoutVertical,
+		CheckForUpdates:  true,
 	}
 }
 

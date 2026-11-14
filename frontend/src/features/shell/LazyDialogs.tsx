@@ -2,7 +2,15 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { usePaletteStore } from "@/stores/palette";
 import { useSettingsStore } from "@/stores/settings";
-import { loadCode, loadImportCurl, loadPalette, loadSettings, schedulePreload } from "./dialogChunks";
+import { useUpdateStore } from "@/stores/update";
+import {
+  loadCode,
+  loadImportCurl,
+  loadPalette,
+  loadSettings,
+  loadUpdate,
+  schedulePreload,
+} from "./dialogChunks";
 
 // Rarely opened dialogs are separate chunks, loaded the first time they open,
 // so they (and cmdk, the settings form, the code generator UI) stay out of the
@@ -11,6 +19,7 @@ const SettingsDialog = lazy(() => loadSettings().then((m) => ({ default: m.Setti
 const ImportCurlDialog = lazy(() => loadImportCurl().then((m) => ({ default: m.ImportCurlDialog })));
 const CodeDialog = lazy(() => loadCode().then((m) => ({ default: m.CodeDialog })));
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
+const UpdateDialog = lazy(() => loadUpdate().then((m) => ({ default: m.UpdateDialog })));
 
 /**
  * Mounts `children` from the first time `open` is true and keeps them mounted
@@ -27,6 +36,7 @@ export function LazyDialogs() {
   const importCurl = useCodeDialogsStore((s) => s.importOpen);
   const code = useCodeDialogsStore((s) => !!s.codeTabId);
   const palette = usePaletteStore((s) => s.open);
+  const update = useUpdateStore((s) => s.dialogOpen);
   // Not under Vitest: tests mount the shell many times and open dialogs explicitly.
   useEffect(() => (import.meta.env.MODE === "test" ? undefined : schedulePreload()), []);
   return (
@@ -42,6 +52,9 @@ export function LazyDialogs() {
       </MountWhenOpened>
       <MountWhenOpened open={palette}>
         <CommandPalette />
+      </MountWhenOpened>
+      <MountWhenOpened open={update}>
+        <UpdateDialog />
       </MountWhenOpened>
     </>
   );

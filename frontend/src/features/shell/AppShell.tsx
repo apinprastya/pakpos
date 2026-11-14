@@ -19,6 +19,7 @@ import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
 import { useDismissToastsOnDialog } from "@/lib/dialogToasts";
 import { useExamplesSync } from "@/features/examples/useExamplesSync";
 import { LazyDialogs } from "./LazyDialogs";
+import { useUpdateCheck } from "@/features/update/useUpdateCheck";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
@@ -27,6 +28,7 @@ export function AppShell() {
   useScopeSync();
   useDismissToastsOnDialog();
   useExamplesSync();
+  useUpdateCheck();
   const active = useActiveTab();
   useEffect(() => {
     void useSettingsStore.getState().load();

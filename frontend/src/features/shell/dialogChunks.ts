@@ -4,6 +4,7 @@ export const loadSettings = () => import("@/features/settings/SettingsDialog");
 export const loadImportCurl = () => import("@/features/code/ImportCurlDialog");
 export const loadCode = () => import("@/features/code/CodeDialog");
 export const loadPalette = () => import("@/features/palette/CommandPalette");
+export const loadUpdate = () => import("@/features/update/UpdateDialog");
 
 /** The palette first: it's the one opened most and expected to be instant. */
 export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
@@ -11,6 +12,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadSettings,
   loadCode,
   loadImportCurl,
+  loadUpdate,
 ];
 
 type IdleWindow = Pick<Window, "setTimeout" | "clearTimeout"> & {

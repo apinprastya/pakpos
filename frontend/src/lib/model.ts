@@ -703,6 +703,8 @@ export interface AppSettings {
   /** History entries to keep; 0 keeps all. */
   historyRetention: number;
   layout: LayoutSetting;
+  /** Look for a new release at startup and once a day. */
+  checkForUpdates: boolean;
 }
 
 /** Limits matching internal/core/settings. */
@@ -733,6 +735,7 @@ export function normalizeSettings(
     verifyTls: typeof s.verifyTls === "boolean" ? s.verifyTls : defaults.verifyTls,
     historyRetention: typeof s.historyRetention === "number" ? s.historyRetention : defaults.historyRetention,
     layout: s.layout === "vertical" || s.layout === "horizontal" ? s.layout : defaults.layout,
+    checkForUpdates: typeof s.checkForUpdates === "boolean" ? s.checkForUpdates : defaults.checkForUpdates,
   };
 }
 
@@ -745,7 +748,29 @@ export const DEFAULT_SETTINGS: AppSettings = {
   verifyTls: true,
   historyRetention: 500,
   layout: "vertical",
+  checkForUpdates: true,
 };
+
+/** Result of a check for updates (Go service.UpdateInfo). */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  available: boolean;
+  name: string;
+  notes: string;
+  url: string;
+  /** RFC 3339, or "". */
+  publishedAt: string;
+  /** Install can replace this installation; otherwise `reason` says why not. */
+  canInstall: boolean;
+  reason: string;
+}
+
+/** Update download progress in bytes (Go service.UpdateProgress). */
+export interface UpdateProgress {
+  done: number;
+  total: number;
+}
 
 /** Something in a curl command that was ignored or imported differently from what curl would do. */
 export interface CurlWarning {

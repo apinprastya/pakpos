@@ -19,6 +19,7 @@ Pakpos is a desktop REST API client for Linux, macOS and Windows, built with Go,
 - **Command palette** (Ctrl/⌘+K) for requests, folders, environments, examples and actions.
 - **Saved examples** of responses per request, checked for echoed secrets before they're written.
 - **History** per workspace, with the environment each request was sent in.
+- **Updates:** checks GitHub for a new release at startup and once a day (Settings → About turns it off), then downloads, verifies and installs it when you ask.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) (feature tiers), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the plans [docs/PLAN-TIER1.md](docs/PLAN-TIER1.md) and [docs/PLAN-TIER2.md](docs/PLAN-TIER2.md), and the release checklist [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md).
 
@@ -35,6 +36,15 @@ Download the build for your OS from the [releases page](https://github.com/apinp
 | Windows | `pakpos-<version>-windows-amd64-setup.exe` | Per-user install, no admin prompt. Installs WebView2 if it's missing. A portable `…-windows-amd64-portable.zip` is also attached. |
 
 Versions are calendar-based, `vYY.MM.MICRO` (e.g. `v26.11.1`). Every release lists `SHA256SUMS` for its files.
+
+**Updating.** The AppImage, the Windows build (installer or portable) and the
+macOS app update themselves: Pakpos looks for a new stable release at startup
+and once a day (turn this off in Settings → About; "Check for updates" in the
+command palette checks at any time), and installs it when you choose
+**Download and install**, then **Restart now**. It installs only files whose
+checksums are signed with Pakpos's release key. The `.deb` and `.rpm`
+packages are updated with your package manager, and a machine-wide Windows
+install (Program Files) from the release page.
 
 App data (history, settings, and `secrets.enc` when there is no keychain) lives in `<user config dir>/pakpos`:
 - Linux: `~/.config/pakpos`
@@ -170,6 +180,28 @@ Signing is optional; each step is skipped when its secrets are missing:
 | `APPLE_ID` | Notarization, alternative: the Apple ID's e-mail |
 | `APPLE_TEAM_ID` | The Apple Developer team ID |
 | `APPLE_APP_PASSWORD` | An app-specific password for that Apple ID |
+| `UPDATE_SIGNING_KEY` | ed25519 private key that signs `SHA256SUMS` into `SHA256SUMS.sig` for in-app updates (see below) |
+
+**In-app update key.** Generate the key pair once:
+
+```sh
+go -C tools run ./updatesign keygen
+```
+
+Paste the public key into `PublicKey` in `internal/update/update.go` and
+commit it. Store the private key as the `UPDATE_SIGNING_KEY` secret
+(`gh secret set UPDATE_SIGNING_KEY`), and keep an offline backup: if it is
+lost, installed versions can no longer update themselves. The release job
+signs `SHA256SUMS` and checks the signature against the committed public key.
+Without the secret the release is still published, but a warning says that it
+cannot be installed from inside Pakpos. A build with an empty `PublicKey` can
+check for updates but never installs one. To check a release by hand, run
+`go -C tools run ./updatesign verify <public key> SHA256SUMS SHA256SUMS.sig`.
+
+The app only sees **published, stable** releases (GitHub's "latest release";
+drafts and pre-releases are skipped), so an update reaches users when you
+publish the draft. It downloads the AppImage, the Windows portable zip or the
+macOS dmg, so keep those file names unchanged.
 
 Windows signs `pakpos.exe` before it goes into the installer, then the
 installer (`build/windows/sign.ps1`, signtool, SHA-256 + RFC 3161 timestamp).
