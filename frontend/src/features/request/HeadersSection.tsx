@@ -7,10 +7,14 @@ import type { Request } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { KeyValueTable } from "./KeyValueTable";
 import { autoHeaders } from "./autoHeaders";
+import { InheritedHeaders } from "./Inherited";
+import type { PreviewState } from "./usePreview";
 
 interface Props {
   request: Request;
   onChange: (update: (req: Request) => Request) => void;
+  /** Inherited headers to show; omit when the request isn't in a collection. */
+  preview?: PreviewState;
 }
 
 let cachedUserAgent = "";
@@ -34,7 +38,7 @@ function useUserAgent(): string {
   return ua;
 }
 
-export function HeadersSection({ request, onChange }: Props) {
+export function HeadersSection({ request, onChange, preview }: Props) {
   const [bulk, setBulk] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const userAgent = useUserAgent();
@@ -78,6 +82,7 @@ export function HeadersSection({ request, onChange }: Props) {
           />
         )}
       </section>
+      {preview && <InheritedHeaders state={preview} />}
       <section aria-labelledby="auto-headers-title">
         <h3 id="auto-headers-title" className="mb-1 text-xs font-medium text-muted-foreground">
           Added when sending

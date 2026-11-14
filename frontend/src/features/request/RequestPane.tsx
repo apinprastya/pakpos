@@ -1,12 +1,14 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Request } from "@/lib/model";
 import { useActiveTab, useTabsStore } from "@/stores/tabs";
+import { useWorkspaceStore } from "@/stores/workspace";
 import { cancelTab, sendTab } from "./actions";
 import { AuthSection } from "./AuthSection";
 import { BodySection } from "./BodySection";
 import { HeadersSection } from "./HeadersSection";
 import { ParamsSection } from "./ParamsSection";
 import { UrlBar } from "./UrlBar";
+import { usePreview } from "./usePreview";
 
 function Count({ n }: { n: number }) {
   if (n === 0) return null;
@@ -23,6 +25,9 @@ export function RequestPane() {
   const updateRequest = useTabsStore((s) => s.updateRequest);
   const req = tab.request;
   const onChange = (update: (r: Request) => Request) => updateRequest(tab.id, update);
+  const preview = usePreview(req, tab.parentId);
+  const hasWorkspace = useWorkspaceStore((s) => s.workspace !== null);
+  const inCollection = hasWorkspace && tab.parentId !== "";
 
   const paramCount = req.query.filter((q) => q.enabled && q.key).length + req.pathParams.length;
   const headerCount = req.headers.filter((h) => h.enabled && h.key).length;
@@ -57,13 +62,13 @@ export function RequestPane() {
           <ParamsSection request={req} onChange={onChange} />
         </TabsContent>
         <TabsContent key={`h-${tab.id}`} value="headers" className="min-h-0 flex-1 overflow-auto p-3">
-          <HeadersSection request={req} onChange={onChange} />
+          <HeadersSection request={req} onChange={onChange} preview={inCollection ? preview : undefined} />
         </TabsContent>
         <TabsContent key={`b-${tab.id}`} value="body" className="min-h-0 flex-1 overflow-auto p-3">
           <BodySection tabKey={tab.id} request={req} onChange={onChange} />
         </TabsContent>
         <TabsContent key={`a-${tab.id}`} value="auth" className="min-h-0 flex-1 overflow-auto p-3">
-          <AuthSection request={req} onChange={onChange} />
+          <AuthSection request={req} parentId={tab.parentId} preview={preview} onChange={onChange} />
         </TabsContent>
       </Tabs>
     </section>

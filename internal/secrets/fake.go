@@ -7,12 +7,14 @@ import (
 )
 
 // Fake is an in-memory Store for tests (here and in other packages). Set
-// Unavailable to simulate a missing keychain and Err to make every call fail.
+// Unavailable to simulate a missing keychain, Err to make every call fail and
+// SetErr to make only writes fail.
 type Fake struct {
 	mu          sync.Mutex
 	values      map[string]string
 	Unavailable bool
 	Err         error
+	SetErr      error
 }
 
 // NewFake returns an empty, available fake store.
@@ -38,6 +40,9 @@ func (f *Fake) Set(key, value string) error {
 	defer f.mu.Unlock()
 	if f.Err != nil {
 		return f.Err
+	}
+	if f.SetErr != nil {
+		return f.SetErr
 	}
 	if f.values == nil {
 		f.values = map[string]string{}

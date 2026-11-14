@@ -4,7 +4,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { methodShortLabel, methodTextClass } from "@/lib/http";
 import { modKeyLabel } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { isDirty, tabTitle, useTabsStore } from "@/stores/tabs";
+import { isDirty, tabTitle, useTabsStore, type Tab } from "@/stores/tabs";
+import { EnvironmentSwitcher } from "@/features/environments/EnvironmentSwitcher";
+import { DocKindIcon } from "@/features/scopes/DocKindIcon";
 
 /** Open request tabs: click to switch, middle-click or × to close, drag to reorder. */
 export function TabBar() {
@@ -18,7 +20,7 @@ export function TabBar() {
     <div className="flex h-10 shrink-0 items-end border-b bg-sidebar">
       <div
         role="tablist"
-        aria-label="Open requests"
+        aria-label="Open tabs"
         className="flex h-full min-w-0 [scrollbar-width:none] items-end overflow-x-auto"
       >
         {tabs.map((tab) => {
@@ -65,15 +67,11 @@ export function TabBar() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                title={tab.request.url || title}
+                title={tab.doc ? title : tab.request.url || title}
                 onClick={() => activate(tab.id)}
                 className="flex h-full min-w-0 flex-1 items-center gap-2 pr-1 pl-3 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
               >
-                <span
-                  className={cn("font-mono text-[11px] font-semibold", methodTextClass(tab.request.method))}
-                >
-                  {methodShortLabel(tab.request.method)}
-                </span>
+                <TabIcon tab={tab} />
                 <span className="truncate">{title}</span>
               </button>
               <button
@@ -112,6 +110,18 @@ export function TabBar() {
         </TooltipTrigger>
         <TooltipContent>New request ({modKeyLabel()}+T)</TooltipContent>
       </Tooltip>
+      <div className="ml-auto flex h-full shrink-0 items-center border-l px-1.5">
+        <EnvironmentSwitcher />
+      </div>
     </div>
+  );
+}
+
+function TabIcon({ tab }: { tab: Tab }) {
+  if (tab.doc) return <DocKindIcon kind={tab.doc.kind} className="size-3.5" />;
+  return (
+    <span className={cn("font-mono text-[11px] font-semibold", methodTextClass(tab.request.method))}>
+      {methodShortLabel(tab.request.method)}
+    </span>
   );
 }

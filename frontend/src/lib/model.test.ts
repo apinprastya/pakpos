@@ -280,3 +280,31 @@ describe("environment model", () => {
     });
   });
 });
+
+describe("collection and folder settings", () => {
+  it("fills defaults; empty or inherit auth on a collection is none, empty on a folder is inherit", async () => {
+    const { normalizeCollection, normalizeFolder } = await import("./model");
+    expect(normalizeCollection(null)).toMatchObject({ id: "", name: "", headers: [], variables: [] });
+    expect(normalizeCollection({ auth: { type: "" } }).auth.type).toBe("none");
+    expect(normalizeCollection({ auth: { type: "inherit" } }).auth.type).toBe("none");
+    expect(
+      normalizeCollection({
+        id: "c",
+        auth: { type: "bearer", token: "t" },
+        variables: [{ key: "k", secret: true }],
+      }),
+    ).toMatchObject({
+      id: "c",
+      auth: { type: "bearer", token: "t" },
+      variables: [{ key: "k", value: "", enabled: false, secret: true }],
+    });
+    expect(normalizeFolder(undefined).auth.type).toBe("inherit");
+    expect(
+      normalizeFolder({ id: "f", name: "F", auth: { type: "none" }, headers: [{ key: "a" }] }),
+    ).toMatchObject({
+      id: "f",
+      auth: { type: "none" },
+      headers: [{ key: "a", value: "", enabled: false }],
+    });
+  });
+});

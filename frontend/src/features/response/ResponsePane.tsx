@@ -1,9 +1,10 @@
-import { CircleAlert, Loader2, TriangleAlert } from "lucide-react";
+import { CircleAlert, Loader2, LockOpen, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cancelTab } from "@/features/request/actions";
 import { modKeyLabel } from "@/lib/platform";
 import type { SendError, SendResult } from "@/lib/model";
+import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore } from "@/stores/settings";
 import { useActiveTab } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -99,6 +100,16 @@ export function VariablesNotice({ result }: { result: SendResult }) {
           </span>
         )}
       </p>
+      {secretsLocked && (
+        <Button
+          variant="outline"
+          size="xs"
+          className="ml-auto shrink-0"
+          onClick={() => useSecretsStore.getState().openDialog("unlock")}
+        >
+          <LockOpen /> Unlock
+        </Button>
+      )}
     </div>
   );
 }

@@ -209,3 +209,171 @@ func TestDuplicateAndDeleteEnvironment(t *testing.T) {
 		t.Fatalf("copy failure not logged: %s", f.logs)
 	}
 }
+
+func TestRevealSecret(t *testing.T) {
+	f := newFixture(t)
+	col := ScopeRef{Kind: vars.ScopeCollection, ID: f.col.ID}
+	if got, err := f.sess.RevealSecret(col, " token "); err != nil || got != "s3cret" {
+		t.Fatalf("reveal = %q %v", got, err)
+	}
+	dev := ScopeRef{Kind: vars.ScopeEnvironment, ID: f.dev.ID}
+	if _, err := f.sess.RevealSecret(dev, "apiKey"); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatalf("unset secret: %v", err)
+	}
+	tests := []struct {
+		name string
+		ref  ScopeRef
+		key  string
+		want error
+	}{
+		{"plain variable", col, "host", ErrNotSecret},
+		{"unknown key", col, "nope", ErrNotSecret},
+		{"bad scope", ScopeRef{Kind: vars.ScopeLocal}, "token", ErrInvalidScope},
+		{"unknown environment", ScopeRef{Kind: vars.ScopeEnvironment, ID: "nope"}, "k", fsstore.ErrNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := f.sess.RevealSecret(tt.ref, tt.key); !errors.Is(err, tt.want) {
+				t.Fatalf("err = %v, want %v", err, tt.want)
+			}
+		})
+	}
+	if _, err := f.sess.RevealSecret(col, " "); err == nil {
+		t.Fatal("empty key should fail")
+	}
+	f.sec.Err = secrets.ErrNoPassword
+	if _, err := f.sess.RevealSecret(col, "token"); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatalf("no password reads as not found: %v", err)
+	}
+	f.sec.Err = secrets.ErrLocked
+	if _, err := f.sess.RevealSecret(col, "token"); !errors.Is(err, secrets.ErrLocked) {
+		t.Fatalf("locked: %v", err)
+	}
+}
+
+func TestMakePlain(t *testing.T) {
+	f := newFixture(t)
+	col := ScopeRef{Kind: vars.ScopeCollection, ID: f.col.ID}
+	saved, err := f.sess.MakePlain(col, "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []model.Variable{v("host", "col.example"), v("colOnly", "c1"), v("token", "s3cret")}
+	if !reflect.DeepEqual(saved, want) {
+		t.Fatalf("saved = %+v", saved)
+	}
+	if c, _ := f.ws.GetCollection(f.col.ID); !reflect.DeepEqual(c.Variables, want) {
+		t.Fatalf("on disk = %+v", c.Variables)
+	}
+	if _, err := f.sec.Get(f.key(f.col.ID, "token")); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatalf("stored value not removed: %v", err)
+	}
+
+	// A secret without a stored value becomes an empty plain variable.
+	dev := ScopeRef{Kind: vars.ScopeEnvironment, ID: f.dev.ID}
+	saved, err = f.sess.MakePlain(dev, "apiKey")
+	if err != nil || !reflect.DeepEqual(saved, []model.Variable{v("host", "dev.example"), v("apiKey", "")}) {
+		t.Fatalf("unset = %+v %v", saved, err)
+	}
+	if _, err := f.sess.MakePlain(dev, "apiKey"); !errors.Is(err, ErrNotSecret) {
+		t.Fatalf("already plain: %v", err)
+	}
+
+	// A locked store leaves the variable alone.
+	g := ScopeRef{Kind: vars.ScopeGlobal}
+	if _, err := f.sess.SaveVariables(g, []model.Variable{secret("pw")}); err != nil {
+		t.Fatal(err)
+	}
+	f.sec.Err = secrets.ErrLocked
+	if _, err := f.sess.MakePlain(g, "pw"); !errors.Is(err, secrets.ErrLocked) {
+		t.Fatalf("locked: %v", err)
+	}
+	if gl := f.ws.GetGlobals(); !gl.Variables[0].Secret {
+		t.Fatalf("changed while locked: %+v", gl.Variables)
+	}
+}
+
+func TestSaveVariablesMovesRenamedSecrets(t *testing.T) {
+	f := newFixture(t)
+	g := ScopeRef{Kind: vars.ScopeGlobal}
+	if _, err := f.sess.SaveVariables(g, []model.Variable{secret("a"), secret("b"), secret("c"), secret("unset")}); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"a", "b", "c"} {
+		_ = f.sess.SetSecret(g, k, "v-"+k)
+	}
+	get := func(k string) string {
+		v, err := f.sec.Get(f.key(f.globalID, k))
+		if err != nil {
+			return "<none>"
+		}
+		return v
+	}
+	tests := []struct {
+		name    string
+		vars    []model.Variable
+		renames []SecretRename
+		want    map[string]string
+	}{
+		{
+			name:    "rename keeps the value; swap; unset and bogus pairs are ignored",
+			vars:    []model.Variable{secret("a2"), secret("c"), secret("b"), secret("unset2"), v("plain", "")},
+			renames: []SecretRename{{" a ", "a2"}, {"b", "c"}, {"c", "b"}, {"unset", "unset2"}, {"nope", "x"}, {"c", "plain"}, {"b", "b"}},
+			want:    map[string]string{"a": "<none>", "a2": "v-a", "b": "v-c", "c": "v-b", "unset2": "<none>", "plain": "<none>"},
+		},
+		{
+			name: "a rename without a pair loses the value (as before)",
+			vars: []model.Variable{secret("a3"), secret("c"), secret("b"), secret("unset2")},
+			want: map[string]string{"a2": "<none>", "a3": "<none>", "b": "v-c", "c": "v-b"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := f.sess.SaveVariables(g, tt.vars, tt.renames...); err != nil {
+				t.Fatal(err)
+			}
+			for k, want := range tt.want {
+				if got := get(k); got != want {
+					t.Errorf("%s = %q, want %q", k, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestRenamesRefusedWhileLocked(t *testing.T) {
+	f := newFixture(t)
+	col := ScopeRef{Kind: vars.ScopeCollection, ID: f.col.ID}
+	renamed := []model.Variable{v("host", "col.example"), v("colOnly", "c1"), secret("apiToken")}
+	f.sec.Err = secrets.ErrLocked
+	if _, err := f.sess.SaveVariables(col, renamed, SecretRename{"token", "apiToken"}); !errors.Is(err, secrets.ErrLocked) {
+		t.Fatalf("save while locked: %v", err)
+	}
+	if _, err := f.sess.SaveCollection(f.col.ID, fsstore.CollectionSettings{Variables: renamed}, SecretRename{"token", "apiToken"}); !errors.Is(err, secrets.ErrLocked) {
+		t.Fatalf("save collection while locked: %v", err)
+	}
+	f.sec.Err = nil
+	if c, _ := f.ws.GetCollection(f.col.ID); c.Variables[2].Key != "token" {
+		t.Fatalf("file changed while locked: %+v", c.Variables)
+	}
+	if v, _ := f.sec.Get(f.key(f.col.ID, "token")); v != "s3cret" {
+		t.Fatalf("value lost: %q", v)
+	}
+
+	// Unlocked: SaveCollection moves it too.
+	if _, err := f.sess.SaveCollection(f.col.ID, fsstore.CollectionSettings{Auth: f.col.Auth, Variables: renamed}, SecretRename{"token", "apiToken"}); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := f.sec.Get(f.key(f.col.ID, "apiToken")); v != "s3cret" {
+		t.Fatalf("moved value = %q", v)
+	}
+	if _, err := f.sec.Get(f.key(f.col.ID, "token")); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatalf("old key kept: %v", err)
+	}
+
+	// A failing write stops the save.
+	f.sec.SetErr = errors.New("disk full")
+	if _, err := f.sess.SaveVariables(col, []model.Variable{secret("t3")}, SecretRename{"apiToken", "t3"}); err == nil {
+		t.Fatal("expected the move to fail")
+	}
+}

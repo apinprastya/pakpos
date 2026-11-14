@@ -2,8 +2,10 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { compactRequest, isUntouchedAuth, type Request, type SendResult } from "@/lib/model";
 import { useHistoryStore } from "@/stores/history";
+import { useSecretsStore } from "@/stores/secrets";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { saveDocTab } from "@/features/scopes/docActions";
 
 function newSendId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `send-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -18,7 +20,7 @@ function errorMessage(e: unknown): string {
 export async function sendTab(tabId: string): Promise<void> {
   const store = useTabsStore.getState();
   const tab = store.tabs.find((t) => t.id === tabId);
-  if (!tab || tab.sendId || !tab.request.url.trim()) return;
+  if (!tab || tab.doc || tab.sendId || !tab.request.url.trim()) return;
 
   const sendId = newSendId();
   store.setSending(tabId, sendId);
@@ -38,6 +40,7 @@ export async function sendTab(tabId: string): Promise<void> {
   // Ignore results for tabs that were closed or re-sent meanwhile.
   const current = useTabsStore.getState().tabs.find((t) => t.id === tabId);
   if (current?.sendId === sendId) useTabsStore.getState().setResult(tabId, result);
+  if (result.secretsLocked) void useSecretsStore.getState().refresh();
   if (result.historyId) void useHistoryStore.getState().refresh();
 }
 
@@ -59,6 +62,7 @@ export async function saveTab(tabId: string, closeAfter = false): Promise<boolea
   const store = useTabsStore.getState();
   const tab = store.tabs.find((t) => t.id === tabId);
   if (!tab) return false;
+  if (tab.doc) return saveDocTab(tabId, closeAfter);
   if (!tab.saved || !tab.request.id) {
     store.openSaveDialog(tabId, closeAfter);
     return false;

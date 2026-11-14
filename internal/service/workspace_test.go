@@ -22,7 +22,7 @@ func TestWorkspaceServiceWithoutWorkspace(t *testing.T) {
 		"reorder": h.ws.ReorderCollections(nil),
 		"get col": func() error { _, e := h.ws.GetCollection("x"); return e }(),
 		"save col": func() error {
-			_, e := h.ws.SaveCollection("x", fsstore.CollectionSettings{})
+			_, e := h.ws.SaveCollection("x", fsstore.CollectionSettings{}, nil)
 			return e
 		}(),
 		"create folder": func() error { _, e := h.ws.CreateFolder("x", "y"); return e }(),

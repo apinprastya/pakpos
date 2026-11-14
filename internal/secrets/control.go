@@ -1,6 +1,9 @@
 package secrets
 
-import "errors"
+import (
+	"errors"
+	"unicode/utf8"
+)
 
 // PasswordStore is a Store protected by a master password (FileStore).
 type PasswordStore interface {
@@ -52,11 +55,30 @@ func AsPasswordStore(s Store) (PasswordStore, error) {
 	return p, nil
 }
 
-// ChangePassword checks the current password and re-encrypts every value
-// under next. The store is left unlocked.
-func ChangePassword(p PasswordStore, current, next string) error {
-	if next == "" {
+// MinPasswordLength is the shortest master password accepted for a new one
+// (set or change). Unlocking accepts any length.
+const MinPasswordLength = 8
+
+// ErrPasswordTooShort is returned for a new master password shorter than
+// MinPasswordLength.
+var ErrPasswordTooShort = errors.New("master password is too short")
+
+// CheckNewPassword validates a new master password (counted in characters).
+func CheckNewPassword(password string) error {
+	if password == "" {
 		return ErrEmptyPassword
+	}
+	if utf8.RuneCountInString(password) < MinPasswordLength {
+		return ErrPasswordTooShort
+	}
+	return nil
+}
+
+// ChangePassword checks the new password, then the current one, and
+// re-encrypts every value under next. The store is left unlocked.
+func ChangePassword(p PasswordStore, current, next string) error {
+	if err := CheckNewPassword(next); err != nil {
+		return err
 	}
 	if err := p.Unlock(current); err != nil {
 		return err
@@ -80,6 +102,7 @@ const (
 	MsgLocked        = "The secret store is locked. Unlock it with your master password."
 	MsgNoPassword    = "No master password is set yet. Set one to store secrets on this machine."
 	MsgEmptyPassword = "Enter a master password."
+	MsgShortPassword = "Use a master password of at least 8 characters."
 	MsgCorrupt       = "The secrets file is damaged. Reset the secret store to start over; stored secret values are lost."
 	MsgUnavailable   = "The secret store can't be used on this machine."
 	MsgNotFileStore  = "Secrets are kept in the system keychain, which has no master password."
@@ -105,6 +128,8 @@ func Explain(err error) error {
 		msg = MsgNoPassword
 	case errors.Is(err, ErrEmptyPassword):
 		msg = MsgEmptyPassword
+	case errors.Is(err, ErrPasswordTooShort):
+		msg = MsgShortPassword
 	case errors.Is(err, ErrCorrupt):
 		msg = MsgCorrupt
 	case errors.Is(err, ErrUnavailable):

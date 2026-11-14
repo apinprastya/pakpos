@@ -26,6 +26,7 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Settings2,
 } from "lucide-react";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -36,6 +37,7 @@ import { countRequests, destinations, findContainer, findNode } from "@/lib/tree
 import { cn } from "@/lib/utils";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { openContainerSettings } from "@/features/scopes/docActions";
 import type { DeleteTarget } from "./ConfirmDeleteDialog";
 import { InlineRename } from "./InlineRename";
 import { ItemMenuContent, type MenuEntry, type SubmenuItem } from "./ItemMenu";
@@ -182,6 +184,7 @@ export function CollectionTree({
     ...(c.kind === "folder"
       ? [{ label: "Move to", icon: FolderInput, empty: "No collections", submenu: moveMenu(c) }]
       : []),
+    { label: "Settings", icon: Settings2, onSelect: () => openContainerSettings(c.id) },
     "separator",
     { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteNode(c) },
   ];

@@ -15,10 +15,12 @@ describe("workspace sync in the app", () => {
   });
 
   it("restores the workspace on start, shows it in the status bar, and follows external changes", async () => {
-    let emit: (c: WorkspaceChange) => void = () => {};
+    // The workspace store and the environments sync both listen.
+    const listeners: ((c: WorkspaceChange) => void)[] = [];
+    const emit = (c: WorkspaceChange) => listeners.forEach((cb) => cb(c));
     const unsubscribe = vi.fn();
     vi.mocked(api.onWorkspaceChanged).mockImplementation((cb) => {
-      emit = cb;
+      listeners.push(cb);
       return unsubscribe;
     });
     vi.mocked(api.currentWorkspace).mockResolvedValue({ id: "w1", name: "Shop API", path: "/work/shop" });

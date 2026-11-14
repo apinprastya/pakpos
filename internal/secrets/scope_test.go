@@ -117,17 +117,20 @@ func TestStatusAndPasswordControl(t *testing.T) {
 	if st := StatusOf(fs); st != (Status{Backend: BackendFile, HasPassword: true}) {
 		t.Fatalf("unlocked status = %+v", st)
 	}
-	if err := ChangePassword(p, "wrong", "two"); !errors.Is(err, ErrWrongPassword) {
+	if err := ChangePassword(p, "one", "short"); !errors.Is(err, ErrPasswordTooShort) {
+		t.Fatalf("change to a short password: %v", err)
+	}
+	if err := ChangePassword(p, "wrong", "two-two-two"); !errors.Is(err, ErrWrongPassword) {
 		t.Fatalf("change with wrong password: %v", err)
 	}
 	if err := ChangePassword(p, "one", ""); !errors.Is(err, ErrEmptyPassword) {
 		t.Fatalf("change to empty: %v", err)
 	}
-	if err := ChangePassword(p, "one", "two"); err != nil {
+	if err := ChangePassword(p, "one", "two-two-two"); err != nil {
 		t.Fatal(err)
 	}
 	p.Lock()
-	if err := p.Unlock("two"); err != nil {
+	if err := p.Unlock("two-two-two"); err != nil {
 		t.Fatal(err)
 	}
 	if v, _ := p.Get("k"); v != "v" {
@@ -163,5 +166,26 @@ func TestExplain(t *testing.T) {
 	}
 	if MsgWrongPassword != "Wrong password, or the secrets file is damaged." {
 		t.Fatal("wrong-password copy was decided by the user; keep it")
+	}
+}
+
+func TestCheckNewPassword(t *testing.T) {
+	tests := []struct {
+		pw   string
+		want error
+	}{
+		{"", ErrEmptyPassword},
+		{"1234567", ErrPasswordTooShort},
+		{"ééééééé", ErrPasswordTooShort}, // 7 characters, 14 bytes
+		{"12345678", nil},
+		{"éééééééé", nil},
+	}
+	for _, tt := range tests {
+		if err := CheckNewPassword(tt.pw); !errors.Is(err, tt.want) {
+			t.Errorf("CheckNewPassword(%q) = %v, want %v", tt.pw, err, tt.want)
+		}
+	}
+	if err := Explain(ErrPasswordTooShort); err.Error() != MsgShortPassword {
+		t.Fatalf("message = %v", err)
 	}
 }

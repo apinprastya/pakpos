@@ -1,4 +1,4 @@
-import { FolderTree, History, Settings, type LucideIcon } from "lucide-react";
+import { FolderTree, History, Layers, Settings, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { modKeyLabel } from "@/lib/platform";
 import { useSettingsStore } from "@/stores/settings";
@@ -9,6 +9,7 @@ import { ThemeMenu } from "./ThemeMenu";
 
 const VIEWS: { id: SidebarView; label: string; icon: LucideIcon }[] = [
   { id: "collections", label: "Collections", icon: FolderTree },
+  { id: "environments", label: "Environments", icon: Layers },
   { id: "history", label: "History", icon: History },
 ];
 

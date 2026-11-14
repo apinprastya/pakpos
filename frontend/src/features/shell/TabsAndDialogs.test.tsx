@@ -14,7 +14,7 @@ vi.mock("sonner", async (orig) => {
 });
 
 const s = () => useTabsStore.getState();
-const tabList = () => screen.getByRole("tablist", { name: "Open requests" });
+const tabList = () => screen.getByRole("tablist", { name: "Open tabs" });
 
 describe("tab bar", () => {
   beforeEach(() => resetTabs());

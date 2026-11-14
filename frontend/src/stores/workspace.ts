@@ -30,6 +30,8 @@ interface WorkspaceState {
   workspace: WorkspaceInfo | null;
   collections: CollectionNode[];
   problems: Problem[];
+  /** True once the open workspace's tree has loaded (collections may still be empty). */
+  treeLoaded: boolean;
   recent: RecentWorkspace[];
   /** Id of the tree item (collection, folder or request) that should start in rename mode (just created). */
   renameTarget: string | null;
@@ -87,6 +89,11 @@ function releaseForeignTabs(workspaceId: string | null) {
   const tabs = useTabsStore.getState();
   let kept = 0;
   for (const tab of tabs.tabs) {
+    if (tab.doc) {
+      // Environment and settings tabs only make sense in their own workspace.
+      if (tab.workspaceId !== workspaceId) useTabsStore.getState().close(tab.id);
+      continue;
+    }
     if (!tab.saved || !tab.workspaceId || tab.workspaceId === workspaceId) continue;
     if (isDirty(tab)) {
       tabs.detach(tab.id);
@@ -160,7 +167,7 @@ async function syncTabs(workspaceId: string, collections: CollectionNode[], from
 export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
   /** Makes `ws` the open workspace in the UI. */
   async function activate(ws: WorkspaceInfo) {
-    set({ status: "ready", workspace: ws, collections: [], problems: [] });
+    set({ status: "ready", workspace: ws, collections: [], problems: [], treeLoaded: false });
     releaseForeignTabs(ws.id);
     await get().refresh({ fromDisk: true });
     void get().loadRecent();
@@ -171,6 +178,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
     workspace: null,
     collections: [],
     problems: [],
+    treeLoaded: false,
     recent: [],
     renameTarget: null,
 
@@ -190,7 +198,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       } catch (e) {
         fail("Couldn't load the workspace", e);
       }
-      set({ status: "none", workspace: null, collections: [], problems: [] });
+      set({ status: "none", workspace: null, collections: [], problems: [], treeLoaded: false });
       releaseForeignTabs(null);
     },
 
@@ -200,7 +208,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       try {
         const tree = await api.tree();
         if (get().workspace?.id !== ws.id) return;
-        set({ collections: tree.collections, problems: tree.problems });
+        set({ collections: tree.collections, problems: tree.problems, treeLoaded: true });
         await syncTabs(ws.id, tree.collections, fromDisk);
       } catch (e) {
         fail("Couldn't load the workspace", e);
@@ -277,7 +285,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         fail("Couldn't close the workspace", e);
         return;
       }
-      set({ status: "none", workspace: null, collections: [], problems: [] });
+      set({ status: "none", workspace: null, collections: [], problems: [], treeLoaded: false });
       releaseForeignTabs(null);
       void get().loadRecent();
     },

@@ -4,6 +4,8 @@ import (
 	"strings"
 
 	"pakpos/internal/core/model"
+	"pakpos/internal/pipeline"
+	"pakpos/internal/secrets"
 	"pakpos/internal/store/fsstore"
 	"pakpos/internal/store/sqlite"
 )
@@ -150,14 +152,16 @@ func (s *WorkspaceService) GetCollection(id string) (fsstore.Collection, error) 
 }
 
 // SaveCollection replaces a collection's auth, headers and variables.
-// Secret variable values are never written to the workspace; the stored
-// values of secrets that were removed or renamed are deleted.
-func (s *WorkspaceService) SaveCollection(id string, settings fsstore.CollectionSettings) (fsstore.Collection, error) {
+// Secret variable values are never written to the workspace. Secrets
+// renamed per renames keep their stored value under the new key (a locked
+// store refuses the save); those removed or made plain lose it.
+func (s *WorkspaceService) SaveCollection(id string, settings fsstore.CollectionSettings, renames []pipeline.SecretRename) (fsstore.Collection, error) {
 	_, p, err := s.c.openSession()
 	if err != nil {
 		return fsstore.Collection{}, err
 	}
-	return p.SaveCollection(id, settings)
+	c, err := p.SaveCollection(id, settings, renames...)
+	return c, secrets.Explain(err)
 }
 
 // CreateFolder adds a folder at the end of a collection or folder.
