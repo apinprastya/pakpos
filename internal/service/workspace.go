@@ -3,6 +3,7 @@ package service
 import (
 	"strings"
 
+	"pakpos/internal/core/model"
 	"pakpos/internal/store/fsstore"
 	"pakpos/internal/store/sqlite"
 )
@@ -17,7 +18,8 @@ type WorkspaceInfo struct {
 	Path string `json:"path"`
 }
 
-// WorkspaceService opens workspaces and manages collections.
+// WorkspaceService opens workspaces and manages collections, folders and
+// where requests live in the tree.
 type WorkspaceService struct{ c *Core }
 
 // NewWorkspaceService creates the service.
@@ -88,7 +90,7 @@ func (s *WorkspaceService) PickFolder() (string, error) {
 	return s.c.dialogs.PickFolder("Choose a workspace folder")
 }
 
-// Tree returns collections and requests for the sidebar.
+// Tree returns collections, folders and requests for the sidebar.
 func (s *WorkspaceService) Tree() (fsstore.Tree, error) {
 	ws, err := s.c.workspace()
 	if err != nil {
@@ -135,4 +137,97 @@ func (s *WorkspaceService) ReorderCollections(ids []string) error {
 		return err
 	}
 	return ws.ReorderCollections(ids)
+}
+
+// GetCollection returns a collection with its auth, headers and variables.
+func (s *WorkspaceService) GetCollection(id string) (fsstore.Collection, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Collection{}, err
+	}
+	return ws.GetCollection(id)
+}
+
+// SaveCollection replaces a collection's auth, headers and variables.
+// Secret variable values are never written to the workspace.
+func (s *WorkspaceService) SaveCollection(id string, settings fsstore.CollectionSettings) (fsstore.Collection, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Collection{}, err
+	}
+	return ws.SaveCollection(id, settings)
+}
+
+// CreateFolder adds a folder at the end of a collection or folder.
+func (s *WorkspaceService) CreateFolder(parentID, name string) (fsstore.Folder, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Folder{}, err
+	}
+	return ws.CreateFolder(parentID, strings.TrimSpace(name))
+}
+
+// GetFolder returns a folder with its auth and headers.
+func (s *WorkspaceService) GetFolder(id string) (fsstore.Folder, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Folder{}, err
+	}
+	return ws.GetFolder(id)
+}
+
+// RenameFolder renames a folder (and its directory).
+func (s *WorkspaceService) RenameFolder(id, name string) (fsstore.Folder, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Folder{}, err
+	}
+	return ws.RenameFolder(id, name)
+}
+
+// SaveFolder replaces a folder's auth and headers.
+func (s *WorkspaceService) SaveFolder(id string, settings fsstore.FolderSettings) (fsstore.Folder, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Folder{}, err
+	}
+	return ws.SaveFolder(id, settings)
+}
+
+// DeleteFolder deletes a folder with everything in it.
+func (s *WorkspaceService) DeleteFolder(id string) error {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return err
+	}
+	return ws.DeleteFolder(id)
+}
+
+// MoveRequest moves a request into a collection or folder at index among
+// its children (-1 appends). Within the same parent it reorders.
+func (s *WorkspaceService) MoveRequest(id, toParentID string, index int) (model.Request, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return model.Request{}, err
+	}
+	return ws.MoveRequest(id, toParentID, index)
+}
+
+// MoveFolder moves a folder into a collection or another folder at index
+// among its children (-1 appends). A folder can't go into its own subtree.
+func (s *WorkspaceService) MoveFolder(id, toParentID string, index int) (fsstore.Folder, error) {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return fsstore.Folder{}, err
+	}
+	return ws.MoveFolder(id, toParentID, index)
+}
+
+// Reorder sets the order of the folders and requests inside a collection or folder.
+func (s *WorkspaceService) Reorder(parentID string, ids []string) error {
+	ws, err := s.c.workspace()
+	if err != nil {
+		return err
+	}
+	return ws.Reorder(parentID, ids)
 }

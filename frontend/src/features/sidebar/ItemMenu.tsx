@@ -18,6 +18,17 @@ import {
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 
+/** An item of a submenu; `depth` indents it to show nesting (e.g. folders in a collection). */
+export interface SubmenuItem {
+  label: string;
+  onSelect: () => void;
+  depth?: number;
+  icon?: LucideIcon;
+  disabled?: boolean;
+  /** Accessible name when the label alone is ambiguous (e.g. the full path). */
+  ariaLabel?: string;
+}
+
 export type MenuEntry =
   | {
       label: string;
@@ -26,7 +37,7 @@ export type MenuEntry =
       shortcut?: string;
       destructive?: boolean;
     }
-  | { label: string; icon: LucideIcon; submenu: { label: string; onSelect: () => void }[]; empty: string }
+  | { label: string; icon: LucideIcon; submenu: SubmenuItem[]; empty: string }
   | "separator";
 
 const parts = {
@@ -64,17 +75,27 @@ export function ItemMenuContent({ kind, entries }: { kind: "context" | "dropdown
               <P.SubTrigger>
                 <Icon /> {entry.label}
               </P.SubTrigger>
-              <P.SubContent className="w-48">
+              <P.SubContent className="max-h-80 w-56 overflow-y-auto">
                 {entry.submenu.length === 0 && (
                   <P.Item disabled>
                     <span className="text-muted-foreground">{entry.empty}</span>
                   </P.Item>
                 )}
-                {entry.submenu.map((s) => (
-                  <P.Item key={s.label} onSelect={s.onSelect}>
-                    {s.label}
-                  </P.Item>
-                ))}
+                {entry.submenu.map((s, j) => {
+                  const SubIcon = s.icon;
+                  return (
+                    <P.Item
+                      key={`${j}-${s.label}`}
+                      onSelect={s.onSelect}
+                      disabled={s.disabled}
+                      aria-label={s.ariaLabel}
+                      style={s.depth ? { paddingLeft: `${0.5 + s.depth * 0.875}rem` } : undefined}
+                    >
+                      {SubIcon && <SubIcon />}
+                      <span className="truncate">{s.label}</span>
+                    </P.Item>
+                  );
+                })}
               </P.SubContent>
             </P.Sub>
           );

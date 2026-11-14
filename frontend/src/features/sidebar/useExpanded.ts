@@ -1,42 +1,58 @@
 import { useCallback, useState } from "react";
+import {
+  isExpandedIn,
+  parseExpandState,
+  serializeExpandState,
+  withExpanded,
+  type ExpandState,
+} from "./treeModel";
 
-const keyFor = (workspaceId: string) => `pakpos-tree-collapsed:${workspaceId}`;
+const keyFor = (workspaceId: string) => `pakpos-tree:${workspaceId}`;
+/** Tier 1 storage: an array of collapsed collection ids. Read once, then replaced. */
+const legacyKeyFor = (workspaceId: string) => `pakpos-tree-collapsed:${workspaceId}`;
 
-function read(workspaceId: string): Set<string> {
+function parse(raw: string | null): unknown {
   try {
-    const raw = localStorage.getItem(keyFor(workspaceId));
-    const ids = raw ? (JSON.parse(raw) as unknown) : [];
-    return new Set(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : []);
+    return raw ? (JSON.parse(raw) as unknown) : null;
   } catch {
-    return new Set();
+    return null;
   }
 }
 
-function write(workspaceId: string, collapsed: Set<string>) {
+function read(workspaceId: string): ExpandState {
   try {
-    localStorage.setItem(keyFor(workspaceId), JSON.stringify([...collapsed]));
+    return parseExpandState(
+      parse(localStorage.getItem(keyFor(workspaceId))),
+      parse(localStorage.getItem(legacyKeyFor(workspaceId))),
+    );
+  } catch {
+    return parseExpandState(null);
+  }
+}
+
+function write(workspaceId: string, state: ExpandState) {
+  try {
+    localStorage.setItem(keyFor(workspaceId), JSON.stringify(serializeExpandState(state)));
   } catch {
     /* storage unavailable: expansion just isn't remembered */
   }
 }
 
 /**
- * Expanded/collapsed collections, remembered per workspace. Collections start expanded.
- * Mount the user with `key={workspaceId}` so switching workspaces re-reads the state.
+ * Expanded/collapsed collections and folders, by tree key, remembered per
+ * workspace. Collections start expanded, folders collapsed. Mount the user
+ * with `key={workspaceId}` so switching workspaces re-reads the state.
  */
 export function useExpanded(workspaceId: string) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => read(workspaceId));
+  const [state, setState] = useState<ExpandState>(() => read(workspaceId));
 
-  const isExpanded = useCallback((id: string) => !collapsed.has(id), [collapsed]);
+  const isExpanded = useCallback((key: string) => isExpandedIn(state, key), [state]);
 
   const setExpanded = useCallback(
-    (id: string, expanded: boolean) => {
-      setCollapsed((prev) => {
-        if (prev.has(id) === !expanded) return prev;
-        const next = new Set(prev);
-        if (expanded) next.delete(id);
-        else next.add(id);
-        write(workspaceId, next);
+    (key: string, expanded: boolean) => {
+      setState((prev) => {
+        const next = withExpanded(prev, key, expanded);
+        if (next !== prev) write(workspaceId, next);
         return next;
       });
     },

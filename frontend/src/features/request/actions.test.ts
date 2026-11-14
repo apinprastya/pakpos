@@ -94,7 +94,7 @@ describe("request actions", () => {
     expect(await saveTabAs("t1", "c1", "Login")).toBe(true);
     expect(api.saveAs).toHaveBeenCalledWith("c1", "Login", expect.objectContaining({ name: "Login" }));
     expect(activeTab().request.id).toBe("saved-id");
-    expect(activeTab().collectionId).toBe("c1");
+    expect(activeTab().parentId).toBe("c1");
     vi.mocked(api.saveAs).mockRejectedValue(new Error("x"));
     expect(await saveTabAs("t1", "c1", "Login")).toBe(false);
   });

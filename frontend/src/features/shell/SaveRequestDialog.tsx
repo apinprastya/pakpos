@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderOpen } from "lucide-react";
+import { Folder, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -15,7 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { saveTabAs } from "@/features/request/actions";
 import { api } from "@/lib/api";
-import type { CollectionNode, WorkspaceInfo } from "@/lib/model";
+import type { WorkspaceInfo } from "@/lib/model";
+import { destinations, type Destination } from "@/lib/tree";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 
@@ -24,13 +25,13 @@ const NEW_COLLECTION = "__new__";
 type Load =
   | { state: "loading" }
   | { state: "no-workspace" }
-  | { state: "ready"; workspace: WorkspaceInfo; collections: CollectionNode[] };
+  | { state: "ready"; workspace: WorkspaceInfo; targets: Destination[] };
 
 async function fetchWorkspace(): Promise<Load> {
   try {
     const workspace = await api.currentWorkspace();
     if (!workspace) return { state: "no-workspace" };
-    return { state: "ready", workspace, collections: await api.collections() };
+    return { state: "ready", workspace, targets: destinations(await api.collections()) };
   } catch (e) {
     toast.error("Couldn't load the workspace", { description: String(e) });
     return { state: "no-workspace" };
@@ -62,13 +63,14 @@ function SaveForm({
 }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [name, setName] = useState(initialName || "Untitled request");
-  const [collection, setCollection] = useState("");
+  /** Collection or folder to save into, or NEW_COLLECTION. */
+  const [target, setTarget] = useState("");
   const [newCollection, setNewCollection] = useState("");
   const [busy, setBusy] = useState(false);
 
   const apply = (l: Load) => {
     setLoad(l);
-    if (l.state === "ready") setCollection(l.collections[0]?.id ?? NEW_COLLECTION);
+    if (l.state === "ready") setTarget(l.targets[0]?.id ?? NEW_COLLECTION);
   };
   const refresh = async () => apply(await fetchWorkspace());
 
@@ -96,13 +98,13 @@ function SaveForm({
     if (load.state !== "ready" || !name.trim()) return;
     setBusy(true);
     try {
-      let collectionId = collection;
-      if (collection === NEW_COLLECTION) {
+      let parentId = target;
+      if (target === NEW_COLLECTION) {
         if (!newCollection.trim()) return;
-        collectionId = (await api.createCollection(newCollection.trim())).id;
+        parentId = (await api.createCollection(newCollection.trim())).id;
         void useWorkspaceStore.getState().refresh();
       }
-      const ok = await saveTabAs(tabId, collectionId, name.trim());
+      const ok = await saveTabAs(tabId, parentId, name.trim());
       if (ok) {
         const store = useTabsStore.getState();
         store.closeSaveDialog();
@@ -147,22 +149,29 @@ function SaveForm({
             <Input id="save-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="save-collection">Collection</Label>
-            <Select value={collection} onValueChange={setCollection}>
-              <SelectTrigger id="save-collection" className="w-full">
+            <Label htmlFor="save-target">Save to</Label>
+            <Select value={target} onValueChange={setTarget}>
+              <SelectTrigger id="save-target" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {load.collections.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
+                {load.targets.map((t) => (
+                  <SelectItem
+                    key={t.id}
+                    value={t.id}
+                    style={t.depth ? { paddingLeft: `${0.5 + t.depth * 0.875}rem` } : undefined}
+                  >
+                    {t.kind === "folder" && <Folder aria-hidden className="text-muted-foreground" />}
+                    {/* Indentation shows nesting; screen readers get the full path. */}
+                    {t.depth > 0 && <span className="sr-only">{t.path.slice(0, -t.name.length)}</span>}
+                    {t.name}
                   </SelectItem>
                 ))}
                 <SelectItem value={NEW_COLLECTION}>New collection…</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {collection === NEW_COLLECTION && (
+          {target === NEW_COLLECTION && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="save-new-collection">New collection name</Label>
               <Input
@@ -184,7 +193,7 @@ function SaveForm({
           <Button
             type="submit"
             form="save-request-form"
-            disabled={busy || !name.trim() || (collection === NEW_COLLECTION && !newCollection.trim())}
+            disabled={busy || !name.trim() || (target === NEW_COLLECTION && !newCollection.trim())}
           >
             Save request
           </Button>

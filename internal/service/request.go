@@ -53,15 +53,16 @@ func (s *RequestService) Save(req model.Request) (model.Request, error) {
 	return ws.SaveRequest(req)
 }
 
-// SaveAs saves req as a new request named name at the end of a collection.
-func (s *RequestService) SaveAs(collectionID, name string, req model.Request) (model.Request, error) {
+// SaveAs saves req as a new request named name at the end of a collection
+// or folder (parentID).
+func (s *RequestService) SaveAs(parentID, name string, req model.Request) (model.Request, error) {
 	ws, err := s.c.workspace()
 	if err != nil {
 		return model.Request{}, err
 	}
 	req.ID = ""
 	req.Name = name
-	return ws.CreateRequest(collectionID, req)
+	return ws.CreateRequest(parentID, req)
 }
 
 // Rename renames a saved request.
@@ -91,22 +92,24 @@ func (s *RequestService) Delete(id string) error {
 	return ws.DeleteRequest(id)
 }
 
-// Move moves a request to the end of another collection.
-func (s *RequestService) Move(id, toCollectionID string) (model.Request, error) {
+// Move moves a request to the end of another collection or folder.
+// WorkspaceService.MoveRequest also takes the position.
+func (s *RequestService) Move(id, toParentID string) (model.Request, error) {
 	ws, err := s.c.workspace()
 	if err != nil {
 		return model.Request{}, err
 	}
-	return ws.MoveRequest(id, toCollectionID)
+	return ws.MoveRequest(id, toParentID, -1)
 }
 
-// Reorder sets the order of requests within a collection.
-func (s *RequestService) Reorder(collectionID string, ids []string) error {
+// Reorder sets the order of the folders and requests within a collection
+// or folder (same as WorkspaceService.Reorder).
+func (s *RequestService) Reorder(parentID string, ids []string) error {
 	ws, err := s.c.workspace()
 	if err != nil {
 		return err
 	}
-	return ws.ReorderRequests(collectionID, ids)
+	return ws.Reorder(parentID, ids)
 }
 
 // Send sends req and records it in history. sendID identifies the send for

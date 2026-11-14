@@ -25,7 +25,7 @@ describe("tabs store", () => {
     const b = s().openSaved(req, "c1");
     expect(a).toBe(b);
     expect(s().activeId).toBe(a);
-    expect(activeTab().collectionId).toBe("c1");
+    expect(activeTab().parentId).toBe("c1");
     expect(isDirty(activeTab())).toBe(false);
     expect(tabTitle(activeTab())).toBe("Get user");
   });
@@ -88,9 +88,9 @@ describe("tabs store", () => {
     const saved = { ...emptyRequest(), id: "r9", name: "Saved", url: "u" };
     s().markSaved("t1", saved, "c2");
     expect(activeTab().saved).toEqual(saved);
-    expect(activeTab().collectionId).toBe("c2");
+    expect(activeTab().parentId).toBe("c2");
     s().markSaved("t1", saved);
-    expect(activeTab().collectionId).toBe("c2");
+    expect(activeTab().parentId).toBe("c2");
   });
 
   it("opens and closes the save dialog", () => {
@@ -114,6 +114,20 @@ describe("tabs store", () => {
     expect(s().tabs[0].request.url).toBe("https://persist.dev");
     expect(s().tabs[0].request.query).toEqual([]);
     expect(s().activeId).toBe("t1");
+  });
+
+  it("restores tabs saved before folders existed, keeping their collection as parent", async () => {
+    const old = { id: "old", request: emptyRequest(), saved: null, collectionId: "c7", workspaceId: "w1" };
+    const fresh = { id: "new", request: emptyRequest(), saved: null, parentId: "f1", workspaceId: "w1" };
+    const bare = { id: "bare", request: emptyRequest(), saved: null, workspaceId: "" };
+    localStorage.setItem(
+      "pakpos-tabs",
+      JSON.stringify({ state: { tabs: [old, fresh, bare], activeId: "new" }, version: 1 }),
+    );
+    await useTabsStore.persist.rehydrate();
+    expect(s().tabs.map((t) => t.parentId)).toEqual(["c7", "f1", ""]);
+    expect(s().tabs[0]).not.toHaveProperty("collectionId");
+    expect(s().activeId).toBe("new");
   });
 
   it("keeps the current state when nothing is persisted", async () => {
@@ -152,14 +166,14 @@ describe("tabs: workspace sync helpers", () => {
     useTabsStore.getState().markSaved(id, base(), undefined, "w2");
     expect(useTabsStore.getState().tabs.find((t) => t.id === id)).toMatchObject({
       workspaceId: "w2",
-      collectionId: "c1",
+      parentId: "c1",
     });
   });
 
   it("detach turns a saved tab into an unsaved request", () => {
-    resetTabs(base(), { saved: base(), collectionId: "c1", workspaceId: "w1" });
+    resetTabs(base(), { saved: base(), parentId: "c1", workspaceId: "w1" });
     useTabsStore.getState().detach("t1");
-    expect(activeTab()).toMatchObject({ saved: null, collectionId: "", workspaceId: "" });
+    expect(activeTab()).toMatchObject({ saved: null, parentId: "", workspaceId: "" });
     expect(activeTab().request.id).toBe("");
     expect(activeTab().request.url).toBe("https://a");
   });
@@ -169,7 +183,7 @@ describe("tabs: workspace sync helpers", () => {
     resetTabs(base(), { saved: base() });
     useTabsStore.getState().applyDiskVersion("t1", disk, "c2");
     expect(activeTab().request.url).toBe("https://disk");
-    expect(activeTab().collectionId).toBe("c2");
+    expect(activeTab().parentId).toBe("c2");
 
     resetTabs({ ...base(), url: "https://edited" }, { saved: base() });
     useTabsStore.getState().applyDiskVersion("t1", disk, "c2");

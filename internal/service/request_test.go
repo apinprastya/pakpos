@@ -72,7 +72,7 @@ func TestRequestServiceCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	tree, _ := h.ws.Tree()
-	if len(tree.Collections[0].Requests) != 0 || len(tree.Collections[1].Requests) != 1 {
+	if len(tree.Collections[0].Children) != 0 || len(tree.Collections[1].Children) != 1 {
 		t.Fatalf("tree = %+v", tree)
 	}
 }

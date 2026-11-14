@@ -1,36 +1,54 @@
-import type { CollectionNode } from "@/lib/model";
+import type { CollectionNode, TreeNode } from "@/lib/model";
+import { col, folder, req } from "@/test/fixtures";
 import {
   colKey,
+  collectionOrder,
+  dropPosition,
+  dropTarget,
+  emptyExpandState,
   filterTree,
-  findCollectionOf,
+  folderKey,
   isColKey,
+  isExpandedIn,
   keyId,
-  moveRequestOver,
-  positionOf,
-  reorder,
+  keyKind,
+  nodeKey,
+  parseExpandState,
   reqKey,
+  serializeExpandState,
+  subtreeKeys,
   visibleItems,
+  withExpanded,
 } from "./treeModel";
 
-const req = (id: string, name = id, method = "GET", url = `https://api/${id}`) => ({
-  id,
-  name,
-  method,
-  url,
-  seq: 0,
-});
+// Users[ a1 "List users", Auth[ login, Tokens[ refresh ] ], a2 "Create user" POST ]
+// Orders[ b1 "Get order" ]  Empty[]
 const tree = (): CollectionNode[] => [
-  { id: "a", name: "Users", seq: 1, requests: [req("a1", "List users"), req("a2", "Create user", "POST")] },
-  { id: "b", name: "Orders", seq: 2, requests: [req("b1", "Get order", "GET", "https://shop/orders/1")] },
-  { id: "c", name: "Empty", seq: 3, requests: [] },
+  col("a", "Users", [
+    req("a1", "List users"),
+    folder("auth", "Auth", [req("login", "Log in"), folder("tokens", "Tokens", [req("refresh", "Refresh")])]),
+    req("a2", "Create user", "POST"),
+  ]),
+  col("b", "Orders", [req("b1", "Get order", "GET", "https://shop/orders/1")]),
+  col("c", "Empty"),
 ];
-const ids = (cols: CollectionNode[]) => cols.map((c) => `${c.id}:${c.requests.map((r) => r.id).join(",")}`);
+
+function shape(nodes: TreeNode[]): string {
+  return nodes.map((n) => (n.kind === "request" ? n.id : `${n.id}[${shape(n.children)}]`)).join(" ");
+}
 
 describe("tree keys", () => {
-  it("round-trips ids", () => {
+  it("round-trips ids and kinds", () => {
     expect(isColKey(colKey("x"))).toBe(true);
     expect(isColKey(reqKey("x"))).toBe(false);
-    expect(keyId(reqKey("abc"))).toBe("abc");
+    expect(keyId(folderKey("abc"))).toBe("abc");
+    expect([keyKind("c:x"), keyKind("f:x"), keyKind("r:x")]).toEqual(["collection", "folder", "request"]);
+    expect(nodeKey(tree()[0].children[1])).toBe("f:auth");
+  });
+
+  it("subtreeKeys covers a node and everything inside it", () => {
+    expect([...subtreeKeys(tree()[0].children[1])]).toEqual(["f:auth", "r:login", "f:tokens", "r:refresh"]);
+    expect([...subtreeKeys(req("x"))]).toEqual(["r:x"]);
   });
 });
 
@@ -39,54 +57,136 @@ describe("filterTree", () => {
     const t = tree();
     expect(filterTree(t, "  ")).toBe(t);
   });
-  it("matches request name, URL and exact method; collection names keep all requests", () => {
-    expect(ids(filterTree(tree(), "create"))).toEqual(["a:a2"]);
-    expect(ids(filterTree(tree(), "shop/orders"))).toEqual(["b:b1"]);
-    expect(ids(filterTree(tree(), "post"))).toEqual(["a:a2"]);
-    expect(ids(filterTree(tree(), "users"))).toEqual(["a:a1,a2"]);
+
+  it("matches request name, URL and exact method, keeping the folders on the way", () => {
+    expect(shape(filterTree(tree(), "create"))).toBe("a[a2]");
+    expect(shape(filterTree(tree(), "shop/orders"))).toBe("b[b1]");
+    expect(shape(filterTree(tree(), "post"))).toBe("a[a2]");
+    expect(shape(filterTree(tree(), "refresh"))).toBe("a[auth[tokens[refresh]]]");
     expect(filterTree(tree(), "nothing")).toEqual([]);
+  });
+
+  it("a matching collection or folder name keeps everything inside it", () => {
+    expect(shape(filterTree(tree(), "users"))).toBe("a[a1 auth[login tokens[refresh]] a2]");
+    expect(shape(filterTree(tree(), "auth"))).toBe("a[auth[login tokens[refresh]]]");
+    expect(shape(filterTree(tree(), "tokens"))).toBe("a[auth[tokens[refresh]]]");
   });
 });
 
 describe("visibleItems", () => {
-  it("skips requests of collapsed collections", () => {
-    const items = visibleItems(tree(), (id) => id !== "b");
-    expect(items.map((i) => i.key)).toEqual(["c:a", "r:a1", "r:a2", "c:b", "c:c"]);
-    expect(items[1]).toEqual({ key: "r:a1", level: 2, parent: "c:a" });
+  it("lists rows with levels and positions, skipping collapsed collections and folders", () => {
+    const open = new Set(["c:a", "f:auth", "c:c"]);
+    const items = visibleItems(tree(), (k) => open.has(k));
+    expect(items.map((i) => `${i.key}@${i.level}`)).toEqual([
+      "c:a@1",
+      "r:a1@2",
+      "f:auth@2",
+      "r:login@3",
+      "f:tokens@3",
+      "r:a2@2",
+      "c:b@1",
+      "c:c@1",
+    ]);
+    const tokens = items.find((i) => i.key === "f:tokens")!;
+    expect(tokens).toMatchObject({ parent: "f:auth", posInSet: 2, setSize: 2 });
+    expect(items[0]).toMatchObject({ parent: null, posInSet: 1, setSize: 3 });
   });
 });
 
-describe("reorder and positions", () => {
-  it("reorder moves active into over's place and ignores unknown ids", () => {
-    expect(reorder(["x", "y", "z"], "x", "z")).toEqual(["y", "z", "x"]);
-    expect(reorder(["x", "y"], "x", "x")).toEqual(["x", "y"]);
-    expect(reorder(["x", "y"], "q", "x")).toEqual(["x", "y"]);
+describe("expand state", () => {
+  it("collections start expanded and folders collapsed", () => {
+    expect(isExpandedIn(emptyExpandState, "c:a")).toBe(true);
+    expect(isExpandedIn(emptyExpandState, "f:auth")).toBe(false);
   });
-  it("positionOf and findCollectionOf", () => {
-    expect(positionOf(tree(), "a2")).toEqual({ collectionId: "a", index: 1 });
-    expect(positionOf(tree(), "zz")).toBeNull();
-    expect(findCollectionOf(tree(), "b1")?.id).toBe("b");
+
+  it("toggles and returns the same state for no-ops", () => {
+    let s = withExpanded(emptyExpandState, "c:a", false);
+    s = withExpanded(s, "f:auth", true);
+    expect(isExpandedIn(s, "c:a")).toBe(false);
+    expect(isExpandedIn(s, "f:auth")).toBe(true);
+    expect(withExpanded(s, "f:auth", true)).toBe(s);
+    s = withExpanded(withExpanded(s, "c:a", true), "f:auth", false);
+    expect(serializeExpandState(s)).toEqual({ collapsed: [], expanded: [] });
+  });
+
+  it("parses stored state, the Tier 1 format, and junk", () => {
+    const stored = parseExpandState({ collapsed: ["c:a", 3], expanded: ["f:x"] });
+    expect(serializeExpandState(stored)).toEqual({ collapsed: ["c:a"], expanded: ["f:x"] });
+    const legacy = parseExpandState(null, ["a", "b", null]);
+    expect(serializeExpandState(legacy)).toEqual({ collapsed: ["c:a", "c:b"], expanded: [] });
+    expect(serializeExpandState(parseExpandState({ collapsed: "no" }))).toEqual({
+      collapsed: [],
+      expanded: [],
+    });
+    expect(serializeExpandState(parseExpandState(["a"], "junk"))).toEqual({ collapsed: [], expanded: [] });
   });
 });
 
-describe("moveRequestOver", () => {
-  it("reorders within a collection", () => {
-    expect(ids(moveRequestOver(tree(), "a1", reqKey("a2")))).toEqual(["a:a2,a1", "b:b1", "c:"]);
+describe("dropPosition", () => {
+  const rect = { top: 100, height: 20 };
+  it("collections go before or after other collections", () => {
+    expect(dropPosition("collection", "collection", 105, rect)).toBe("before");
+    expect(dropPosition("collection", "collection", 115, rect)).toBe("after");
+    expect(dropPosition("collection", "collection", null, rect)).toBe("after");
   });
-  it("leaves order alone when dropped on its own collection header", () => {
-    const t = tree();
-    expect(moveRequestOver(t, "a1", colKey("a"))).toBe(t);
+  it("items go inside a collection", () => {
+    expect(dropPosition("request", "collection", 101, rect)).toBe("inside");
   });
-  it("moves into another collection before the request it is over", () => {
-    expect(ids(moveRequestOver(tree(), "a1", reqKey("b1")))).toEqual(["a:a2", "b:a1,b1", "c:"]);
+  it("folders split into quarters; requests into halves", () => {
+    expect(dropPosition("request", "folder", 102, rect)).toBe("before");
+    expect(dropPosition("folder", "folder", 110, rect)).toBe("inside");
+    expect(dropPosition("request", "folder", 118, rect)).toBe("after");
+    expect(dropPosition("folder", "request", 104, rect)).toBe("before");
+    expect(dropPosition("request", "request", 112, rect)).toBe("after");
   });
-  it("moves to the end of a collection when over its header", () => {
-    expect(ids(moveRequestOver(tree(), "a1", colKey("c")))).toEqual(["a:a2", "b:b1", "c:a1"]);
-    expect(ids(moveRequestOver(tree(), "b1", colKey("a")))).toEqual(["a:a1,a2,b1", "b:", "c:"]);
+  it("without a pointer or a size, containers take it inside and requests after", () => {
+    expect(dropPosition("request", "folder", null, rect)).toBe("inside");
+    expect(dropPosition("request", "request", 110, { top: 0, height: 0 })).toBe("after");
   });
-  it("ignores unknown requests or targets", () => {
-    const t = tree();
-    expect(moveRequestOver(t, "nope", reqKey("a1"))).toBe(t);
-    expect(moveRequestOver(t, "a1", reqKey("nope"))).toBe(t);
+});
+
+describe("dropTarget", () => {
+  it("before and after a request, counting siblings without the dragged item", () => {
+    expect(dropTarget(tree(), "r:a1", "r:a2", "before")).toEqual({ parentId: "a", index: 1 });
+    expect(dropTarget(tree(), "r:a1", "r:a2", "after")).toEqual({ parentId: "a", index: 2 });
+    expect(dropTarget(tree(), "r:b1", "r:a1", "before")).toEqual({ parentId: "a", index: 0 });
+    expect(dropTarget(tree(), "r:a1", "r:refresh", "after")).toEqual({ parentId: "tokens", index: 1 });
+  });
+
+  it("inside a folder or collection goes to its end", () => {
+    expect(dropTarget(tree(), "r:a1", "f:tokens", "inside")).toEqual({ parentId: "tokens", index: 1 });
+    expect(dropTarget(tree(), "r:a1", "c:b", "inside")).toEqual({ parentId: "b", index: 1 });
+    expect(dropTarget(tree(), "r:a1", "c:a", "before")).toEqual({ parentId: "a", index: 2 });
+    expect(dropTarget(tree(), "f:tokens", "c:c", "inside")).toEqual({ parentId: "c", index: 0 });
+  });
+
+  it("folders can go before or after siblings at any level", () => {
+    expect(dropTarget(tree(), "f:tokens", "r:a1", "before")).toEqual({ parentId: "a", index: 0 });
+    expect(dropTarget(tree(), "f:auth", "r:b1", "after")).toEqual({ parentId: "b", index: 1 });
+  });
+
+  it("rejects drops onto itself, into its own subtree, or nonsense", () => {
+    expect(dropTarget(tree(), "r:a1", "r:a1", "after")).toBeNull();
+    expect(dropTarget(tree(), "f:auth", "f:tokens", "inside")).toBeNull();
+    expect(dropTarget(tree(), "f:auth", "r:refresh", "before")).toBeNull();
+    expect(dropTarget(tree(), "f:auth", "r:login", "after")).toBeNull();
+    expect(dropTarget(tree(), "c:a", "c:b", "after")).toBeNull();
+    expect(dropTarget(tree(), "r:a1", "r:nope", "after")).toBeNull();
+    expect(dropTarget(tree(), "r:a1", "f:nope", "inside")).toBeNull();
+    expect(dropTarget(tree(), "r:a1", "r:a2", "inside")).toBeNull();
+  });
+});
+
+describe("collectionOrder", () => {
+  it("places the dragged collection before or after the target", () => {
+    expect(collectionOrder(tree(), "c:a", "c:b", "after")).toEqual(["b", "a", "c"]);
+    expect(collectionOrder(tree(), "c:c", "c:a", "before")).toEqual(["c", "a", "b"]);
+  });
+  it("ignores items, itself and unknown collections", () => {
+    expect(collectionOrder(tree(), "c:a", "c:a", "after")).toBeNull();
+    expect(collectionOrder(tree(), "r:a1", "c:a", "after")).toBeNull();
+    expect(collectionOrder(tree(), "c:a", "r:a1", "after")).toBeNull();
+    expect(collectionOrder(tree(), "c:x", "c:a", "after")).toBeNull();
+    expect(collectionOrder(tree(), "c:a", "c:x", "after")).toBeNull();
   });
 });

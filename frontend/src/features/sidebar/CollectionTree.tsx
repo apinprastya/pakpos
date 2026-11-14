@@ -1,24 +1,28 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   closestCenter,
   DndContext,
+  DragOverlay,
   PointerSensor,
   pointerWithin,
+  useDraggable,
+  useDroppable,
   useSensor,
   useSensors,
   type CollisionDetection,
   type DragEndEvent,
-  type DragOverEvent,
+  type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import {
   ChevronRight,
   Copy,
   ExternalLink,
   FilePlus,
+  Folder,
   FolderInput,
+  FolderOpen,
+  FolderPlus,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -27,35 +31,56 @@ import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { plural } from "@/lib/errors";
 import { methodShortLabel, methodTextClass } from "@/lib/http";
-import type { CollectionNode, RequestSummary } from "@/lib/model";
+import type { CollectionNode, ContainerNode, RequestSummary, TreeChild, TreeNode } from "@/lib/model";
+import { countRequests, destinations, findContainer, findNode } from "@/lib/tree";
 import { cn } from "@/lib/utils";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import type { DeleteTarget } from "./ConfirmDeleteDialog";
 import { InlineRename } from "./InlineRename";
-import { ItemMenuContent, type MenuEntry } from "./ItemMenu";
+import { ItemMenuContent, type MenuEntry, type SubmenuItem } from "./ItemMenu";
 import {
-  colKey,
-  findCollectionOf,
+  collectionOrder,
+  dropPosition,
+  dropTarget,
   isColKey,
   keyId,
-  moveRequestOver,
-  positionOf,
-  reorder,
-  reqKey,
+  keyKind,
+  nodeKey,
+  subtreeKeys,
   visibleItems,
+  type DropPosition,
+  type DropTarget,
+  type VisibleItem,
 } from "./treeModel";
 
 interface CollectionTreeProps {
   collections: CollectionNode[];
   /** Filter is active: everything is expanded and reordering is off. */
   filtering: boolean;
-  isExpanded: (id: string) => boolean;
-  setExpanded: (id: string, expanded: boolean) => void;
+  /** Expansion by tree key (`c:…` collections, `f:…` folders). */
+  isExpanded: (key: string) => boolean;
+  setExpanded: (key: string, expanded: boolean) => void;
   confirmDelete: (target: DeleteTarget) => void;
 }
 
-/** Collections and their requests as an accessible, sortable tree. */
+/** Indentation per tree level, in pixels. */
+const INDENT = 14;
+
+type Indicator = { key: string; position: DropPosition };
+type Drop =
+  | { kind: "collections"; ids: string[]; indicator: Indicator }
+  | { kind: "move"; node: TreeChild; target: DropTarget; indicator: Indicator };
+
+/** Pointer position during a drag: where it went down plus how far it moved. */
+function pointerY(e: { activatorEvent: Event | null; delta: { y: number } }): number | null {
+  const start = e.activatorEvent as MouseEvent | null;
+  return typeof start?.clientY === "number" ? start.clientY + e.delta.y : null;
+}
+
+const nameLabel = { collection: "Collection name", folder: "Folder name", request: "Request name" } as const;
+
+/** Collections, folders and requests as an accessible tree with drag and drop across levels. */
 export function CollectionTree({
   collections,
   filtering,
@@ -70,24 +95,22 @@ export function CollectionTree({
 
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
-  const [preview, setPreview] = useState<CollectionNode[] | null>(null);
+  const [drag, setDrag] = useState<{ key: string; node: TreeNode; blocked: Set<string> } | null>(null);
+  const [indicator, setIndicator] = useState<Indicator | null>(null);
   const rows = useRef(new Map<string, HTMLElement>());
 
-  const shown = preview ?? collections;
-  const expanded = (id: string) => filtering || isExpanded(id);
-  const items = visibleItems(shown, expanded);
+  const expanded = (key: string) => filtering || isExpanded(key);
+  const items = visibleItems(collections, expanded);
   const current = items.some((i) => i.key === focusKey) ? focusKey : (items[0]?.key ?? null);
 
   // A just-created item starts in rename mode.
   const targetKey = useMemo(() => {
-    if (!renameTarget) return null;
-    if (shown.some((c) => c.id === renameTarget)) return colKey(renameTarget);
-    if (findCollectionOf(shown, renameTarget)) return reqKey(renameTarget);
-    return null;
-  }, [renameTarget, shown]);
+    const node = renameTarget ? findNode(collections, renameTarget) : undefined;
+    return node ? nodeKey(node) : null;
+  }, [renameTarget, collections]);
   const renamingKey = renaming ?? targetKey;
 
-  const focusRow = (key: string | undefined) => {
+  const focusRow = (key: string | null | undefined) => {
     if (!key) return;
     setFocusKey(key);
     rows.current.get(key)?.focus();
@@ -99,102 +122,118 @@ export function CollectionTree({
 
   /* ---------- actions ---------- */
 
-  const deleteCollection = (c: CollectionNode) =>
+  const deleteNode = (node: TreeNode) => {
+    if (node.kind === "request") {
+      confirmDelete({
+        title: `Delete request "${node.name}"?`,
+        description: "This deletes the request's file from the workspace folder.",
+        confirmLabel: "Delete request",
+        onConfirm: () => void store().deleteRequest(node.id),
+      });
+      return;
+    }
+    const what = node.kind === "collection" ? "collection" : "folder";
+    const n = countRequests(node);
     confirmDelete({
-      title: `Delete collection "${c.name}"?`,
+      title: `Delete ${what} "${node.name}"?`,
       description:
-        c.requests.length > 0
-          ? `This deletes the collection and ${plural(c.requests.length, "request")} in it from the workspace folder.`
-          : "This deletes the empty collection from the workspace folder.",
-      confirmLabel: "Delete collection",
-      onConfirm: () => void store().deleteCollection(c.id),
+        node.children.length > 0
+          ? `This deletes the ${what} and ${plural(n, "request")} in it from the workspace folder.`
+          : `This deletes the empty ${what} from the workspace folder.`,
+      confirmLabel: `Delete ${what}`,
+      onConfirm: () =>
+        void (node.kind === "collection" ? store().deleteCollection(node.id) : store().deleteFolder(node.id)),
     });
-
-  const deleteRequest = (r: RequestSummary) =>
-    confirmDelete({
-      title: `Delete request "${r.name}"?`,
-      description: "This deletes the request's file from the workspace folder.",
-      confirmLabel: "Delete request",
-      onConfirm: () => void store().deleteRequest(r.id),
-    });
-
-  const newRequest = (c: CollectionNode) => {
-    setExpanded(c.id, true);
-    void store().newRequest(c.id);
   };
 
-  const collectionMenu = (c: CollectionNode): MenuEntry[] => [
+  const newRequest = (c: ContainerNode) => {
+    setExpanded(nodeKey(c), true);
+    void store().newRequest(c.id);
+  };
+  const newFolder = (c: ContainerNode) => {
+    setExpanded(nodeKey(c), true);
+    void store().createFolder(c.id);
+  };
+
+  const move = (node: TreeChild, parentId: string, index: number) =>
+    void (node.kind === "folder"
+      ? store().moveFolder(node.id, parentId, index)
+      : store().moveRequest(node.id, parentId, index));
+
+  /** "Move to" destinations: every collection and folder, nested; a folder can't go inside itself. */
+  const moveMenu = (node: TreeChild): SubmenuItem[] =>
+    destinations(allCollections, node.kind === "folder" ? node.id : undefined).map((d) => ({
+      label: d.name,
+      ariaLabel: d.path,
+      depth: d.depth,
+      icon: d.kind === "folder" ? Folder : undefined,
+      disabled: d.id === node.parentId,
+      onSelect: () => {
+        const target = findContainer(allCollections, d.id);
+        const end = target ? target.children.filter((c) => c.id !== node.id).length : 0;
+        move(node, d.id, end);
+      },
+    }));
+
+  const containerMenu = (c: ContainerNode): MenuEntry[] => [
     { label: "New request", icon: FilePlus, onSelect: () => newRequest(c) },
-    { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(colKey(c.id)) },
+    { label: "New folder", icon: FolderPlus, onSelect: () => newFolder(c) },
+    { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(nodeKey(c)) },
+    ...(c.kind === "folder"
+      ? [{ label: "Move to", icon: FolderInput, empty: "No collections", submenu: moveMenu(c) }]
+      : []),
     "separator",
-    {
-      label: "Delete",
-      icon: Trash2,
-      destructive: true,
-      shortcut: "Del",
-      onSelect: () => deleteCollection(c),
-    },
+    { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteNode(c) },
   ];
 
-  const requestMenu = (r: RequestSummary, c: CollectionNode): MenuEntry[] => [
+  const requestMenu = (r: RequestSummary): MenuEntry[] => [
     { label: "Open", icon: ExternalLink, onSelect: () => void store().openRequest(r.id) },
-    { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(reqKey(r.id)) },
+    { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(nodeKey(r)) },
     { label: "Duplicate", icon: Copy, onSelect: () => void store().duplicateRequest(r.id) },
-    {
-      label: "Move to",
-      icon: FolderInput,
-      empty: "No other collections",
-      submenu: allCollections
-        .filter((o) => o.id !== c.id)
-        .map((o) => ({
-          label: o.name,
-          onSelect: () => void store().moveRequest(r.id, o.id, o.requests.length),
-        })),
-    },
+    { label: "Move to", icon: FolderInput, empty: "No collections", submenu: moveMenu(r) },
     "separator",
-    { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteRequest(r) },
+    { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteNode(r) },
   ];
+
+  const commitRename = (node: TreeNode, name: string) => {
+    if (node.kind === "collection") void store().renameCollection(node.id, name);
+    else if (node.kind === "folder") void store().renameFolder(node.id, name);
+    else void store().renameRequest(node.id, name);
+  };
 
   /* ---------- keyboard ---------- */
 
-  const lookup = (key: string) => {
-    if (isColKey(key)) {
-      const c = shown.find((x) => x.id === keyId(key));
-      return c ? { collection: c } : null;
-    }
-    const c = findCollectionOf(shown, keyId(key));
-    const r = c?.requests.find((x) => x.id === keyId(key));
-    return c && r ? { collection: c, request: r } : null;
-  };
-
-  const moveByKeyboard = (key: string, delta: -1 | 1) => {
-    const found = lookup(key);
-    if (!found || filtering) return;
-    if (!found.request) {
-      const ids = shown.map((c) => c.id);
-      const from = ids.indexOf(found.collection.id);
+  /** Alt+↑/↓: moves the item one place within its parent. */
+  const moveByKeyboard = (node: TreeNode, delta: -1 | 1) => {
+    if (filtering) return;
+    if (node.kind === "collection") {
+      const ids = allCollections.map((c) => c.id);
+      const from = ids.indexOf(node.id);
       const to = from + delta;
-      if (to < 0 || to >= ids.length) return;
-      void store().reorderCollections(reorder(ids, ids[from], ids[to]));
+      if (from < 0 || to < 0 || to >= ids.length) return;
+      ids.splice(from, 1);
+      ids.splice(to, 0, node.id);
+      void store().reorderCollections(ids);
       return;
     }
-    const idx = found.collection.requests.findIndex((r) => r.id === found.request.id);
-    const to = idx + delta;
-    if (to < 0 || to >= found.collection.requests.length) return;
-    void store().moveRequest(found.request.id, found.collection.id, to);
+    const siblings = findContainer(allCollections, node.parentId)?.children ?? [];
+    const from = siblings.findIndex((c) => c.kind === node.kind && c.id === node.id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= siblings.length) return;
+    move(node, node.parentId, to);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!current || renamingKey) return;
     const idx = items.findIndex((i) => i.key === current);
     const item = items[idx];
-    const found = lookup(current);
-    if (!found) return;
-    const isCol = !found.request;
+    if (!item) return;
+    const node = item.node;
+    const isContainer = node.kind !== "request";
 
     if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
-      moveByKeyboard(current, e.key === "ArrowUp" ? -1 : 1);
+      moveByKeyboard(node, e.key === "ArrowUp" ? -1 : 1);
       return;
     }
     switch (e.key) {
@@ -211,26 +250,24 @@ export function CollectionTree({
         focusRow(items[items.length - 1]?.key);
         break;
       case "ArrowRight":
-        if (isCol) {
-          if (!expanded(found.collection.id)) setExpanded(found.collection.id, true);
-          else if (items[idx + 1]?.parent === current) focusRow(items[idx + 1].key);
+        if (isContainer) {
+          if (!expanded(item.key)) setExpanded(item.key, true);
+          else if (items[idx + 1]?.parent === item.key) focusRow(items[idx + 1].key);
         }
         break;
       case "ArrowLeft":
-        if (isCol) {
-          if (expanded(found.collection.id) && !filtering) setExpanded(found.collection.id, false);
-        } else focusRow(item.parent);
+        if (isContainer && expanded(item.key) && !filtering) setExpanded(item.key, false);
+        else focusRow(item.parent);
         break;
       case "Enter":
-        if (isCol) setExpanded(found.collection.id, !expanded(found.collection.id));
-        else void store().openRequest(found.request.id);
+        if (isContainer) setExpanded(item.key, !expanded(item.key));
+        else void store().openRequest(node.id);
         break;
       case "F2":
         setRenaming(current);
         break;
       case "Delete":
-        if (isCol) deleteCollection(found.collection);
-        else deleteRequest(found.request);
+        deleteNode(node);
         break;
       default:
         return;
@@ -242,49 +279,65 @@ export function CollectionTree({
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
+  // Collections only reorder among collections; folders and requests can go
+  // anywhere except into the dragged folder's own subtree.
   const collision: CollisionDetection = (args) => {
-    const activeIsCol = isColKey(String(args.active.id));
-    const cols = args.droppableContainers.filter((c) => isColKey(String(c.id)));
-    if (activeIsCol) return closestCenter({ ...args, droppableContainers: cols });
-    const reqs = args.droppableContainers.filter((c) => !isColKey(String(c.id)));
-    const overRequest = pointerWithin({ ...args, droppableContainers: reqs });
-    if (overRequest.length) return overRequest;
-    const overCollection = pointerWithin({ ...args, droppableContainers: cols });
-    if (overCollection.length) return overCollection;
-    return closestCenter({ ...args, droppableContainers: reqs });
+    const active = String(args.active.id);
+    if (isColKey(active)) {
+      const cols = args.droppableContainers.filter((c) => isColKey(String(c.id)));
+      return closestCenter({ ...args, droppableContainers: cols });
+    }
+    const blocked = drag?.blocked ?? new Set([active]);
+    const allowed = args.droppableContainers.filter((c) => !blocked.has(String(c.id)));
+    const under = pointerWithin({ ...args, droppableContainers: allowed });
+    return under.length ? under : closestCenter({ ...args, droppableContainers: allowed });
+  };
+
+  const resolveDrop = (e: DragMoveEvent | DragEndEvent): Drop | null => {
+    const active = String(e.active.id);
+    if (!e.over) return null;
+    const over = String(e.over.id);
+    const position = dropPosition(keyKind(active), keyKind(over), pointerY(e), e.over.rect);
+    const ind = { key: over, position };
+    if (isColKey(active)) {
+      const ids = collectionOrder(collections, active, over, position);
+      return ids ? { kind: "collections", ids, indicator: ind } : null;
+    }
+    const node = findNode(collections, keyId(active), keyKind(active));
+    const target = dropTarget(collections, active, over, position);
+    return node && node.kind !== "collection" && target
+      ? { kind: "move", node, target, indicator: ind }
+      : null;
   };
 
   const onDragStart = (e: DragStartEvent) => {
-    setPreview(collections);
-    setFocusKey(String(e.active.id));
+    const key = String(e.active.id);
+    const node = findNode(collections, keyId(key), keyKind(key));
+    if (!node) return;
+    setDrag({ key, node, blocked: subtreeKeys(node) });
+    setFocusKey(key);
   };
 
-  const onDragOver = (e: DragOverEvent) => {
-    const active = String(e.active.id);
-    const over = e.over ? String(e.over.id) : null;
-    if (!over || isColKey(active) || !preview) return;
-    const from = findCollectionOf(preview, keyId(active));
-    const to = isColKey(over)
-      ? preview.find((c) => c.id === keyId(over))
-      : findCollectionOf(preview, keyId(over));
-    if (from && to && from.id !== to.id) setPreview(moveRequestOver(preview, keyId(active), over));
+  const onDragMove = (e: DragMoveEvent) => {
+    const next = resolveDrop(e)?.indicator ?? null;
+    setIndicator((prev) => (prev?.key === next?.key && prev?.position === next?.position ? prev : next));
+  };
+
+  const endDrag = () => {
+    setDrag(null);
+    setIndicator(null);
   };
 
   const onDragEnd = (e: DragEndEvent) => {
-    const active = String(e.active.id);
-    const over = e.over ? String(e.over.id) : null;
-    const base = preview ?? collections;
-    setPreview(null);
-    if (!over) return;
-    if (isColKey(active)) {
-      if (!isColKey(over) || over === active) return;
-      const ids = collections.map((c) => c.id);
-      void store().reorderCollections(reorder(ids, keyId(active), keyId(over)));
+    const drop = resolveDrop(e);
+    endDrag();
+    if (!drop) return;
+    if (drop.kind === "collections") {
+      void store().reorderCollections(drop.ids);
       return;
     }
-    const final = over === active ? base : moveRequestOver(base, keyId(active), over);
-    const pos = positionOf(final, keyId(active));
-    if (pos) void store().moveRequest(keyId(active), pos.collectionId, pos.index);
+    if (drop.indicator.position === "inside") setExpanded(drop.indicator.key, true);
+    move(drop.node, drop.target.parentId, drop.target.index);
   };
 
   /* ---------- render ---------- */
@@ -294,206 +347,191 @@ export function CollectionTree({
     else rows.current.delete(key);
   };
 
+  const renderRow = (item: VisibleItem) => {
+    const { key, node, level } = item;
+    const isContainer = node.kind !== "request";
+    const open = isContainer && expanded(key);
+    const isActive = node.kind === "request" && node.id === activeRequestId;
+    const menu = node.kind === "request" ? requestMenu(node) : containerMenu(node);
+    const ind = indicator?.key === key ? indicator.position : null;
+    const pad = 4 + (level - 1) * INDENT + (isContainer ? 0 : 6);
+    const label = node.kind === "request" ? `${node.method} ${node.name}` : node.name;
+
+    return (
+      <DndItem key={key} id={key} disabled={filtering || !!renamingKey}>
+        {(d) => (
+          <li
+            ref={rowRef(key)}
+            role="treeitem"
+            aria-level={level}
+            aria-setsize={item.setSize}
+            aria-posinset={item.posInSet}
+            aria-expanded={isContainer ? open : undefined}
+            aria-selected={node.kind === "request" ? isActive : undefined}
+            aria-label={label}
+            tabIndex={current === key ? 0 : -1}
+            onFocus={(e) => e.target === e.currentTarget && setFocusKey(key)}
+            className={cn("group/item outline-none", d.isDragging && "opacity-50")}
+          >
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div
+                  ref={d.setNodeRef}
+                  {...d.listeners}
+                  onClick={() => {
+                    focusRow(key);
+                    if (isContainer) setExpanded(key, !open);
+                    else void store().openRequest(node.id);
+                  }}
+                  title={node.kind === "request" ? node.url || undefined : undefined}
+                  data-drop={ind ?? undefined}
+                  style={{ paddingLeft: pad }}
+                  className={cn(
+                    "group/row relative mx-1 flex h-7 cursor-default items-center gap-1.5 rounded-md pr-1 group-focus-visible/item:ring-2 group-focus-visible/item:ring-ring group-focus-visible/item:ring-inset hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent",
+                    isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
+                    ind === "inside" && "bg-sidebar-accent ring-1 ring-primary ring-inset",
+                  )}
+                >
+                  {(ind === "before" || ind === "after") && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary",
+                        ind === "before" ? "-top-px" : "-bottom-px",
+                      )}
+                    />
+                  )}
+                  {isContainer ? (
+                    <ChevronRight
+                      aria-hidden
+                      className={cn(
+                        "size-3.5 shrink-0 text-muted-foreground transition-transform",
+                        open && "rotate-90",
+                      )}
+                    />
+                  ) : (
+                    <span
+                      className={cn(
+                        "w-8 shrink-0 font-mono text-[10px] font-semibold",
+                        methodTextClass(node.method),
+                      )}
+                    >
+                      {methodShortLabel(node.method)}
+                    </span>
+                  )}
+                  {node.kind === "folder" &&
+                    (open ? (
+                      <FolderOpen aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <Folder aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                    ))}
+                  {renamingKey === key ? (
+                    <InlineRename
+                      initial={node.name}
+                      label={nameLabel[node.kind]}
+                      onCommit={(name) => {
+                        endRename();
+                        commitRename(node, name);
+                        focusRow(key);
+                      }}
+                      onCancel={() => {
+                        endRename();
+                        focusRow(key);
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <span
+                        className={cn("min-w-0 flex-1 truncate", node.kind === "collection" && "font-medium")}
+                      >
+                        {node.name}
+                      </span>
+                      {isContainer && (
+                        <span className="text-[11px] text-muted-foreground tabular-nums group-hover/row:hidden">
+                          {countRequests(node) || ""}
+                        </span>
+                      )}
+                      <MoreButton label={`More actions for ${node.name}`} entries={menu} />
+                    </>
+                  )}
+                </div>
+              </ContextMenuTrigger>
+              <ItemMenuContent kind="context" entries={menu} />
+            </ContextMenu>
+            {open && node.children.length === 0 && (
+              <div
+                style={{ paddingLeft: 4 + level * INDENT + 10 }}
+                className="mx-1 py-1 pr-2 text-xs text-muted-foreground"
+              >
+                {node.kind === "collection" ? "No requests yet" : "Empty folder"}
+              </div>
+            )}
+          </li>
+        )}
+      </DndItem>
+    );
+  };
+
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={collision}
       onDragStart={onDragStart}
-      onDragOver={onDragOver}
+      onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onDragCancel={() => setPreview(null)}
+      onDragCancel={endDrag}
     >
-      <SortableContext items={shown.map((c) => colKey(c.id))} strategy={verticalListSortingStrategy}>
-        <ul role="tree" aria-label="Collections" onKeyDown={onKeyDown} className="flex flex-col py-1">
-          {shown.map((c) => {
-            const key = colKey(c.id);
-            const open = expanded(c.id);
-            return (
-              <SortableItem key={key} id={key} disabled={filtering || !!renamingKey}>
-                {({ setNodeRef, style, listeners, isDragging }) => (
-                  <li
-                    ref={(el) => {
-                      setNodeRef(el);
-                      rowRef(key)(el);
-                    }}
-                    style={style}
-                    role="treeitem"
-                    aria-level={1}
-                    aria-expanded={open}
-                    aria-label={c.name}
-                    tabIndex={current === key ? 0 : -1}
-                    onFocus={(e) => e.target === e.currentTarget && setFocusKey(key)}
-                    className={cn("group/col outline-none", isDragging && "relative z-10 opacity-80")}
-                  >
-                    <ContextMenu>
-                      <ContextMenuTrigger asChild>
-                        <div
-                          {...listeners}
-                          onClick={() => {
-                            focusRow(key);
-                            setExpanded(c.id, !open);
-                          }}
-                          className="group/row mx-1 flex h-7 cursor-default items-center gap-1 rounded-md pr-1 pl-1 group-focus-visible/col:ring-2 group-focus-visible/col:ring-ring group-focus-visible/col:ring-inset hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent"
-                        >
-                          <ChevronRight
-                            aria-hidden
-                            className={cn(
-                              "size-3.5 shrink-0 text-muted-foreground transition-transform",
-                              open && "rotate-90",
-                            )}
-                          />
-                          {renamingKey === key ? (
-                            <InlineRename
-                              initial={c.name}
-                              label="Collection name"
-                              onCommit={(name) => {
-                                endRename();
-                                void store().renameCollection(c.id, name);
-                                focusRow(key);
-                              }}
-                              onCancel={() => {
-                                endRename();
-                                focusRow(key);
-                              }}
-                            />
-                          ) : (
-                            <>
-                              <span className="min-w-0 flex-1 truncate font-medium">{c.name}</span>
-                              <span className="text-[11px] text-muted-foreground tabular-nums group-hover/row:hidden">
-                                {c.requests.length || ""}
-                              </span>
-                              <MoreButton label={`More actions for ${c.name}`} entries={collectionMenu(c)} />
-                            </>
-                          )}
-                        </div>
-                      </ContextMenuTrigger>
-                      <ItemMenuContent kind="context" entries={collectionMenu(c)} />
-                    </ContextMenu>
-
-                    {open && (
-                      <SortableContext
-                        items={c.requests.map((r) => reqKey(r.id))}
-                        strategy={verticalListSortingStrategy}
-                      >
-                        <ul role="group" className="flex flex-col">
-                          {c.requests.length === 0 && (
-                            <li role="none" className="py-1 pr-2 pl-8 text-xs text-muted-foreground">
-                              No requests yet
-                            </li>
-                          )}
-                          {c.requests.map((r) => {
-                            const rk = reqKey(r.id);
-                            const active = r.id === activeRequestId;
-                            return (
-                              <SortableItem key={rk} id={rk} disabled={filtering || !!renamingKey}>
-                                {(s) => (
-                                  <li
-                                    ref={(el) => {
-                                      s.setNodeRef(el);
-                                      rowRef(rk)(el);
-                                    }}
-                                    style={s.style}
-                                    role="treeitem"
-                                    aria-level={2}
-                                    aria-selected={active}
-                                    aria-label={`${r.method} ${r.name}`}
-                                    tabIndex={current === rk ? 0 : -1}
-                                    onFocus={(e) => e.target === e.currentTarget && setFocusKey(rk)}
-                                    className={cn("group/req outline-none", s.isDragging && "relative z-10")}
-                                  >
-                                    <ContextMenu>
-                                      <ContextMenuTrigger asChild>
-                                        <div
-                                          {...s.listeners}
-                                          onClick={() => {
-                                            focusRow(rk);
-                                            void store().openRequest(r.id);
-                                          }}
-                                          title={r.url || undefined}
-                                          className={cn(
-                                            "group/row mx-1 flex h-7 cursor-default items-center gap-2 rounded-md pr-1 pl-6 group-focus-visible/req:ring-2 group-focus-visible/req:ring-ring group-focus-visible/req:ring-inset hover:bg-sidebar-accent data-[state=open]:bg-sidebar-accent",
-                                            active && "bg-sidebar-accent text-sidebar-accent-foreground",
-                                            s.isDragging && "bg-background shadow-sm",
-                                          )}
-                                        >
-                                          <span
-                                            className={cn(
-                                              "w-8 shrink-0 font-mono text-[10px] font-semibold",
-                                              methodTextClass(r.method),
-                                            )}
-                                          >
-                                            {methodShortLabel(r.method)}
-                                          </span>
-                                          {renamingKey === rk ? (
-                                            <InlineRename
-                                              initial={r.name}
-                                              label="Request name"
-                                              onCommit={(name) => {
-                                                endRename();
-                                                void store().renameRequest(r.id, name);
-                                                focusRow(rk);
-                                              }}
-                                              onCancel={() => {
-                                                endRename();
-                                                focusRow(rk);
-                                              }}
-                                            />
-                                          ) : (
-                                            <>
-                                              <span className="min-w-0 flex-1 truncate">{r.name}</span>
-                                              <MoreButton
-                                                label={`More actions for ${r.name}`}
-                                                entries={requestMenu(r, c)}
-                                              />
-                                            </>
-                                          )}
-                                        </div>
-                                      </ContextMenuTrigger>
-                                      <ItemMenuContent kind="context" entries={requestMenu(r, c)} />
-                                    </ContextMenu>
-                                  </li>
-                                )}
-                              </SortableItem>
-                            );
-                          })}
-                        </ul>
-                      </SortableContext>
-                    )}
-                  </li>
-                )}
-              </SortableItem>
-            );
-          })}
-        </ul>
-      </SortableContext>
+      <ul role="tree" aria-label="Collections" onKeyDown={onKeyDown} className="flex flex-col py-1">
+        {items.map(renderRow)}
+      </ul>
+      <DragOverlay dropAnimation={null}>
+        {drag && (
+          <div className="flex h-7 max-w-60 items-center gap-1.5 rounded-md border bg-background px-2 text-sm shadow-sm">
+            {drag.node.kind === "folder" && <Folder aria-hidden className="size-3.5 text-muted-foreground" />}
+            {drag.node.kind === "request" && (
+              <span className={cn("font-mono text-[10px] font-semibold", methodTextClass(drag.node.method))}>
+                {methodShortLabel(drag.node.method)}
+              </span>
+            )}
+            <span className="truncate">{drag.node.name}</span>
+          </div>
+        )}
+      </DragOverlay>
     </DndContext>
   );
 }
 
-interface SortableRender {
+interface DndRender {
   setNodeRef: (el: HTMLElement | null) => void;
-  style: React.CSSProperties;
-  listeners: ReturnType<typeof useSortable>["listeners"];
+  listeners: ReturnType<typeof useDraggable>["listeners"];
   isDragging: boolean;
 }
 
-/** useSortable as a render prop, so rows keep their own roles instead of dnd-kit's button attributes. */
-function SortableItem({
+/**
+ * A row that can be dragged and dropped onto, as a render prop, so rows keep
+ * their own tree roles instead of dnd-kit's button attributes.
+ */
+function DndItem({
   id,
   disabled,
   children,
 }: {
   id: string;
   disabled: boolean;
-  children: (s: SortableRender) => React.ReactNode;
+  children: (d: DndRender) => React.ReactNode;
 }) {
-  const { setNodeRef, transform, transition, listeners, isDragging } = useSortable({ id, disabled });
-  return children({
-    setNodeRef,
-    style: { transform: CSS.Translate.toString(transform), transition },
-    listeners,
-    isDragging,
-  });
+  const drag = useDraggable({ id, disabled });
+  const drop = useDroppable({ id, disabled });
+  const { setNodeRef: setDragRef } = drag;
+  const { setNodeRef: setDropRef } = drop;
+  const setNodeRef = useCallback(
+    (el: HTMLElement | null) => {
+      setDragRef(el);
+      setDropRef(el);
+    },
+    [setDragRef, setDropRef],
+  );
+  return children({ setNodeRef, listeners: drag.listeners, isDragging: drag.isDragging });
 }
 
 /** Hover button with the same actions as the right-click menu. */

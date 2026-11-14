@@ -4,28 +4,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Sidebar } from "@/features/shell/Sidebar";
 import { api } from "@/lib/api";
 import { emptyRequest, type CollectionNode } from "@/lib/model";
+import { findRequest } from "@/lib/tree";
+import { col, folder, req } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 import { useLayoutStore } from "@/stores/layout";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 const ws = { id: "w1", name: "Shop API", path: "/work/shop" };
 const collections = (): CollectionNode[] => [
-  {
-    id: "c1",
-    name: "Users",
-    seq: 1,
-    requests: [
-      { id: "r1", name: "List users", method: "GET", url: "https://api/users", seq: 1 },
-      { id: "r2", name: "Create user", method: "POST", url: "https://api/users", seq: 2 },
-    ],
-  },
-  {
-    id: "c2",
-    name: "Orders",
-    seq: 2,
-    requests: [{ id: "r3", name: "Delete order", method: "DELETE", url: "https://api/orders/1", seq: 1 }],
-  },
-  { id: "c3", name: "Empty", seq: 3, requests: [] },
+  col("c1", "Users", [
+    req("r1", "List users", "GET", "https://api/users"),
+    req("r2", "Create user", "POST", "https://api/users"),
+  ]),
+  col("c2", "Orders", [req("r3", "Delete order", "DELETE", "https://api/orders/1")]),
+  col("c3", "Empty"),
 ];
 
 function ready(cols = collections(), problems: { path: string; message: string }[] = []) {
@@ -33,7 +25,7 @@ function ready(cols = collections(), problems: { path: string; message: string }
   vi.mocked(api.getRequest).mockImplementation(async (id: string) => ({
     ...emptyRequest(),
     id,
-    name: cols.flatMap((c) => c.requests).find((r) => r.id === id)?.name ?? id,
+    name: findRequest(cols, id)?.name ?? id,
   }));
   useWorkspaceStore.setState({ status: "ready", workspace: ws, collections: cols, problems });
 }
@@ -326,13 +318,13 @@ describe("sidebar: collections tree", () => {
     expect(await screen.findByRole("menuitem", { name: "Duplicate" })).toBeInTheDocument();
   });
 
-  it("shows 'No other collections' when there is nowhere to move", async () => {
+  it("shows the current collection as a disabled destination", async () => {
     const user = userEvent.setup();
     ready([collections()[0]]);
     renderSidebar();
     fireEvent.contextMenu(within(item("GET List users")).getByText("List users"));
     await user.click(await screen.findByRole("menuitem", { name: "Move to" }));
-    expect(await screen.findByText("No other collections")).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Users" })).toHaveAttribute("aria-disabled", "true");
   });
 
   it("creates collections from the header and the empty state, then renames the new one", async () => {
@@ -347,7 +339,7 @@ describe("sidebar: collections tree", () => {
 
     act(() =>
       useWorkspaceStore.setState({
-        collections: [{ id: "c9", name: "New collection", seq: 1, requests: [] }],
+        collections: [col("c9", "New collection")],
         renameTarget: "c9",
       }),
     );
@@ -380,5 +372,185 @@ describe("sidebar: collections tree", () => {
     await user.click(screen.getByRole("button", { name: "1 file couldn't be loaded" }));
     expect(await screen.findByText("collections/users/bad.yaml")).toBeInTheDocument();
     expect(screen.getByText("yaml: line 3: bad indent")).toBeInTheDocument();
+  });
+});
+
+describe("sidebar: nested folders", () => {
+  // Users[ List users, Auth[ Log in, Tokens[ Refresh ] ], Create user ]  Orders[ Delete order ]
+  const nested = (): CollectionNode[] => [
+    col("c1", "Users", [
+      req("r1", "List users"),
+      folder("f1", "Auth", [
+        req("r4", "Log in", "POST"),
+        folder("f2", "Tokens", [req("r5", "Refresh", "POST")]),
+      ]),
+      req("r2", "Create user", "POST"),
+    ]),
+    col("c2", "Orders", [req("r3", "Delete order", "DELETE")]),
+    col("c3", "Empty"),
+  ];
+
+  it("shows folders collapsed with levels, expands on click and remembers it", async () => {
+    const user = userEvent.setup();
+    ready(nested());
+    const { unmount } = renderSidebar();
+    expect(item("Auth")).toHaveAttribute("aria-level", "2");
+    expect(item("Auth")).toHaveAttribute("aria-expanded", "false");
+    expect(item("Auth")).toHaveAttribute("aria-posinset", "2");
+    expect(within(item("Auth")).getByText("2")).toBeInTheDocument(); // requests inside, at any depth
+    expect(within(tree()).queryByRole("treeitem", { name: "POST Log in" })).not.toBeInTheDocument();
+
+    await user.click(within(item("Auth")).getByText("Auth"));
+    expect(item("POST Log in")).toHaveAttribute("aria-level", "3");
+    await user.click(within(item("Tokens")).getByText("Tokens"));
+    expect(item("POST Refresh")).toHaveAttribute("aria-level", "4");
+    unmount();
+    renderSidebar();
+    expect(item("Tokens")).toHaveAttribute("aria-expanded", "true");
+    expect(JSON.parse(localStorage.getItem("pakpos-tree:w1")!)).toEqual({
+      collapsed: [],
+      expanded: ["f:f1", "f:f2"],
+    });
+  });
+
+  it("reads the Tier 1 collapsed list", () => {
+    localStorage.setItem("pakpos-tree-collapsed:w1", JSON.stringify(["c1"]));
+    ready(nested());
+    renderSidebar();
+    expect(item("Users")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("filters into folders: a match shows its folders expanded; a folder name shows the folder", async () => {
+    const user = userEvent.setup();
+    ready(nested());
+    renderSidebar();
+    const filter = screen.getByRole("searchbox", { name: "Filter requests" });
+    await user.type(filter, "refresh");
+    expect(item("Auth")).toHaveAttribute("aria-expanded", "true");
+    expect(item("POST Refresh")).toBeInTheDocument();
+    expect(within(tree()).queryByRole("treeitem", { name: "POST Log in" })).not.toBeInTheDocument();
+    await user.clear(filter);
+    await user.type(filter, "tokens");
+    expect(item("Tokens")).toBeInTheDocument();
+    expect(within(tree()).queryByRole("treeitem", { name: "GET List users" })).not.toBeInTheDocument();
+  });
+
+  it("navigates folders with the keyboard and reorders them with Alt+arrows", async () => {
+    const user = userEvent.setup();
+    ready(nested());
+    const store = useWorkspaceStore.getState();
+    const moveFolder = vi.spyOn(store, "moveFolder").mockResolvedValue();
+    const renameFolder = vi.spyOn(store, "renameFolder").mockResolvedValue();
+    const deleteFolder = vi.spyOn(store, "deleteFolder").mockResolvedValue();
+    renderSidebar();
+
+    act(() => item("Auth").focus());
+    await user.keyboard("{ArrowRight}");
+    expect(item("Auth")).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowRight}");
+    expect(item("POST Log in")).toHaveFocus();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(item("Tokens")).toHaveAttribute("aria-expanded", "true");
+    await user.keyboard("{ArrowLeft}");
+    expect(item("Tokens")).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard("{ArrowLeft}");
+    expect(item("Auth")).toHaveFocus();
+    await user.keyboard("{ArrowLeft}"); // collapses Auth
+    expect(item("Auth")).toHaveAttribute("aria-expanded", "false");
+    await user.keyboard("{ArrowLeft}"); // then goes to its parent
+    expect(item("Users")).toHaveFocus();
+
+    act(() => item("Auth").focus());
+    await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
+    expect(moveFolder).toHaveBeenCalledWith("f1", "c1", 0);
+    await user.keyboard("{ArrowRight}");
+    act(() => item("Tokens").focus());
+    await user.keyboard("{Alt>}{ArrowDown}{/Alt}");
+    expect(moveFolder).toHaveBeenCalledTimes(1); // already last in Auth
+
+    await user.keyboard("{F2}");
+    await user.clear(screen.getByRole("textbox", { name: "Folder name" }));
+    await user.keyboard("Sessions{Enter}");
+    expect(renameFolder).toHaveBeenCalledWith("f2", "Sessions");
+
+    await user.keyboard("{Delete}");
+    const d = await screen.findByRole("alertdialog");
+    expect(within(d).getByText('Delete folder "Tokens"?')).toBeInTheDocument();
+    expect(within(d).getByText(/the folder and 1 request in it/)).toBeInTheDocument();
+    await user.click(within(d).getByRole("button", { name: "Delete folder" }));
+    expect(deleteFolder).toHaveBeenCalledWith("f2");
+  });
+
+  it("offers new folder, new request and nested move targets in the menus", async () => {
+    const user = userEvent.setup();
+    ready(nested());
+    const store = useWorkspaceStore.getState();
+    const createFolder = vi.spyOn(store, "createFolder").mockResolvedValue("f9");
+    const newRequest = vi.spyOn(store, "newRequest").mockResolvedValue();
+    const moveFolder = vi.spyOn(store, "moveFolder").mockResolvedValue();
+    const moveRequest = vi.spyOn(store, "moveRequest").mockResolvedValue();
+    renderSidebar();
+
+    fireEvent.contextMenu(within(item("Users")).getByText("Users"));
+    await user.click(await screen.findByRole("menuitem", { name: "New folder" }));
+    expect(createFolder).toHaveBeenCalledWith("c1");
+
+    const auth = () => within(item("Auth")).getByText("Auth");
+    fireEvent.contextMenu(auth());
+    await user.click(await screen.findByRole("menuitem", { name: "New request" }));
+    expect(newRequest).toHaveBeenCalledWith("f1");
+    expect(item("Auth")).toHaveAttribute("aria-expanded", "true");
+    fireEvent.contextMenu(auth());
+    await user.click(await screen.findByRole("menuitem", { name: "New folder" }));
+    expect(createFolder).toHaveBeenLastCalledWith("f1");
+    fireEvent.contextMenu(auth());
+    await user.click(await screen.findByRole("menuitem", { name: /Rename/ }));
+    expect(screen.getByRole("textbox", { name: "Folder name" })).toHaveValue("Auth");
+    await user.keyboard("{Escape}");
+
+    // A folder can't move into itself: its subtree isn't offered, its parent is disabled.
+    fireEvent.contextMenu(auth());
+    await user.click(await screen.findByRole("menuitem", { name: "Move to" }));
+    expect(screen.getByRole("menuitem", { name: "Users" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("menuitem", { name: "Users / Auth / Tokens" })).not.toBeInTheDocument();
+    act(() => screen.getByRole("menuitem", { name: "Orders" }).focus());
+    await user.keyboard("{Enter}");
+    expect(moveFolder).toHaveBeenCalledWith("f1", "c2", 1);
+
+    // A request can move into a nested folder.
+    fireEvent.contextMenu(within(item("GET List users")).getByText("List users"));
+    await user.click(await screen.findByRole("menuitem", { name: "Move to" }));
+    act(() => screen.getByRole("menuitem", { name: "Users / Auth / Tokens" }).focus());
+    await user.keyboard("{Enter}");
+    expect(moveRequest).toHaveBeenCalledWith("r1", "f2", 1);
+
+    // Deleting an empty folder says so.
+    fireEvent.contextMenu(auth());
+    await user.click(await screen.findByRole("menuitem", { name: /Delete/ }));
+    expect(
+      within(await screen.findByRole("alertdialog")).getByText(/and 2 requests in it/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an empty folder and starts renaming a new one", async () => {
+    const user = userEvent.setup();
+    ready([col("c1", "Users", [folder("f1", "Docs")])]);
+    localStorage.setItem("pakpos-tree:w1", JSON.stringify({ collapsed: [], expanded: ["f:f1"] }));
+    const deleteFolder = vi.spyOn(useWorkspaceStore.getState(), "deleteFolder").mockResolvedValue();
+    const rename = vi.spyOn(useWorkspaceStore.getState(), "renameFolder").mockResolvedValue();
+    renderSidebar();
+    expect(within(item("Docs")).getByText("Empty folder")).toBeInTheDocument();
+    act(() => item("Docs").focus());
+    await user.keyboard("{Delete}");
+    const d = await screen.findByRole("alertdialog");
+    expect(within(d).getByText(/the empty folder/)).toBeInTheDocument();
+    await user.click(within(d).getByRole("button", { name: "Delete folder" }));
+    expect(deleteFolder).toHaveBeenCalledWith("f1");
+
+    act(() => useWorkspaceStore.setState({ renameTarget: "f1" }));
+    const input = await screen.findByRole("textbox", { name: "Folder name" });
+    await user.clear(input);
+    await user.type(input, "Guides{Enter}");
+    expect(rename).toHaveBeenCalledWith("f1", "Guides");
   });
 });

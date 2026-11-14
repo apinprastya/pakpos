@@ -262,34 +262,34 @@ func TestRequestsCRUD(t *testing.T) {
 		t.Fatalf("dup = %+v %v", dup, err)
 	}
 
-	if err := ws.ReorderRequests(col.ID, []string{dup.ID, r1.ID}); err != nil {
+	if err := ws.Reorder(col.ID, []string{dup.ID, r1.ID}); err != nil {
 		t.Fatal(err)
 	}
 	tree := ws.Tree()
-	if first := tree.Collections[0].Requests[0]; first.ID != dup.ID || first.Seq != 1 {
+	if first := tree.Collections[0].Children[0]; first.ID != dup.ID || first.Seq != 1 || first.ParentID != col.ID {
 		t.Fatalf("first after reorder = %+v", first)
 	}
-	if err := ws.ReorderRequests(col.ID, []string{"missing"}); !errors.Is(err, ErrNotFound) {
+	if err := ws.Reorder(col.ID, []string{"missing"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reorder err = %v", err)
 	}
-	if err := ws.ReorderRequests("missing", nil); !errors.Is(err, ErrNotFound) {
+	if err := ws.Reorder("missing", nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reorder col err = %v", err)
 	}
-	if err := ws.ReorderRequests(other.ID, []string{r1.ID}); !errors.Is(err, ErrNotFound) {
+	if err := ws.Reorder(other.ID, []string{r1.ID}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("reorder foreign err = %v", err)
 	}
 
-	moved, err := ws.MoveRequest(r1.ID, other.ID)
+	moved, err := ws.MoveRequest(r1.ID, other.ID, -1)
 	if err != nil || moved.ID != r1.ID || moved.Seq != 1 {
 		t.Fatalf("move = %+v %v", moved, err)
 	}
 	if exists(filepath.Join(colDir, "load-user.yaml")) || !exists(filepath.Join(ws.Root(), CollectionsDir, "other", "load-user.yaml")) {
 		t.Fatal("file not moved")
 	}
-	if same, err := ws.MoveRequest(r1.ID, other.ID); err != nil || same.ID != r1.ID {
+	if same, err := ws.MoveRequest(r1.ID, other.ID, 5); err != nil || same.ID != r1.ID || same.Seq != 1 {
 		t.Fatalf("move to same = %+v %v", same, err)
 	}
-	if _, err := ws.MoveRequest(r1.ID, "nope"); !errors.Is(err, ErrNotFound) {
+	if _, err := ws.MoveRequest(r1.ID, "nope", 0); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("move to unknown err = %v", err)
 	}
 
@@ -307,7 +307,8 @@ func TestRequestsCRUD(t *testing.T) {
 		"rename":    func() error { _, e := ws.RenameRequest("x", "y"); return e }(),
 		"duplicate": func() error { _, e := ws.DuplicateRequest("x"); return e }(),
 		"delete":    ws.DeleteRequest("x"),
-		"move":      func() error { _, e := ws.MoveRequest("x", other.ID); return e }(),
+		"move":      func() error { _, e := ws.MoveRequest("x", other.ID, 0); return e }(),
+		"parent":    func() error { _, e := ws.RequestParent("x"); return e }(),
 		"create":    func() error { _, e := ws.CreateRequest("x", model.Request{}); return e }(),
 	} {
 		if !errors.Is(err, ErrNotFound) {
@@ -329,7 +330,7 @@ func TestRequestsCRUD(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := reopened.Tree()
-	if len(tr.Collections) != 1 || len(tr.Collections[0].Requests) != 2 || len(tr.Problems) != 0 {
+	if len(tr.Collections) != 1 || len(tr.Collections[0].Children) != 2 || len(tr.Problems) != 0 {
 		t.Fatalf("reopened tree = %+v", tr)
 	}
 }
@@ -351,16 +352,17 @@ func TestRequestFileVanished(t *testing.T) {
 		t.Fatal("DuplicateRequest on vanished file should fail")
 	}
 	other := mustCol(t, ws, "Other")
-	if _, err := ws.MoveRequest(r.ID, other.ID); err == nil {
+	if _, err := ws.MoveRequest(r.ID, other.ID, 0); err == nil {
 		t.Fatal("MoveRequest on vanished file should fail")
 	}
-	if err := ws.ReorderRequests(col.ID, []string{r.ID, r.ID}); err != nil {
-		// seq for the first position is already 1, second write needs a read -> error
-		if !strings.Contains(err.Error(), "read request") {
-			t.Fatalf("unexpected err %v", err)
-		}
-	} else {
-		t.Fatal("ReorderRequests should fail on vanished file")
+	mustReq(t, ws, col.ID, model.Request{Name: "B"})
+	// Putting A second needs a read of its (vanished) file to rewrite its seq.
+	if err := ws.Reorder(col.ID, []string{r.ID}); err != nil {
+		t.Fatalf("A is already first: %v", err)
+	}
+	tree := ws.Tree()
+	if err := ws.Reorder(col.ID, []string{tree.Collections[0].Children[1].ID, r.ID}); err == nil || !strings.Contains(err.Error(), "read request") {
+		t.Fatalf("Reorder on vanished file err = %v", err)
 	}
 	// Deleting a vanished file is fine.
 	if err := ws.DeleteRequest(r.ID); err != nil {
@@ -385,7 +387,8 @@ func TestReloadToleratesBadFiles(t *testing.T) {
 	write("api/zdupe.yaml", "id: "+good.ID+"\nname: dupe\n")
 	write("api/notes.txt", "ignored")
 	write("api/.hidden.yaml", "ignored")
-	write("api/sub/x.yaml", "ignored")
+	write("api/sub/x.yaml", "id: SUBX\n") // no _folder.yaml: reported, not loaded
+	write("api/x.examples.yaml", "ignored")
 	write("nometa/a.yaml", "id: Z\n")
 	write("badmeta/_collection.yaml", "id: [")
 	write("noidmeta/_collection.yaml", "name: n\n")
@@ -402,7 +405,7 @@ func TestReloadToleratesBadFiles(t *testing.T) {
 	for _, want := range []string{
 		"collections/api/broken.yaml", "collections/api/noid.yml", "collections/api/zdupe.yaml",
 		"collections/nometa/_collection.yaml", "collections/badmeta/_collection.yaml",
-		"collections/noidmeta/_collection.yaml",
+		"collections/noidmeta/_collection.yaml", "collections/api/sub/_folder.yaml",
 	} {
 		if !paths[want] {
 			t.Errorf("missing problem for %s in %+v", want, problems)
@@ -414,7 +417,7 @@ func TestReloadToleratesBadFiles(t *testing.T) {
 	}
 	names := map[string]int{}
 	for _, c := range tree.Collections {
-		names[c.Name] = len(c.Requests)
+		names[c.Name] = len(c.Children)
 	}
 	if names["API"] != 1 || names["unnamed"] != 0 || len(names) != 2 {
 		t.Fatalf("collections = %v", names)

@@ -42,6 +42,9 @@ Reference: [ARCHITECTURE.md](./ARCHITECTURE.md), [ROADMAP.md](./ROADMAP.md)
 | Examples | Sidecar file `<request-slug>.examples.yaml` next to the request. The request loader skips `*.examples.yaml`. |
 | History | Stores the request as written (`{{vars}}` unresolved) plus the environment name, so secrets stay out of SQLite. The final response URL is stored as received; a secret sent in the query string will show up there (documented). |
 | Codegen | Generated in Go (`core/codegen`, reusable by the CLI). Variables are resolved by default, with a toggle. Secrets stay as `{{name}}` unless the user reveals them. Java uses `java.net.http`; PHP uses the cURL extension. |
+| Damaged secrets file | AES-GCM can't tell a modified file from a wrong password, so both report `ErrWrongPassword`; the unlock dialog says "Wrong password, or the secrets file is damaged." No extra check value. |
+| Duplicating an environment | Secret values are copied automatically to the new environment on this machine. |
+| Tree UI | Folders start collapsed (collections expanded). "Move to" is a nested submenu; a searchable move action can come with the palette (M7). A folder-name match in the filter shows the folder and all its contents. |
 | File format | Manifest `version: 2`. Every change is additive, so Tier 1 workspaces open without migration. A Tier 1 build would skip nested folders; that's acceptable because only our own builds exist. |
 
 ## Workspace on disk (v2)
@@ -234,7 +237,27 @@ M6 needs only M1 (resolution, for codegen). M7 needs M2 (folders in the palette,
     - Load problems go into `Problems`. The watcher covers `environments/`, including the folder being created externally.
     - Manifest v2: new workspaces are created as v2 and v1 opens unchanged. A v1 manifest is rewritten to v2 only on the first v2-specific write (an environment or the globals), so a Tier 1 build then refuses the workspace instead of silently dropping data. `Manifest()` now takes the lock.
   - New dependencies: `github.com/zalando/go-keyring` v0.2.8 (MIT; pulls in `danieljoos/wincred`, MIT, and `godbus/dbus`, BSD-2, already present) and `golang.org/x/crypto` v0.59.0 (BSD-3). All pure Go.
-- M2–M8: not started.
+- **M2 — Nested folders: done.**
+  - `fsstore`:
+    - Folders are subdirectories of a collection (any depth) with `_folder.yaml` `{id, name, seq, auth, headers}`. A subdirectory without one (or with a broken one) is reported in `Problems` and skipped with everything inside it; Tier 1 silently ignored subdirectories. `*.examples.yaml` files are skipped. Collection and folder ids share one namespace (either can be a parent), so a clash is a "duplicate" problem.
+    - The index stores each request's and folder's parent id; directory paths are derived from the parent chain on every use, so renaming or moving a folder never leaves stale paths.
+    - `Tree()` returns `Node{kind, id, name, seq, parentId, method, url, children}`; `RequestSummary` has `ParentID`. Folders and requests in one parent **share one seq order** (interleaved); ties go by name, then folders first, then id.
+    - New: `CreateFolder`, `GetFolder`, `RenameFolder` (renames the directory), `SaveFolder` (`FolderSettings{auth, headers}`), `DeleteFolder` (recursive), `FolderParent`, `RequestParent`, `MoveRequest(id, toParentId, index)`, `MoveFolder(id, toParentId, index)`, `Reorder(parentId, ids)` (mixed children; unlisted ones follow in their current order) and the M1 carry-over `SaveCollection(id, CollectionSettings{auth, headers, variables})` (secret values never written).
+    - Moves keep ids, work across collections, re-slug the file or directory name against the target (`-2`, `-3`… on collisions), and renumber seq 1..n in both source and target (only changed files are rewritten). `index` counts the target's children without the moved item; a negative or too large index appends; the same parent just reorders. A folder moved into itself or its subtree fails with `ErrInvalidMove`. `ReorderRequests` is replaced by `Reorder`; `CreateRequest`/`SaveAs` take a collection or folder id.
+    - `InheritChain(id)` takes a request id or a collection/folder id (for drafts) and returns `[]inherit.Level`, collection first, ready for `inherit.Effective` (M3).
+    - Manifest upgrade: `CreateFolder` and `SaveFolder` upgrade a v1 manifest; `SaveCollection` only when it writes a secret variable. Opening a Tier 1 workspace, and saving, moving and reordering its requests, keep its manifest at v1 and leave files that are not written unchanged (e2e test).
+  - Watcher: every directory under `collections/` is watched. App-created, renamed and moved folders are watched synchronously with their subtree; externally created ones are added from their Create event with everything below them; a rename or removal of anything that may be a directory (not `*.yaml`, not a temp file) re-syncs all watches. Deleting a folder or collection marks the whole subtree as our own write, so it doesn't echo back. Tests cover external create/edit/rename/delete of nested folders and requests, and app renames/moves (run with `-race -count=5`).
+  - Services: `WorkspaceService` gains `GetCollection`, `SaveCollection`, `CreateFolder`, `GetFolder`, `RenameFolder`, `SaveFolder`, `DeleteFolder`, `MoveRequest`, `MoveFolder`, `Reorder`. `RequestService.Move` (now appends to a collection or folder) and `Reorder` stay for compatibility. `e2e_test.go` covers the nested flow and a Tier 1 workspace opening unchanged.
+  - Frontend:
+    - `lib/model.ts`: recursive `CollectionNode`/`FolderNode`/`RequestSummary` (discriminated by `kind`, with `parentId`). New pure `lib/tree.ts` (walk, find, positions, `moveChild`, `destinations`), shared by the store and the sidebar.
+    - `treeModel.ts`: `c:`/`f:`/`r:` keys, recursive filter (a matching request keeps its ancestors; a matching collection or folder name keeps its subtree), visible rows with level/posinset/setsize, expand state, `dropPosition` and `dropTarget`.
+    - Expand state per workspace in `localStorage` (`pakpos-tree:<id>`): collections start expanded, folders collapsed. The Tier 1 key is read once as a fallback.
+    - `CollectionTree` is a flat `role="tree"` with `aria-level`, `aria-expanded`, `aria-setsize`/`aria-posinset`. Folder rows have a chevron, a folder icon and a recursive request count. Menus: collections get "New folder"; folders get new request, new folder, rename, move to and delete (the confirm counts the requests inside). "Move to" is a submenu of every collection and folder, indented, with the full path as accessible name, the current parent disabled and a folder's own subtree left out. No "Settings" item until M4.
+    - Drag and drop uses dnd-kit draggable + droppable rows (no sortable) with a drop line (before/after) or highlight (inside) and a drag overlay. Folders split into quarters (top before, middle inside, bottom after); requests into halves; collections take items inside and reorder only among collections. A folder's own subtree is excluded from collision detection and rejected by `dropTarget`.
+    - Keyboard: ←/→ collapse/expand or go to parent/first child, ↑/↓, Home/End, Enter, F2, Delete, Alt+↑/↓ within the parent.
+    - Store: `createFolder`, `renameFolder`, `deleteFolder`, `moveFolder`, and `moveRequest(id, parentId, index)` (optimistic, then refresh). Tabs have `parentId` instead of `collectionId` (persisted tabs are migrated); `syncTabs` updates it after moves; deleting a folder closes clean tabs inside it and detaches edited ones.
+    - The Save dialog's "Save to" lists collections and nested folders. "New request" in the sidebar creates requests with `auth: inherit`.
+- M3–M8: not started.
 
 ### Carried over from M1
 
@@ -242,3 +265,14 @@ M6 needs only M1 (resolution, for codegen). M7 needs M2 (folders in the palette,
 - **Unset secrets.** A secret with no stored value should be left out of the scope before resolving, so it shows up as unresolved (M3 loader).
 - **Collection settings.** There is no `SaveCollection` for auth, headers and variables yet (M2 adds `SaveFolder`; add the collection equivalent alongside it). It must call the manifest upgrade when it writes secret variables.
 - **AGENTS.md.** Move go-keyring out of "Planned" and document the new packages (M8).
+
+### Carried over from M2
+
+- **Settings UI (M4).** `GetCollection`/`SaveCollection`/`GetFolder`/`SaveFolder` are bound but not in `lib/api.ts` yet; add them with the settings tab, plus a "Settings" item in the collection and folder menus.
+- **Secret cleanup (M3).** `SaveCollection` drops removed secret variables from the file only; `EnvService` should delete their keychain values, and those of a deleted collection.
+- **Examples sidecars (M7).** Moving a folder carries its `*.examples.yaml` files along, but `MoveRequest`, `RenameRequest`/`SaveRequest` (file re-slug) and `DeleteRequest` don't touch the sidecar yet.
+- **Reveal in tree.** Folders start collapsed; opening a request from history or the palette (M7) should expand its ancestors and scroll to it.
+- **Draft inheritance (M3).** Tabs now know their `parentId`; `RequestService.Send` can pass it to `InheritChain` for saved requests and drafts.
+- **Save dialog auth (M3).** Decided: a draft whose auth is still the untouched `none` switches to `inherit` when saved into a collection or folder through the Save dialog. Auth the user set is never changed.
+- **AGENTS.md (M8).** Apply the M2 suggestions: `_folder.yaml` and skipped `*.examples.yaml`; folder paths derived from parent ids (`dirLocked`), never cached; `markTree` before `RemoveAll`; `InheritChain` order; `ErrInvalidMove`; `src/lib/tree.ts`; `c:`/`f:`/`r:` tree keys; tabs' `parentId`; `col`/`folder`/`req` fixtures; `group/item`/`group/row` replacing the nested-group note; DnD test props (`over.rect`, `activatorEvent.clientY`, `delta.y`, `data-drop`); Radix Select names come from ItemText.
+- **`frontend/.vitest/`** appeared as an untracked folder; add it to `.gitignore`.

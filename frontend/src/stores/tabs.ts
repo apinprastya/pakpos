@@ -8,8 +8,8 @@ export interface Tab {
   request: Request;
   /** Last saved version; null when the request has never been saved. */
   saved: Request | null;
-  /** Collection a saved request lives in. */
-  collectionId: string;
+  /** Collection or folder a saved request lives in ("" when unsaved). */
+  parentId: string;
   /** Workspace a saved request belongs to ("" when unknown or unsaved). */
   workspaceId: string;
   /** Running send, if any. */
@@ -28,7 +28,7 @@ interface TabsState {
 
   newTab: () => string;
   /** Opens a saved request, or focuses its tab if it's already open. */
-  openSaved: (request: Request, collectionId: string, workspaceId?: string) => string;
+  openSaved: (request: Request, parentId: string, workspaceId?: string) => string;
   /** Opens a history entry as a new unsaved tab with its response attached. */
   openFromHistory: (request: Request, result: SendResult) => string;
   activate: (id: string) => void;
@@ -39,14 +39,14 @@ interface TabsState {
   cancelClose: () => void;
   move: (fromId: string, toId: string) => void;
   updateRequest: (id: string, update: (req: Request) => Request) => void;
-  markSaved: (id: string, saved: Request, collectionId?: string, workspaceId?: string) => void;
+  markSaved: (id: string, saved: Request, parentId?: string, workspaceId?: string) => void;
   /** Detaches a tab from its file: it stays open as an unsaved request. */
   detach: (id: string) => void;
   /**
    * Applies the version of the request found on disk. A clean tab shows it;
    * a tab with edits keeps them and only updates what it compares against.
    */
-  applyDiskVersion: (id: string, disk: Request, collectionId: string) => void;
+  applyDiskVersion: (id: string, disk: Request, parentId: string) => void;
   /** Applies a rename done from the sidebar to the tab and its saved copy. */
   renameSaved: (id: string, name: string) => void;
   setSending: (id: string, sendId: string | null) => void;
@@ -66,7 +66,7 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
     id: newTabId(),
     request: emptyRequest(),
     saved: null,
-    collectionId: "",
+    parentId: "",
     workspaceId: "",
     sendId: null,
     result: null,
@@ -123,14 +123,14 @@ export const useTabsStore = create<TabsState>()(
         return tab.id;
       },
 
-      openSaved: (request, collectionId, workspaceId = "") => {
+      openSaved: (request, parentId, workspaceId = "") => {
         const existing = get().tabs.find((t) => t.saved?.id === request.id && request.id !== "");
         if (existing) {
           set({ activeId: existing.id });
           return existing.id;
         }
         const req = normalizeRequest(request);
-        const tab = makeTab({ request: req, saved: req, collectionId, workspaceId });
+        const tab = makeTab({ request: req, saved: req, parentId, workspaceId });
         set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
         return tab.id;
       },
@@ -185,7 +185,7 @@ export const useTabsStore = create<TabsState>()(
       updateRequest: (id, update) =>
         set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, request: update(t.request) } : t)) })),
 
-      markSaved: (id, saved, collectionId, workspaceId) =>
+      markSaved: (id, saved, parentId, workspaceId) =>
         set((s) => ({
           tabs: s.tabs.map((t) =>
             t.id === id
@@ -193,7 +193,7 @@ export const useTabsStore = create<TabsState>()(
                   ...t,
                   request: saved,
                   saved,
-                  collectionId: collectionId ?? t.collectionId,
+                  parentId: parentId ?? t.parentId,
                   workspaceId: workspaceId ?? t.workspaceId,
                 }
               : t,
@@ -208,21 +208,19 @@ export const useTabsStore = create<TabsState>()(
                   ...t,
                   request: { ...t.request, id: "", seq: 0 },
                   saved: null,
-                  collectionId: "",
+                  parentId: "",
                   workspaceId: "",
                 }
               : t,
           ),
         })),
 
-      applyDiskVersion: (id, disk, collectionId) =>
+      applyDiskVersion: (id, disk, parentId) =>
         set((s) => ({
           tabs: s.tabs.map((t) => {
             if (t.id !== id) return t;
             const req = normalizeRequest(disk);
-            return isDirty(t)
-              ? { ...t, saved: req, collectionId }
-              : { ...t, request: req, saved: req, collectionId };
+            return isDirty(t) ? { ...t, saved: req, parentId } : { ...t, request: req, saved: req, parentId };
           }),
         })),
 
@@ -254,11 +252,14 @@ export const useTabsStore = create<TabsState>()(
         tabs: s.tabs.map((t) => ({ ...t, sendId: null, result: null })),
       }),
       merge: (persisted, current) => {
-        const p = persisted as Partial<Pick<TabsState, "tabs" | "activeId">> | undefined;
+        // Tabs saved before nested folders have `collectionId` instead of `parentId`.
+        type StoredTab = Omit<Tab, "parentId"> & { parentId?: string; collectionId?: string };
+        const p = persisted as { tabs?: StoredTab[]; activeId?: string } | undefined;
         if (!p?.tabs?.length) return current;
-        const tabs = p.tabs.map((t) =>
+        const tabs = p.tabs.map(({ collectionId, ...t }) =>
           makeTab({
             ...t,
+            parentId: t.parentId ?? collectionId ?? "",
             request: normalizeRequest(t.request),
             saved: t.saved ? normalizeRequest(t.saved) : null,
             sendId: null,

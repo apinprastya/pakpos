@@ -26,7 +26,7 @@ export function resetTabs(request: Partial<Request> = {}, tab: Partial<Tab> = {}
     id: "t1",
     request: { ...emptyRequest(), ...request },
     saved: null,
-    collectionId: "",
+    parentId: "",
     workspaceId: "",
     sendId: null,
     result: null,
