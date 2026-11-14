@@ -1,0 +1,52 @@
+// Dynamic imports of the rarely opened dialogs, shared by LazyDialogs (which
+// renders them with React.lazy) and the idle-time preloader below.
+export const loadSettings = () => import("@/features/settings/SettingsDialog");
+export const loadImportCurl = () => import("@/features/code/ImportCurlDialog");
+export const loadCode = () => import("@/features/code/CodeDialog");
+export const loadPalette = () => import("@/features/palette/CommandPalette");
+
+/** The palette first: it's the one opened most and expected to be instant. */
+export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
+  loadPalette,
+  loadSettings,
+  loadCode,
+  loadImportCurl,
+];
+
+type IdleWindow = Pick<Window, "setTimeout" | "clearTimeout"> & {
+  requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+  cancelIdleCallback?: (id: number) => void;
+};
+
+/**
+ * Fetches the dialog chunks one at a time once the app is idle, so the first
+ * open of a dialog doesn't wait on the network/disk. Startup isn't slowed: the
+ * work only starts after first paint settles. Failures are ignored; the dialog
+ * simply loads on open as before. Returns a cancel function.
+ */
+export function schedulePreload(
+  loaders: ReadonlyArray<() => Promise<unknown>> = dialogLoaders,
+  win: IdleWindow = window,
+): () => void {
+  let cancelled = false;
+  let handle: { idle?: number; timer?: number } = {};
+  const schedule = (fn: () => void) => {
+    if (win.requestIdleCallback) handle = { idle: win.requestIdleCallback(fn, { timeout: 5000 }) };
+    else handle = { timer: win.setTimeout(fn, 1500) };
+  };
+  const next = (i: number) => {
+    if (cancelled || i >= loaders.length) return;
+    schedule(() => {
+      if (cancelled) return;
+      loaders[i]()
+        .catch(() => undefined)
+        .then(() => next(i + 1));
+    });
+  };
+  next(0);
+  return () => {
+    cancelled = true;
+    if (handle.idle !== undefined) win.cancelIdleCallback?.(handle.idle);
+    if (handle.timer !== undefined) win.clearTimeout(handle.timer);
+  };
+}
