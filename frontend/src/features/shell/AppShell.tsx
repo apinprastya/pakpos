@@ -20,6 +20,8 @@ import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
 import { CodeDialog } from "@/features/code/CodeDialog";
 import { ImportCurlDialog } from "@/features/code/ImportCurlDialog";
 import { useDismissToastsOnDialog } from "@/lib/dialogToasts";
+import { useExamplesSync } from "@/features/examples/useExamplesSync";
+import { CommandPalette } from "@/features/palette/CommandPalette";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
@@ -27,6 +29,7 @@ export function AppShell() {
   useWorkspaceSync();
   useScopeSync();
   useDismissToastsOnDialog();
+  useExamplesSync();
   const active = useActiveTab();
   useEffect(() => {
     void useSettingsStore.getState().load();
@@ -72,6 +75,7 @@ export function AppShell() {
       <SecretsDialogs />
       <ImportCurlDialog />
       <CodeDialog />
+      <CommandPalette />
     </div>
   );
 }

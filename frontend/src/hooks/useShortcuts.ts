@@ -1,17 +1,25 @@
 import { useEffect } from "react";
 import { saveTab, sendTab } from "@/features/request/actions";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { usePaletteStore } from "@/stores/palette";
 import { useSettingsStore } from "@/stores/settings";
 import { useTabsStore } from "@/stores/tabs";
 
 /**
- * App-wide shortcuts: Mod+Enter send, Mod+S save, Mod+T new tab, Mod+W close tab, Mod+, settings,
- * Mod+Shift+C generate code (request tabs).
+ * App-wide shortcuts: Mod+K command palette, Mod+Enter send, Mod+S save, Mod+T new tab,
+ * Mod+W close tab, Mod+, settings, Mod+Shift+C generate code (request tabs).
+ * While the palette is open only Mod+K works (it closes it); the palette handles its own keys.
  */
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (!e.shiftKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        usePaletteStore.getState().toggle();
+        return;
+      }
+      if (usePaletteStore.getState().open) return;
       if (e.shiftKey) {
         if (e.key.toLowerCase() === "c") {
           const { tabs, activeId } = useTabsStore.getState();

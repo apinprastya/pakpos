@@ -46,6 +46,7 @@ func main() {
 			application.NewService(service.NewHistoryService(core)),
 			application.NewService(service.NewSettingsService(core)),
 			application.NewService(service.NewEnvService(core)),
+			application.NewService(service.NewExampleService(core)),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

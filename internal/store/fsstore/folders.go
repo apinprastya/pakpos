@@ -247,6 +247,7 @@ func (w *Workspace) dropSubtreeLocked(id string) {
 	for rid, r := range w.requests {
 		if gone[r.parentID] {
 			delete(w.requests, rid)
+			delete(w.examples, rid)
 		}
 	}
 }
@@ -528,8 +529,8 @@ func without(list []child, id string) []child {
 	return slices.DeleteFunc(slices.Clone(list), func(c child) bool { return c.id() == id })
 }
 
-// MoveRequest moves a request into a collection or folder (any collection)
-// at index among its children, keeping its ID. A negative or too large
+// MoveRequest moves a request (with its examples sidecar) into a collection
+// or folder (any collection) at index among its children, keeping its ID. A negative or too large
 // index appends. Within the same parent it just reorders. The file name is
 // resolved against the target with the usual slug rules, and Seq is
 // renumbered in both the source and the target.
@@ -559,8 +560,14 @@ func (w *Workspace) MoveRequest(id, toParentID string, index int) (model.Request
 	}
 
 	r.Seq = slices.IndexFunc(target, func(c child) bool { return c.id() == id }) + 1
-	file := uniqueName(dstDir, slugify(r.Name, "request"), ".yaml")
-	if err := w.writeYAML(filepath.Join(dstDir, file), r); err != nil {
+	file := uniqueRequestFile(dstDir, slugify(r.Name, "request"))
+	newPath := filepath.Join(dstDir, file)
+	if err := w.writeYAML(newPath, r); err != nil {
+		return model.Request{}, fmt.Errorf("move request %q: %w", r.Name, err)
+	}
+	if err := w.moveExamples(path, newPath); err != nil {
+		w.markWrite(newPath)
+		_ = os.Remove(newPath)
 		return model.Request{}, fmt.Errorf("move request %q: %w", r.Name, err)
 	}
 	w.markWrite(path)

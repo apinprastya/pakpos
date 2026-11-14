@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   closestCenter,
   DndContext,
@@ -38,6 +38,7 @@ import { countRequests, destinations, findContainer, findNode } from "@/lib/tree
 import { cn } from "@/lib/utils";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useTreeStore } from "@/stores/tree";
 import { openContainerSettings } from "@/features/scopes/docActions";
 import { copySavedAsCurl } from "@/features/code/actions";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
@@ -114,6 +115,19 @@ export function CollectionTree({
     return node ? nodeKey(node) : null;
   }, [renameTarget, collections]);
   const renamingKey = renaming ?? targetKey;
+
+  // revealInTree: once the row is rendered, scroll to it (and focus it when asked).
+  const reveal = useTreeStore((s) => s.reveal);
+  useEffect(() => {
+    if (!reveal) return;
+    const el = rows.current.get(reveal.key);
+    if (!el) return;
+    el.scrollIntoView({ block: "nearest" });
+    // On the next tick: a menu or the palette that asked for the reveal may
+    // still hold focus in its trap until it has closed.
+    if (reveal.focus) setTimeout(() => el.focus(), 0);
+    useTreeStore.getState().revealDone(reveal.nonce);
+  });
 
   const focusRow = (key: string | null | undefined) => {
     if (!key) return;

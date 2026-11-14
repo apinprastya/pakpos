@@ -7,12 +7,18 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useSecretsStore } from "@/stores/secrets";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { useTreeStore } from "@/stores/tree";
+import { useExamplesStore } from "@/stores/examples";
+import { usePaletteStore } from "@/stores/palette";
 
 const workspaceInitial = useWorkspaceStore.getState();
 const historyInitial = useHistoryStore.getState();
 const environmentsInitial = useEnvironmentsStore.getState();
 const secretsInitial = useSecretsStore.getState();
 const codeDialogsInitial = useCodeDialogsStore.getState();
+const treeInitial = useTreeStore.getState();
+const examplesInitial = useExamplesStore.getState();
+const paletteInitial = usePaletteStore.getState();
 
 /** Puts the workspace and history stores back to their start state (run before each test). */
 export function resetSidebarStores(): void {
@@ -21,6 +27,9 @@ export function resetSidebarStores(): void {
   useEnvironmentsStore.setState(environmentsInitial, true);
   useSecretsStore.setState(secretsInitial, true);
   useCodeDialogsStore.setState({ ...codeDialogsInitial, language: "curl" }, true);
+  useTreeStore.setState(treeInitial, true);
+  useExamplesStore.setState(examplesInitial, true);
+  usePaletteStore.setState(paletteInitial, true);
   useSettingsStore.setState({
     settings: { ...DEFAULT_SETTINGS },
     loaded: false,

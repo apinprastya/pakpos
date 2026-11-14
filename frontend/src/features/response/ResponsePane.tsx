@@ -7,6 +7,9 @@ import type { SendError, SendResult } from "@/lib/model";
 import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore } from "@/stores/settings";
 import { useActiveTab } from "@/stores/tabs";
+import { useExamplesStore } from "@/stores/examples";
+import { ExampleView } from "@/features/examples/ExampleView";
+import { SaveExampleButton } from "@/features/examples/SaveExampleButton";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { errorCopy } from "./format";
 import { ResponseBody } from "./ResponseBody";
@@ -18,9 +21,13 @@ export function ResponsePane() {
   const result = tab.result;
   const response = result?.response ?? null;
   const sending = tab.sendId !== null;
+  const example = useExamplesStore((s) => s.viewing[tab.id]);
+  const showingExample = !!example && !sending;
 
   let content: React.ReactNode;
-  if (sending) {
+  if (showingExample) {
+    content = <ExampleView tabId={tab.id} example={example} hasResult={!!result} />;
+  } else if (sending) {
     content = (
       <Centered>
         <Loader2 aria-hidden className="size-5 animate-spin text-muted-foreground" />
@@ -47,8 +54,9 @@ export function ResponsePane() {
               Cookies <Count n={response.cookies.length} />
             </TabsTrigger>
           </TabsList>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <ResponseMeta response={response} />
+            {!tab.doc && <SaveExampleButton tab={tab} />}
           </div>
         </div>
         <TabsContent value="body" className="min-h-0 flex-1">
@@ -68,12 +76,17 @@ export function ResponsePane() {
 
   return (
     <section aria-label="Response" aria-busy={sending} className="flex h-full min-h-0 flex-col">
-      {!response || sending || result?.error ? (
+      {!showingExample && (!response || sending || result?.error) ? (
         <header className="flex h-9 shrink-0 items-center border-b px-3 text-sm font-semibold">
           Response
+          {!sending && result?.error && (
+            <span className="ml-auto font-normal">
+              <SaveExampleButton tab={tab} />
+            </span>
+          )}
         </header>
       ) : null}
-      {!sending && result && <VariablesNotice result={result} />}
+      {!sending && !showingExample && result && <VariablesNotice result={result} />}
       <div className="min-h-0 flex-1">{content}</div>
     </section>
   );

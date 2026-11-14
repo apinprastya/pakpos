@@ -7,6 +7,7 @@ import { Events } from "@wailsio/runtime";
 import {
   AppService,
   EnvService,
+  ExampleService,
   HistoryService,
   RequestService,
   SettingsService,
@@ -36,6 +37,12 @@ import {
   normalizeFolder,
   normalizeCodeResult,
   normalizeCurlImport,
+  normalizeExample,
+  normalizeExampleSummary,
+  normalizeSaveExampleResult,
+  type SaveExampleResult,
+  type Example,
+  type ExampleSummary,
   type CodeLanguage,
   type CodeOptions,
   type CodeResult,
@@ -355,6 +362,35 @@ export const api = {
   /** Deletes every stored secret value (forgotten password or damaged file). */
   async resetSecretStore(): Promise<void> {
     return EnvService.ResetSecretStore();
+  },
+
+  /** Every example in the open workspace (summaries, grouped by request). */
+  async listAllExamples(): Promise<ExampleSummary[]> {
+    return ((await ExampleService.ListAll()) ?? []).map(normalizeExampleSummary);
+  },
+  async getExample(requestId: string, id: string): Promise<Example> {
+    return normalizeExample(await ExampleService.Get(requestId, id));
+  },
+  /**
+   * Saves the response of a history entry as an example of a saved request.
+   * Nothing is saved when it holds a secret's value (`secretsFound`) unless
+   * `replaceSecrets`, which writes `{{name}}` instead, or when the secret
+   * store is locked (`secretsLocked`). Rejects with a message for the user
+   * (e.g. a body over 1 MB).
+   */
+  async saveExample(
+    requestId: string,
+    name: string,
+    historyId: number,
+    replaceSecrets = false,
+  ): Promise<SaveExampleResult> {
+    return normalizeSaveExampleResult(await ExampleService.Save(requestId, name, historyId, replaceSecrets));
+  },
+  async renameExample(requestId: string, id: string, name: string): Promise<ExampleSummary> {
+    return normalizeExampleSummary(await ExampleService.Rename(requestId, id, name));
+  },
+  async deleteExample(requestId: string, id: string): Promise<void> {
+    return ExampleService.Delete(requestId, id);
   },
 };
 

@@ -5,6 +5,7 @@ import { useHistoryStore } from "@/stores/history";
 import { useSecretsStore } from "@/stores/secrets";
 import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useExamplesStore } from "@/stores/examples";
 import { saveDocTab } from "@/features/scopes/docActions";
 
 function newSendId(): string {
@@ -23,6 +24,8 @@ export async function sendTab(tabId: string): Promise<void> {
   if (!tab || tab.doc || tab.sendId || !tab.request.url.trim()) return;
 
   const sendId = newSendId();
+  // A new response replaces an example the tab was showing.
+  useExamplesStore.getState().hide(tabId);
   store.setSending(tabId, sendId);
   let result: SendResult;
   try {

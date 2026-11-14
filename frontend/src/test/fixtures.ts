@@ -1,6 +1,9 @@
-import { emptyAuth } from "@/lib/model";
+import { emptyAuth, emptyRequest } from "@/lib/model";
 import type {
   CodeResult,
+  Example,
+  ExampleSummary,
+  SaveExampleResult,
   Environment,
   PreviewVariable,
   ResolvePreview,
@@ -141,4 +144,47 @@ export function makeCodeResult(patch: Partial<CodeResult> = {}): CodeResult {
     environment: null,
     ...patch,
   };
+}
+
+/** An example summary of request `requestId`; patch what the test needs. */
+export function makeExampleSummary(
+  id: string,
+  requestId: string,
+  patch: Partial<ExampleSummary> = {},
+): ExampleSummary {
+  return {
+    id,
+    requestId,
+    name: "200 OK",
+    savedAt: "2026-11-14T10:00:00Z",
+    statusCode: 200,
+    statusText: "200 OK",
+    ...patch,
+  };
+}
+
+/** A full example with a JSON response; patch what the test needs. */
+export function makeExample(id: string, patch: Partial<Example> = {}): Example {
+  return {
+    id,
+    name: "200 OK",
+    savedAt: "2026-11-14T10:00:00Z",
+    request: { ...emptyRequest(), name: "Get user", url: "{{baseUrl}}/users/42" },
+    response: {
+      statusCode: 200,
+      statusText: "200 OK",
+      headers: [{ key: "Content-Type", value: "application/json", enabled: true }],
+      contentType: "application/json",
+      kind: "json",
+      body: '{"id":42,"example":true}',
+      encoding: "utf8",
+      size: 24,
+    },
+    ...patch,
+  };
+}
+
+/** What `saveExample` returns when it saved `summary`. */
+export function savedExample(summary: ExampleSummary): SaveExampleResult {
+  return { example: summary, secretsFound: [], secretsLocked: false };
 }

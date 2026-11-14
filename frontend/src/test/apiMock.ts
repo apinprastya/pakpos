@@ -110,5 +110,10 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     unlockSecrets: vi.fn().mockResolvedValue(undefined),
     lockSecrets: vi.fn().mockResolvedValue(undefined),
     resetSecretStore: vi.fn().mockResolvedValue(undefined),
+    listAllExamples: vi.fn().mockResolvedValue([]),
+    getExample: vi.fn(),
+    saveExample: vi.fn(),
+    renameExample: vi.fn(),
+    deleteExample: vi.fn().mockResolvedValue(undefined),
   };
 }

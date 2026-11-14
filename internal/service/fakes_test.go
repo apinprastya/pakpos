@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"pakpos/internal/secrets"
+	"pakpos/internal/store/fsstore"
 )
 
 type fakeDialogs struct {
@@ -57,6 +59,7 @@ type harness struct {
 	hist    *HistoryService
 	set     *SettingsService
 	env     *EnvService
+	ex      *ExampleService
 	secrets *secrets.Fake
 	dataDir string
 }
@@ -85,6 +88,7 @@ func (h *harness) start(t *testing.T, store secrets.Store) *harness {
 	h.core = c
 	h.ws, h.req, h.hist, h.set = NewWorkspaceService(c), NewRequestService(c), NewHistoryService(c), NewSettingsService(c)
 	h.env = NewEnvService(c)
+	h.ex = NewExampleService(c)
 	return h
 }
 
@@ -107,4 +111,16 @@ func waitUntil(t *testing.T, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("condition not met in time")
+}
+
+// saveExample saves without replacing secrets and fails when nothing was saved.
+func (h *harness) saveExample(requestID, name string, historyID int64) (fsstore.ExampleSummary, error) {
+	res, err := h.ex.Save(requestID, name, historyID, false)
+	if err != nil {
+		return fsstore.ExampleSummary{}, err
+	}
+	if res.Example == nil {
+		return fsstore.ExampleSummary{}, fmt.Errorf("not saved: found %v, locked %v", res.SecretsFound, res.SecretsLocked)
+	}
+	return *res.Example, nil
 }

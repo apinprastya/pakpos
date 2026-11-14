@@ -25,8 +25,9 @@ const (
 	// FolderFile marks a subdirectory of a collection (at any depth) as a
 	// folder. A subdirectory without one is reported as a problem.
 	FolderFile = "_folder.yaml"
-	// ExamplesSuffix marks a request's saved response examples (a sidecar
-	// file next to the request, see M7). The request loader skips it.
+	// ExamplesSuffix marks a request's saved response examples: a sidecar
+	// <request file stem>.examples.yaml next to the request (examples.go).
+	// The request loader skips it.
 	ExamplesSuffix = ".examples.yaml"
 	// EnvironmentsDir holds one file per environment plus GlobalsFile.
 	EnvironmentsDir = "environments"
@@ -36,12 +37,12 @@ const (
 	// FormatVersion is the newest workspace format this build understands
 	// and the version new workspaces are created with.
 	//
-	// v2 adds environments/, globals, secret variables and nested folders;
-	// every change is additive, so a v1 workspace opens as is. Its manifest
-	// is only rewritten to v2 when the app first writes something
-	// v2-specific (an environment, the globals, a folder, or collection
-	// settings with a secret variable), so merely opening a Tier 1
-	// workspace never changes it.
+	// v2 adds environments/, globals, secret variables, nested folders and
+	// examples sidecars; every change is additive, so a v1 workspace opens
+	// as is. Its manifest is only rewritten to v2 when the app first writes
+	// something v2-specific (an environment, the globals, a folder,
+	// collection settings with a secret variable, or an example), so merely
+	// opening a Tier 1 workspace never changes it.
 	FormatVersion = 2
 )
 
@@ -123,7 +124,10 @@ type Workspace struct {
 	folders     map[string]*folderEntry
 	requests    map[string]*reqEntry
 	envs        map[string]*envEntry
-	globals     *Globals // nil until _globals.yaml exists
+	// examples holds each request's example summaries (requests without
+	// examples have no entry).
+	examples map[string][]ExampleSummary
+	globals  *Globals // nil until _globals.yaml exists
 	// pendingGlobalsID is handed out by GetGlobals before the globals file
 	// exists, so the scope ID (used in secret keys) is stable until saved.
 	pendingGlobalsID string
@@ -207,6 +211,7 @@ func newWorkspace(root string, m Manifest) *Workspace {
 		folders:     map[string]*folderEntry{},
 		requests:    map[string]*reqEntry{},
 		envs:        map[string]*envEntry{},
+		examples:    map[string][]ExampleSummary{},
 		writes:      map[string]time.Time{},
 		watchers:    map[*Watcher]struct{}{},
 	}
@@ -247,9 +252,10 @@ func (w *Workspace) Reload() []Problem {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	sc := &scan{
-		cols:    map[string]*colEntry{},
-		folders: map[string]*folderEntry{},
-		reqs:    map[string]*reqEntry{},
+		cols:     map[string]*colEntry{},
+		folders:  map[string]*folderEntry{},
+		reqs:     map[string]*reqEntry{},
+		examples: map[string][]ExampleSummary{},
 	}
 	sc.addProblem = func(abs, msg string) {
 		sc.problems = append(sc.problems, Problem{Path: w.rel(abs), Message: msg})
@@ -293,6 +299,7 @@ func (w *Workspace) Reload() []Problem {
 	envs, globals := w.loadEnvironments(sc.addProblem)
 
 	w.collections, w.folders, w.requests, w.problems = sc.cols, sc.folders, sc.reqs, sc.problems
+	w.examples = sc.examples
 	if globals == nil && w.globals != nil {
 		// _globals.yaml vanished (e.g. git checkout): keep its ID, so a later
 		// save reuses it and secret keys stay valid.
@@ -307,6 +314,7 @@ type scan struct {
 	cols       map[string]*colEntry
 	folders    map[string]*folderEntry
 	reqs       map[string]*reqEntry
+	examples   map[string][]ExampleSummary
 	problems   []Problem
 	addProblem func(abs, msg string)
 }
@@ -328,6 +336,8 @@ func (w *Workspace) loadDir(sc *scan, parentID, dirPath string) {
 		sc.addProblem(dirPath, err.Error())
 		return
 	}
+	var sidecars []string
+	byFile := map[string]string{} // lower-cased sidecar name -> request id
 	for _, f := range entries {
 		name := f.Name()
 		if strings.HasPrefix(name, ".") {
@@ -336,6 +346,10 @@ func (w *Workspace) loadDir(sc *scan, parentID, dirPath string) {
 		p := filepath.Join(dirPath, name)
 		if f.IsDir() {
 			w.loadFolder(sc, parentID, p)
+			continue
+		}
+		if isExamplesFile(name) {
+			sidecars = append(sidecars, name)
 			continue
 		}
 		if !isRequestFile(name) {
@@ -357,7 +371,9 @@ func (w *Workspace) loadDir(sc *scan, parentID, dirPath string) {
 		s := summarize(r)
 		s.ParentID = parentID
 		sc.reqs[r.ID] = &reqEntry{parentID: parentID, file: name, summary: s}
+		byFile[strings.ToLower(examplesName(name))] = r.ID
 	}
+	loadExamples(sc, dirPath, sidecars, byFile)
 }
 
 // loadFolder loads the folder in dirPath (a subdirectory of parentID's
@@ -640,7 +656,7 @@ func (w *Workspace) createLocked(parentID string, req model.Request) (model.Requ
 	normalizeRequest(&req)
 	req.Seq = w.nextSeqLocked(parentID)
 
-	file := uniqueName(dirPath, slugify(req.Name, "request"), ".yaml")
+	file := uniqueRequestFile(dirPath, slugify(req.Name, "request"))
 	if err := w.writeYAML(filepath.Join(dirPath, file), req); err != nil {
 		return model.Request{}, err
 	}
@@ -665,7 +681,8 @@ func (w *Workspace) SaveRequest(req model.Request) (model.Request, error) {
 	return req, nil
 }
 
-// writeRequest writes req to e's file, renaming the file if the name's slug changed.
+// writeRequest writes req to e's file, renaming the file (and its examples
+// sidecar) if the name's slug changed.
 func (w *Workspace) writeRequest(e *reqEntry, req model.Request) error {
 	dirPath, err := w.dirLocked(e.parentID)
 	if err != nil {
@@ -673,13 +690,18 @@ func (w *Workspace) writeRequest(e *reqEntry, req model.Request) error {
 	}
 	file := e.file
 	if slug := slugify(req.Name, "request"); slug+".yaml" != file {
-		file = uniqueName(dirPath, slug, ".yaml")
+		file = uniqueRequestFile(dirPath, slug)
 	}
 	if err := w.writeYAML(filepath.Join(dirPath, file), req); err != nil {
 		return err
 	}
 	if file != e.file {
 		old := filepath.Join(dirPath, e.file)
+		if err := w.moveExamples(old, filepath.Join(dirPath, file)); err != nil {
+			w.markWrite(filepath.Join(dirPath, file))
+			_ = os.Remove(filepath.Join(dirPath, file))
+			return err
+		}
 		w.markWrite(old)
 		if err := os.Remove(old); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove old request file: %w", err)
@@ -710,6 +732,7 @@ func (w *Workspace) RenameRequest(id, name string) (model.Request, error) {
 }
 
 // DuplicateRequest copies a request into the same parent as "<name> copy".
+// Its examples are copied too, with new ids.
 func (w *Workspace) DuplicateRequest(id string) (model.Request, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -723,10 +746,17 @@ func (w *Workspace) DuplicateRequest(id string) (model.Request, error) {
 	}
 	r.ID = ""
 	r.Name += " copy"
-	return w.createLocked(e.parentID, r)
+	created, err := w.createLocked(e.parentID, r)
+	if err != nil {
+		return model.Request{}, err
+	}
+	if err := w.copyExamplesLocked(id, created.ID); err != nil {
+		return created, fmt.Errorf("copy examples of %q: %w", created.Name, err)
+	}
+	return created, nil
 }
 
-// DeleteRequest removes a request file.
+// DeleteRequest removes a request file and its examples sidecar.
 func (w *Workspace) DeleteRequest(id string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -734,6 +764,12 @@ func (w *Workspace) DeleteRequest(id string) error {
 	if err != nil {
 		return err
 	}
+	sidecar := examplesPath(path)
+	w.markWrite(sidecar)
+	if err := os.Remove(sidecar); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("delete request examples: %w", err)
+	}
+	delete(w.examples, id)
 	w.markWrite(path)
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("delete request: %w", err)

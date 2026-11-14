@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FolderOpen, FolderPlus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useTreeStore } from "@/stores/tree";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { CollectionTree } from "./CollectionTree";
 import { ConfirmDeleteDialog, type DeleteTarget } from "./ConfirmDeleteDialog";
@@ -71,6 +72,15 @@ function WorkspaceCollections({ workspaceId }: { workspaceId: string }) {
 
   const filtering = query.trim() !== "";
   const shown = filterTree(collections, query);
+
+  // A reveal (palette, history, "Reveal in sidebar") must find its row: drop the filter.
+  useEffect(
+    () =>
+      useTreeStore.subscribe((s, prev) => {
+        if (s.reveal && s.reveal !== prev.reveal) setQuery("");
+      }),
+    [],
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
