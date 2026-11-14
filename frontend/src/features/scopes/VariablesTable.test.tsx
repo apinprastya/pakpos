@@ -268,3 +268,17 @@ describe("VariablesTable: secret rows", () => {
     expect(api.makeVariablePlain).not.toHaveBeenCalled();
   });
 });
+
+describe("VariablesTable: column widths", () => {
+  it("remembers the variable/value split", async () => {
+    const { useUiStateStore } = await import("@/stores/uiState");
+    const user = userEvent.setup();
+    useUiStateStore.setState({ values: { "columns.variables": 0.5 } });
+    setup([makeVar("host", "x")]);
+    const sep = screen.getByRole("separator", { name: "Resize Variable column" });
+    expect(sep).toHaveAttribute("aria-valuenow", "50");
+    sep.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(useUiStateStore.getState().values["columns.variables"]).toBe(0.52);
+  });
+});

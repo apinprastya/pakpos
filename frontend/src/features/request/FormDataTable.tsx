@@ -6,6 +6,11 @@ import type { FormField, FormFieldKind } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { FilePicker } from "./FilePicker";
 import { varCellClass } from "./KeyValueTable";
+import { SPLIT_A, SPLIT_B, useColumnSplit } from "@/hooks/useColumnSplit";
+import { ColumnResizer } from "@/components/table/ColumnResizer";
+
+const GRID =
+  "grid grid-cols-[28px_minmax(0,var(--col-a,2fr))_84px_minmax(0,var(--col-b,3fr))_28px] items-center";
 
 const BLANK: FormField = { key: "", kind: "text", value: "", filePath: "", contentType: "", enabled: true };
 const inputClass =
@@ -18,6 +23,7 @@ interface Props {
 
 /** multipart/form-data fields; each row is text or a file. */
 export function FormDataTable({ rows, onChange }: Props) {
+  const split = useColumnSplit("formData", 0.4);
   const display = [...rows, BLANK];
   const update = (i: number, patch: Partial<FormField>) => {
     if (i >= rows.length) onChange([...rows, { ...BLANK, ...patch }]);
@@ -25,21 +31,19 @@ export function FormDataTable({ rows, onChange }: Props) {
   };
 
   return (
-    <div role="table" aria-label="Form fields" className="text-sm">
-      <div
-        role="row"
-        className="grid grid-cols-[28px_minmax(0,2fr)_84px_minmax(0,3fr)_28px] items-center border-b px-1 py-1 text-xs text-muted-foreground"
-      >
+    <div role="table" aria-label="Form fields" className="text-sm" style={split.style}>
+      <div role="row" className={cn(GRID, "border-b px-1 py-1 text-xs text-muted-foreground")}>
         <span role="columnheader">
           <span className="sr-only">Enabled</span>
         </span>
-        <span role="columnheader" className="px-2">
+        <span role="columnheader" className="relative px-2" {...SPLIT_A}>
           Key
+          <ColumnResizer column="Key" split={split} />
         </span>
         <span role="columnheader" className="px-2">
           Type
         </span>
-        <span role="columnheader" className="px-2">
+        <span role="columnheader" className="px-2" {...SPLIT_B}>
           Value
         </span>
         <span role="columnheader">
@@ -54,7 +58,8 @@ export function FormDataTable({ rows, onChange }: Props) {
             role="row"
             key={i}
             className={cn(
-              "group grid grid-cols-[28px_minmax(0,2fr)_84px_minmax(0,3fr)_28px] items-center border-b border-border/60 px-1 py-0.5",
+              GRID,
+              "group border-b border-border/60 px-1 py-0.5",
               !row.enabled && !blank && "text-muted-foreground",
             )}
           >

@@ -20,6 +20,7 @@ import { useDismissToastsOnDialog } from "@/lib/dialogToasts";
 import { useExamplesSync } from "@/features/examples/useExamplesSync";
 import { LazyDialogs } from "./LazyDialogs";
 import { useUpdateCheck } from "@/features/update/useUpdateCheck";
+import { usePanelLayout } from "@/hooks/usePanelLayout";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
@@ -30,6 +31,8 @@ export function AppShell() {
   useExamplesSync();
   useUpdateCheck();
   const active = useActiveTab();
+  const mainLayout = usePanelLayout("main");
+  const splitLayout = usePanelLayout(`split-${orientation}`);
   useEffect(() => {
     void useSettingsStore.getState().load();
   }, []);
@@ -38,7 +41,7 @@ export function AppShell() {
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">
         <ActivityRail />
-        <ResizablePanelGroup orientation="horizontal" id="pakpos-main">
+        <ResizablePanelGroup orientation="horizontal" id="pakpos-main" {...mainLayout}>
           <ResizablePanel id="sidebar" defaultSize={260} minSize={200} maxSize="40">
             <Sidebar />
           </ResizablePanel>
@@ -53,6 +56,7 @@ export function AppShell() {
                   key={orientation}
                   orientation={orientation === "vertical" ? "vertical" : "horizontal"}
                   id={`pakpos-split-${orientation}`}
+                  {...splitLayout}
                 >
                   <ResizablePanel id="request" defaultSize="50" minSize="20">
                     <RequestPane />

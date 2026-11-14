@@ -11,6 +11,7 @@ import { useTreeStore } from "@/stores/tree";
 import { useExamplesStore } from "@/stores/examples";
 import { usePaletteStore } from "@/stores/palette";
 import { resetUpdateAnnouncements, useUpdateStore } from "@/stores/update";
+import { resetUiState } from "@/stores/uiState";
 
 const workspaceInitial = useWorkspaceStore.getState();
 const historyInitial = useHistoryStore.getState();
@@ -34,6 +35,7 @@ export function resetSidebarStores(): void {
   usePaletteStore.setState(paletteInitial, true);
   useUpdateStore.setState({ ...updateInitial, skipped: "" }, true);
   resetUpdateAnnouncements();
+  resetUiState();
   useSettingsStore.setState({
     settings: { ...DEFAULT_SETTINGS },
     loaded: false,

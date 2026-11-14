@@ -21,6 +21,8 @@ import type { ScopeRef, Variable } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { needsUnlock, useSecretsStore } from "@/stores/secrets";
 import { SecretValueCell } from "./SecretValueCell";
+import { SPLIT_A, SPLIT_B, useColumnSplit } from "@/hooks/useColumnSplit";
+import { ColumnResizer } from "@/components/table/ColumnResizer";
 import { useSecretStatus } from "./useSecretStatus";
 
 export type RowsUpdate = (update: (rows: Variable[]) => Variable[]) => void;
@@ -49,7 +51,9 @@ export const cellInputClass =
 const iconButtonClass =
   "flex size-6 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:pointer-events-none disabled:opacity-40";
 
-const GRID = "grid grid-cols-[28px_minmax(0,2fr)_minmax(0,3fr)_28px_28px] items-center";
+// --col-a/--col-b come from useColumnSplit on the table.
+const GRID =
+  "grid grid-cols-[28px_minmax(0,var(--col-a,2fr))_minmax(0,var(--col-b,3fr))_28px_28px] items-center";
 
 /**
  * Variables of the globals, an environment or a collection: key, value,
@@ -69,6 +73,7 @@ export function VariablesTable({
   onSavedOnDisk,
 }: VariablesTableProps) {
   const tableRef = useRef<HTMLDivElement>(null);
+  const split = useColumnSplit("variables", 0.4);
   const status = useSecretStatus(scope, savedRows);
   // Secrets set in this session for rows that aren't saved as secrets yet (Go's status only knows saved ones).
   const [setLocally, setSetLocally] = useState<ReadonlySet<string>>(new Set());
@@ -170,16 +175,17 @@ export function VariablesTable({
   };
 
   return (
-    <div ref={tableRef} role="table" aria-label={label} className="text-sm">
+    <div ref={tableRef} role="table" aria-label={label} className="text-sm" style={split.style}>
       <div role="rowgroup">
         <div role="row" className={cn(GRID, "border-b px-1 py-1 text-xs text-muted-foreground")}>
           <span role="columnheader">
             <span className="sr-only">Enabled</span>
           </span>
-          <span role="columnheader" className="px-2">
+          <span role="columnheader" className="relative px-2" {...SPLIT_A}>
             Variable
+            <ColumnResizer column="Variable" split={split} />
           </span>
-          <span role="columnheader" className="px-2">
+          <span role="columnheader" className="px-2" {...SPLIT_B}>
             Value
           </span>
           <span role="columnheader">
