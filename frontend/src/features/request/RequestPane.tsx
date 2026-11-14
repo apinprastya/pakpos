@@ -14,6 +14,8 @@ import { RequestActions } from "./RequestActions";
 import { importCurlIntoTab } from "@/features/code/actions";
 import { looksLikeCurl } from "@/features/code/summary";
 import { usePreview } from "./usePreview";
+import { ExamplesSection } from "@/features/examples/ExamplesSection";
+import { useRequestExamples } from "@/stores/examples";
 
 function Count({ n }: { n: number }) {
   if (n === 0) return null;
@@ -37,6 +39,7 @@ export function RequestPane() {
 
   const paramCount = req.query.filter((q) => q.enabled && q.key).length + req.pathParams.length;
   const headerCount = req.headers.filter((h) => h.enabled && h.key).length;
+  const exampleCount = useRequestExamples(tab.saved?.id ?? "").length;
 
   return (
     <VarScopeContext.Provider value={varScope}>
@@ -70,6 +73,9 @@ export function RequestPane() {
             <TabsTrigger value="auth" className="flex-none px-2">
               Auth <Dot on={req.auth.type !== "none"} label="auth set" />
             </TabsTrigger>
+            <TabsTrigger value="examples" className="flex-none px-2">
+              Examples <Count n={exampleCount} />
+            </TabsTrigger>
           </TabsList>
           {/* Keyed by tab so section state (e.g. bulk edit) resets when switching requests. */}
           <TabsContent key={`p-${tab.id}`} value="params" className="min-h-0 flex-1 overflow-auto p-3">
@@ -83,6 +89,9 @@ export function RequestPane() {
           </TabsContent>
           <TabsContent key={`a-${tab.id}`} value="auth" className="min-h-0 flex-1 overflow-auto p-3">
             <AuthSection request={req} parentId={tab.parentId} preview={preview} onChange={onChange} />
+          </TabsContent>
+          <TabsContent key={`e-${tab.id}`} value="examples" className="min-h-0 flex-1 overflow-auto p-3">
+            <ExamplesSection tab={tab} />
           </TabsContent>
         </Tabs>
       </section>

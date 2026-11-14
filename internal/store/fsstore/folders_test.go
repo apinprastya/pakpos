@@ -164,12 +164,14 @@ func TestFolderLoadProblems(t *testing.T) {
 		"collections/api/noid/_folder.yaml":        "missing id",
 		"collections/api/dupcol/_folder.yaml":      "duplicate folder id",
 		"collections/api/good/deeper/_folder.yaml": "not loaded",
+		// An examples sidecar without its request is reported (M7).
+		"collections/api/good/login.examples.yaml": "no request file next to it",
 	} {
 		if !strings.Contains(got[path], msg) {
 			t.Errorf("problem for %s = %q, want %q", path, got[path], msg)
 		}
 	}
-	if len(problems) != 5 {
+	if len(problems) != 6 {
 		t.Fatalf("problems = %+v", problems)
 	}
 	for _, id := range []string{"IN", "HIDDEN", "EX", "DX"} {

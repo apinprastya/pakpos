@@ -863,3 +863,164 @@ func assertNoSecret(t *testing.T, secret string, dirs ...string) {
 		})
 	}
 }
+
+// TestEndToEndExamples sends a request that uses a secret (in a header and
+// the query string), saves the response as an example, moves and renames the
+// request, reopens the workspace from disk and checks the example survived
+// with the request as written and no secret value in the sidecar.
+func TestEndToEndExamples(t *testing.T) {
+	const secretValue = "ex-SECRET-51d2"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer "+secretValue || r.URL.Query().Get("key") != secretValue {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Request-Id", "abc")
+		_, _ = w.Write([]byte(`{"users":[{"id":1,"name":"Ada"}]}`)) // never echoes the secret
+	}))
+	t.Cleanup(srv.Close)
+
+	h := newHarness(t)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wsDir := t.TempDir()
+	_, err := h.ws.Create(wsDir, "Examples")
+	must(err)
+	users, err := h.ws.CreateCollection("Users")
+	must(err)
+	_, err = h.ws.SaveCollection(users.ID, fsstore.CollectionSettings{
+		Variables: []model.Variable{{Key: "baseUrl", Value: srv.URL, Enabled: true}, {Key: "token", Enabled: true, Secret: true}},
+	}, nil)
+	must(err)
+	must(h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeCollection, ID: users.ID}, "token", secretValue))
+	archive, err := h.ws.CreateCollection("Archive")
+	must(err)
+	old, err := h.ws.CreateFolder(archive.ID, "Old")
+	must(err)
+
+	list, err := h.req.SaveAs(users.ID, "List users", model.Request{
+		Method: "GET", URL: "{{baseUrl}}/users?key={{token}}",
+		Query: []model.KeyValue{{Key: "key", Value: "{{token}}", Enabled: true}},
+		Auth:  model.Auth{Type: model.AuthBearer, Token: "{{token}}"},
+	})
+	must(err)
+	res, err := h.req.Send(context.Background(), "ex", list, "")
+	must(err)
+	if res.Response == nil || res.Response.StatusCode != http.StatusOK {
+		t.Fatalf("send = %+v %+v", res.Response, res.Error)
+	}
+	if !strings.Contains(res.Response.URL, secretValue) {
+		t.Fatal("the response URL should hold the resolved secret (it must not reach the example)")
+	}
+	sum, err := h.saveExample(list.ID, "200 OK", res.HistoryID)
+	must(err)
+
+	// Move it into a folder of another collection, then rename it.
+	_, err = h.ws.MoveRequest(list.ID, old.ID, 0)
+	must(err)
+	_, err = h.req.Rename(list.ID, "All users")
+	must(err)
+	sidecar := filepath.Join(wsDir, fsstore.CollectionsDir, "archive", "old", "all-users.examples.yaml")
+	if _, err := os.Stat(sidecar); err != nil {
+		t.Fatalf("sidecar didn't follow the request: %v", err)
+	}
+
+	// Reopen from disk.
+	h.ws.Close()
+	_, err = h.ws.Open(wsDir)
+	must(err)
+	all, err := h.ex.ListAll()
+	must(err)
+	if len(all) != 1 || all[0].ID != sum.ID || all[0].RequestID != list.ID || all[0].Name != "200 OK" || all[0].StatusCode != 200 {
+		t.Fatalf("examples after reopen = %+v", all)
+	}
+	ex, err := h.ex.Get(list.ID, sum.ID)
+	must(err)
+	if ex.Response.Body != `{"users":[{"id":1,"name":"Ada"}]}` || ex.Response.Kind != model.KindJSON ||
+		!slices.ContainsFunc(ex.Response.Headers, func(kv model.KeyValue) bool { return kv.Key == "X-Request-Id" }) {
+		t.Fatalf("response = %+v", ex.Response)
+	}
+	if ex.Request.URL != "{{baseUrl}}/users?key={{token}}" || ex.Request.Auth.Token != "{{token}}" {
+		t.Fatalf("request not as written: %+v", ex.Request)
+	}
+	raw, err := os.ReadFile(sidecar)
+	must(err)
+	if bytes.Contains(raw, []byte(secretValue)) || bytes.Contains(raw, []byte(srv.URL)) {
+		t.Fatalf("sidecar holds a resolved value:\n%s", raw)
+	}
+
+	// Deleting the request deletes its examples.
+	must(h.req.Delete(list.ID))
+	if _, err := os.Stat(sidecar); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("sidecar left behind: %v", err)
+	}
+	if all, _ := h.ex.ListAll(); len(all) != 0 {
+		t.Fatalf("examples after delete = %+v", all)
+	}
+}
+
+// TestEndToEndExampleEchoedSecret: a server echoes the Authorization header;
+// a plain "Save as example" is refused with the secret's name, and saving
+// with {{name}} writes the placeholder and never the value.
+func TestEndToEndExampleEchoedSecret(t *testing.T) {
+	const secretValue = "echo-SECRET-3f9a"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Seen-Authorization", r.Header.Get("Authorization"))
+		_, _ = fmt.Fprintf(w, `{"headers":{"Authorization":%q}}`, r.Header.Get("Authorization"))
+	}))
+	t.Cleanup(srv.Close)
+
+	h := newHarness(t)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wsDir := t.TempDir()
+	_, err := h.ws.Create(wsDir, "Echo")
+	must(err)
+	dev, err := h.env.Create("Dev")
+	must(err)
+	_, err = h.env.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}, []model.Variable{{Key: "token", Enabled: true, Secret: true}}, nil)
+	must(err)
+	must(h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}, "token", secretValue))
+	must(h.env.Select(dev.ID))
+	col, err := h.ws.CreateCollection("Echo")
+	must(err)
+	r, err := h.req.SaveAs(col.ID, "Echo headers", model.Request{Method: "GET", URL: srv.URL + "/headers",
+		Auth: model.Auth{Type: model.AuthBearer, Token: "{{token}}"}})
+	must(err)
+	res, err := h.req.Send(context.Background(), "echo", r, "")
+	must(err)
+	if res.Response == nil || !strings.Contains(res.Response.Body, secretValue) {
+		t.Fatalf("server didn't echo: %+v", res.Response)
+	}
+
+	plain, err := h.ex.Save(r.ID, "Echo", res.HistoryID, false)
+	must(err)
+	if plain.Example != nil || !slices.Equal(plain.SecretsFound, []string{"token"}) {
+		t.Fatalf("plain save = %+v", plain)
+	}
+	sidecar := filepath.Join(wsDir, fsstore.CollectionsDir, "echo", "echo-headers.examples.yaml")
+	if _, err := os.Stat(sidecar); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a refused save wrote the sidecar: %v", err)
+	}
+
+	masked, err := h.ex.Save(r.ID, "Echo", res.HistoryID, true)
+	must(err)
+	if masked.Example == nil {
+		t.Fatalf("masked save = %+v", masked)
+	}
+	raw, err := os.ReadFile(sidecar)
+	must(err)
+	if bytes.Contains(raw, []byte(secretValue)) || !bytes.Contains(raw, []byte("Bearer {{token}}")) {
+		t.Fatalf("sidecar:\n%s", raw)
+	}
+}

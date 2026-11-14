@@ -803,3 +803,113 @@ export function normalizeCodeResult(input: unknown): CodeResult {
     environment: c.environment ? { id: c.environment.id ?? "", name: c.environment.name ?? "" } : null,
   };
 }
+
+/* ---------- examples ---------- */
+
+/** A saved example of a request, as lists show it. */
+export interface ExampleSummary {
+  id: string;
+  requestId: string;
+  name: string;
+  /** RFC 3339. */
+  savedAt: string;
+  statusCode: number;
+  statusText: string;
+}
+
+/** The saved part of a response (no final URL, cookies or timings). */
+export interface ExampleResponse {
+  statusCode: number;
+  statusText: string;
+  headers: KeyValue[];
+  contentType: string;
+  kind: BodyKind;
+  body: string;
+  encoding: BodyEncoding;
+  size: number;
+}
+
+/** A saved example: the request as written when it was sent, and the response. */
+export interface Example {
+  id: string;
+  name: string;
+  savedAt: string;
+  request: Request;
+  response: ExampleResponse;
+}
+
+/**
+ * What saving an example did. `example` is null when nothing was saved:
+ * `secretsFound` names secrets whose values are in it (never the values),
+ * or `secretsLocked` says the check couldn't run.
+ */
+export interface SaveExampleResult {
+  example: ExampleSummary | null;
+  secretsFound: string[];
+  secretsLocked: boolean;
+}
+
+export function normalizeSaveExampleResult(input: unknown): SaveExampleResult {
+  const r = (input ?? {}) as Loose<SaveExampleResult>;
+  return {
+    example: r.example ? normalizeExampleSummary(r.example) : null,
+    secretsFound: r.secretsFound ?? [],
+    secretsLocked: r.secretsLocked ?? false,
+  };
+}
+
+/** Largest response body (decoded) an example can hold, as Go enforces it. */
+export const MAX_EXAMPLE_BODY = 1 << 20;
+
+export function normalizeExampleSummary(input: unknown): ExampleSummary {
+  const e = (input ?? {}) as Loose<ExampleSummary>;
+  return {
+    id: e.id ?? "",
+    requestId: e.requestId ?? "",
+    name: e.name ?? "",
+    savedAt: e.savedAt ?? "",
+    statusCode: e.statusCode ?? 0,
+    statusText: e.statusText ?? "",
+  };
+}
+
+export function normalizeExample(input: unknown): Example {
+  const e = (input ?? {}) as Omit<Loose<Example>, "response"> & { response?: Loose<ExampleResponse> | null };
+  const r = e.response ?? {};
+  return {
+    id: e.id ?? "",
+    name: e.name ?? "",
+    savedAt: e.savedAt ?? "",
+    request: normalizeRequest(e.request),
+    response: {
+      statusCode: r.statusCode ?? 0,
+      statusText: r.statusText ?? "",
+      headers: kvList(r.headers),
+      contentType: r.contentType ?? "",
+      kind: r.kind ?? "",
+      body: r.body ?? "",
+      encoding: r.encoding ?? "",
+      size: r.size ?? 0,
+    },
+  };
+}
+
+/** An example's response in the shape the response viewers take. */
+export function exampleToResponse(r: ExampleResponse): Response {
+  return {
+    ...r,
+    proto: "",
+    url: "",
+    cookies: [],
+    truncated: false,
+    bodyPath: "",
+    timings: { dns: 0, connect: 0, tls: 0, ttfb: 0, total: 0, reusedConn: false },
+  };
+}
+
+/** "200 OK" from a status code and Go's status text (which usually starts with the code). */
+export function statusName(code: number, text: string): string {
+  const t = text.trim();
+  if (!t) return code ? String(code) : "";
+  return t.startsWith(String(code)) || !code ? t : `${code} ${t}`;
+}

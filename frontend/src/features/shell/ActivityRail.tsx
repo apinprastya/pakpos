@@ -1,4 +1,5 @@
-import { FolderTree, History, Layers, Settings, type LucideIcon } from "lucide-react";
+import { FolderTree, History, Layers, Search, Settings, type LucideIcon } from "lucide-react";
+import { usePaletteStore } from "@/stores/palette";
 import { Button } from "@/components/ui/button";
 import { modKeyLabel } from "@/lib/platform";
 import { useSettingsStore } from "@/stores/settings";
@@ -44,6 +45,7 @@ export function ActivityRail() {
         </Tooltip>
       ))}
       <div className="mt-auto flex flex-col items-center gap-1">
+        <PaletteButton />
         <SettingsButton />
         <ThemeMenu />
       </div>
@@ -60,6 +62,26 @@ function Logo() {
     >
       P
     </div>
+  );
+}
+
+function PaletteButton() {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Command palette"
+          onClick={() => usePaletteStore.getState().openPalette()}
+        >
+          <Search />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="right">
+        Command palette <span className="ml-1 text-muted-foreground">{modKeyLabel()}+K</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

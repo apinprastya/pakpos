@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import { historyToResult, type HistorySummary } from "@/lib/model";
 import { useTabsStore } from "@/stores/tabs";
+import { useTreeStore } from "@/stores/tree";
 
 export const HISTORY_PAGE_SIZE = 50;
 
@@ -81,6 +82,8 @@ export const useHistoryStore = create<HistoryState>()((set, get) => ({
     try {
       const entry = await api.historyGet(id);
       useTabsStore.getState().openFromHistory(entry.request, historyToResult(entry));
+      // Show where the saved request lives (expanding its folders), if it still exists.
+      if (entry.requestId) useTreeStore.getState().revealInTree(entry.requestId);
     } catch (e) {
       toast.error("Couldn't open the history entry", { description: errorMessage(e) });
     }
