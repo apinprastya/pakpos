@@ -6,8 +6,8 @@ tier gets its own plan document (`docs/PLAN-TIER<N>.md`) before work starts.
 | Tier | Theme | Status |
 |---|---|---|
 | 1 | MVP: build, send, save, history | **Done** ([plan](PLAN-TIER1.md); see its carry-over lists) |
-| 2 | Core productivity: collections, environments, variables | **Planned** ([plan](PLAN-TIER2.md)) |
-| 3 | Power features: scripting, runner, advanced auth & network | Planned |
+| 2 | Core productivity: collections, environments, variables | **Done** ([plan](PLAN-TIER2.md); see its "Definition of Done — what's left" and carry-over lists) |
+| 3 | Power features: scripting, runner, advanced auth & network | **Next** (plan to be written: `PLAN-TIER3.md`) |
 | 4 | Nice-to-have | Later |
 
 Out of scope for now: importing Postman collections. Non-REST protocols
@@ -32,7 +32,7 @@ Out of scope for now: importing Postman collections. Non-REST protocols
 - **Shell:** tabs, keyboard shortcuts, light/dark theme, resizable panes, settings dialog.
 - **Release:** CalVer releases for Linux, Windows and macOS, and CI.
 
-## Tier 2 — Core productivity
+## Tier 2 — Core productivity ✅
 
 **Collections**
 - Nested folders inside collections.
@@ -65,10 +65,15 @@ Out of scope for now: importing Postman collections. Non-REST protocols
 **Carried over from Tier 1**
 - History filtered and cleared per workspace.
 - deflate/brotli decompression (moved from Tier 3).
-- First real CI and release run on GitHub.
-- Code-split CodeMirror languages.
+- CI on GitHub for Linux, macOS and Windows (the first release run is still to do).
+- Code-split CodeMirror languages and rarely used dialogs.
 
-## Tier 3 — Power features
+## Tier 3 — Power features (next)
+
+Carried over from Tier 2 (see PLAN-TIER2.md for the full lists):
+- Pruning orphaned secret values (e.g. after edits made while the store was locked).
+- Showing inherited headers that a request overrides; renaming from settings tabs.
+- First `release.yml` run (pre-release tag) and the manual smoke test on macOS and Windows.
 
 **Scripting (goja, in the Go backend)**
 - Pre-request and post-response (test) scripts in JavaScript, sandboxed with

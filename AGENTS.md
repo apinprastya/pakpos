@@ -4,17 +4,18 @@ Guidance for AI coding agents working on **Pakpos**, a desktop REST API client (
 
 Read before larger changes:
 - `docs/ARCHITECTURE.md`: decisions and layering
-- `docs/ROADMAP.md`: feature tiers (Tier 1 done; Tier 2 next)
-- `docs/PLAN-TIER1.md`: current milestones and scope
+- `docs/ROADMAP.md`: feature tiers (Tiers 1 and 2 done; Tier 3 next)
+- `docs/PLAN-TIER2.md`: the latest plan: its Decisions table and the open carry-overs (Tier 3 gets its own plan before work starts)
+- `docs/SMOKE-TEST.md`: the manual release checklist
 
 ## Stack
 
 - **Backend:** Go 1.26, Wails v3.0.0 (`github.com/wailsapp/wails/v3`), module name `pakpos`
-- **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (`radix-nova` style), Zustand, lucide-react, sonner, CodeMirror 6
+- **Frontend:** React 19, TypeScript 6, Vite 8, Tailwind CSS v4, shadcn/ui (`radix-nova` style), Zustand, lucide-react, sonner, CodeMirror 6, dnd-kit, cmdk (command palette)
 - **Storage:** YAML workspace files with ULID IDs (`gopkg.in/yaml.v3`, `oklog/ulid`), `fsnotify` watcher, `modernc.org/sqlite` (pure Go, no CGO)
-- **Planned (not yet added):**
-  - goja for scripting
-  - `zalando/go-keyring` for secrets
+- **Secrets:** `zalando/go-keyring` (OS keychain), with an encrypted-file fallback (`golang.org/x/crypto`: Argon2id + AES-256-GCM)
+- **HTTP:** `net/http`; `andybalholm/brotli` (pure Go) decodes `br` responses
+- **Planned (not yet added):** goja for scripting (Tier 3)
 - **Targets:** Linux (WebKitGTK), macOS, Windows
 
 ## Commands
@@ -43,12 +44,18 @@ Before you finish a task, run `wails3 task lint` and `wails3 task coverage`, and
 main.go                  Wails bootstrap: creates service.Core, registers services and events
 wails_adapters.go        Wails implementations of service.Dialogs and service.Events
 internal/
-  service/               Wails-bound services (thin) + Core (shared state: db, workspace, executor)
+  service/               Wails-bound services (thin) + Core (shared state: db, workspace, executor, secrets)
   buildinfo/             Version info (set via -ldflags)
-  core/                  model, urlx, auth, httpexec, settings; planned: vars, script, curl, codegen
-  store/fsstore/         YAML workspace: manifest, collections, one file per request, watcher
-  store/sqlite/          history, settings, recent workspaces; migrations in migrations/NNNN_name.sql
-  secrets/               (planned) keychain wrapper behind an interface
+  core/                  pure Go, no I/O beyond HTTP:
+    model, urlx, auth, httpexec, settings
+    vars/                {{variable}} scopes, nesting, dynamic variables
+    inherit/             auth and headers inherited from collection and folders
+    curl/                cURL parse (import) and generate
+    codegen/             code generators (golden files in testdata/)
+  pipeline/              send pipeline (chain → inherit → scopes → secrets → resolve) and secret bookkeeping; no Wails
+  secrets/               Store interface: keychain, encrypted file store (master password), Fake for tests
+  store/fsstore/         YAML workspace: manifest, collections, folders, requests, environments, examples, watcher
+  store/sqlite/          history, settings, recent workspaces, workspace_state; migrations in migrations/NNNN_name.sql
 frontend/
   src/components/ui/     shadcn components, vendored; see "Frontend conventions"
   src/features/<area>/   feature UI (shell, request, response, ...)
@@ -70,7 +77,7 @@ docs/                    architecture and plans
 - **Services are thin.** They translate between Wails and core packages and contain no business logic.
 - **HTTP requests are always sent from Go (`net/http`), never from the webview.** This avoids CORS and gives full control over TLS, proxies and cookies.
 - **Workspace data is plain files, one request per YAML file**, so diffs stay small for git. History and app state go in SQLite.
-- **Secrets never go into workspace files.** Files store a reference; the value lives in the OS keychain.
+- **Secrets never go into workspace files or SQLite.** Files store the key with `secret: true`; the value lives in the OS keychain, or in `<data>/secrets.enc` (encrypted with a master password) when there is no keychain. History stores requests as written (`{{vars}}` unresolved).
 - **Prefer pure-Go dependencies (no CGO)** so cross-compilation stays simple.
 - **Keep the planned Tier 2 fields** (`auth.type: inherit`, `seq`, variable scopes) in models even before they are used. This avoids a file format migration later.
 
@@ -84,9 +91,22 @@ docs/                    architecture and plans
 - **Services never import Wails.** Anything that needs the Wails app (dialogs, events) goes behind an interface in `internal/service/core.go` and is implemented in `wails_adapters.go`. Tests use fakes.
 - New typed events: add a const and a payload struct in `internal/service`, then `application.RegisterEvent[T](name)` in `main.go`'s `init`, so the bindings are typed.
 - **Database changes go in a new migration file**, `internal/store/sqlite/migrations/NNNN_name.sql`. Never edit an applied migration.
-- `RequestService.Send` records history against the workspace that was open when the send **started**, so switching workspaces mid-send doesn't misfile it.
+- `RequestService.Send(ctx, sendId, req, parentId)` records history against the workspace that was open when the send **started**, so switching workspaces mid-send doesn't misfile it. `parentId` lets an unsaved draft inherit from its collection or folder.
+- **Send pipeline** (`internal/pipeline`): services call `Session.Prepare` / `PrepareCode` / `Preview` / `VisibleVariables` and never resolve variables themselves. Scopes are passed lowest precedence first (globals, collection, environment, local). A secret without a usable value still shadows lower scopes and stays unresolved.
+- **Secrets:**
+  - Keys are `pakpos/<workspaceId>/<scopeId>/<key>` (scope IDs, so renames don't orphan values). Bookkeeping (cleanup on delete, copy on duplicate, rename pairs `{from, to}` passed with the save) lives in `pipeline`, not in services.
+  - `EnvService.RevealSecret` and `MakeVariablePlain` are the only ways a value leaves the store; everything else returns a `set` flag.
+  - New master passwords go through `secrets.CheckNewPassword` (8 characters); user-facing store errors through `secrets.Explain`.
+  - Real-keychain tests run only with `PAKPOS_TEST_KEYRING=1`. Services take `Config.Secrets`; tests use `newHarness` (`secrets.Fake`) or `newHarnessWith` (e.g. a real `FileStore` in a temp dir).
+- History is per workspace (list, clear and retention). The selected environment lives in SQLite `workspace_state`, never in the workspace.
+- **httpexec** sets `Accept-Encoding: gzip, deflate, br` (`httpexec.AcceptEncoding`) unless the user set one, and decodes the body itself (`decodedBody`); a body that doesn't match its coding is `KindDecode`. Keep `features/request/autoHeaders.ts` in step with the headers `Build` adds (`model.Body.DefaultContentType` is shared with codegen).
+- **Codegen:** golden files per language (`go test ./internal/core/codegen -update` regenerates them); `PAKPOS_CODEGEN_SYNTAX=1` compiles every case with real toolchains (CI runs it on Linux). Secrets stay `{{name}}` (`vars.KeepSecrets`) unless revealed; revealed code lives only in the code dialog's state. Shared helpers: `auth.Materialize`, `urlx.SendURL`, `curl.SuggestName`.
+- **Examples** (`fsstore/examples.go`): a `<request stem>.examples.yaml` sidecar follows its request on rename, move, duplicate (new ids) and delete; a broken or foreign sidecar is listed in Problems and never overwritten. `ExampleService.Save` scans for echoed secrets (`Session.ExampleSecrets`: values plus base64/URL-encoded forms and Basic credentials) before writing. Services return capitalised user messages through `userError` (staticcheck refuses capitalised `errors.New`).
 - `internal/service/e2e_test.go` is the end-to-end check of the Go side (real stores, real HTTP). Extend it when you add a user-visible backend flow.
 - Workspace writes go through `fsstore.Workspace` methods. They write atomically and mark the path as the app's own write, so the watcher does not echo it back as an external change.
+  - Folders are directories with `_folder.yaml` `{id, name, seq, auth, headers}`; `*.examples.yaml` files are skipped by the request loader. A folder's path is always derived from the parent ids (`dirLocked`), never cached; deleting a subtree calls `markTree` before `RemoveAll`.
+  - Moves keep ids and re-slug against the target; moving a folder into its own subtree is `ErrInvalidMove`. `InheritChain(id)` returns levels collection first.
+  - The manifest stays at v1 until the first v2-only write (folders, environments, globals, examples, collection secrets).
 - App data lives in `os.UserConfigDir()/pakpos`: `pakpos.db`, `bodies/`, `tmp/`. Set `XDG_CONFIG_HOME` to a temp dir when smoke-running the app, so you don't touch real data.
 
 ## Frontend conventions
@@ -111,23 +131,30 @@ docs/                    architecture and plans
   - Every icon-only control needs an `aria-label` (and a tooltip).
   - Keep focus states visible.
   - Respect `prefers-reduced-motion`, which `index.css` already handles globally.
+- Toasts that must not cover a dialog use `dismissOnDialog(id)` (`lib/dialogToasts.ts`).
 - Component state goes in Zustand stores (`src/stores`). Persist only UI preferences to `localStorage`. Real data comes from Go services.
   - `stores/tabs.ts` is the exception: it keeps open tabs and drafts in localStorage as a convenience (never results). Storage access is wrapped so it never throws.
+- **Tabs:** request tabs have `parentId` (collection or folder) and `workspaceId`. `Tab.doc` is set for non-request tabs (environment, globals, collection or folder settings): check `tab.doc` before using request fields; `saveTab` routes doc tabs to `saveDocTab`.
+- **Stores** (besides tabs, workspace, history, settings): `environments.ts` (bumps `version` on every change so previews re-resolve), `secrets.ts` (call `ensureReady()` before any secret-store call; it opens the set-password or unlock dialog), `tree.ts` (expand state; use `revealInTree`, never focus rows directly), `examples.ts` (+ `useExamplesSync`, reloaded after every tree reload), `palette.ts`, `codeDialogs.ts`.
+- **Palette commands** go in `features/palette/actions.ts` (id, label, group, shortcut, `enabled(ctx)`, `run(ctx)`). `useShortcuts` listens in the capture phase and ignores everything but Mod+K while the palette is open. Taken shortcuts: Mod+K, Mod+I (variable info), Mod+Shift+C (generate code), Mod+Enter, Mod+S, Mod+T, Mod+W, Mod+,.
 - **`src/lib/api.ts` is the only module that imports `frontend/bindings`.** It converts the binding types into `src/lib/model.ts` types: string unions instead of TS enums, and non-null arrays. Add new service calls there and mock them in `src/test/apiMock.ts`.
   - Normalize anything coming from Go with `normalizeRequest`, `normalizeResponse` or `normalizeSendResult`.
 - **URL ↔ params sync** is `src/lib/urlx.ts`, a port of Go `internal/core/urlx`. Keep the two in step when either changes. Edit requests through `features/request/edits.ts` (`setUrl`, `setQuery`).
+- **Variables in editors:** `src/lib/varTokens.ts` ports Go's `core/vars` scanner (keep in step, like `urlx`). `useVariableScope` provides one `VarScope` per tab through `VarScopeContext` (request tabs reuse `usePreview`; settings tabs call `EnvService.VisibleVariables` and overlay unsaved rows). Any single-line field that can hold `{{vars}}` is a `VarInput` (static text, a CodeMirror editor only while focused); name cells stay plain inputs. Table rows stay `memo` components with stable handlers. Colours: `--syntax-var-*` tokens and the `.var-*` classes.
 - **Code editors use `<CodeEditor>`** (`src/components/editor`), not CodeMirror directly.
   - It's created once per mount. Language and read-only changes go through compartments.
   - Value changes from props are tagged with the `External` annotation so they aren't echoed back to `onChange`. Without it, editing the params table would re-parse the URL and reorder rows.
   - Pass `key={tabId}` so each request gets its own undo history.
   - Its colors come from the `--syntax-*` and `--editor-*` tokens in `index.css`.
+  - Props worth knowing: `variables` (decided at mount), `autoFocus`/`initialCursor`, `onBlur`, `onPaste(text) → handled` (the URL bar's cURL paste).
+  - **Every language except plain text loads lazily** (`languages.ts` `loadLanguage`, cached): the editor shows plain text until the chunk arrives. Never import `@codemirror/lang-*` statically. Rarely opened dialogs (settings, code, import cURL, palette) are `React.lazy` chunks mounted on first open (`features/shell/LazyDialogs.tsx`).
 - Response status colors: `text-status-ok|redirect|client|server`, via `statusTextClass()`.
 - **Settings** live in Go (SQLite) and are the single source of truth, including theme and layout. Change them only through `stores/settings.ts` (`save`, `setTheme`, `setLayout`); `stores/theme.ts` and `stores/layout.ts` hold a localStorage copy for first paint and are overwritten by `load()` at startup. Open the dialog with `useSettingsStore.getState().openDialog(section)`.
 - **Sidebar state** lives in `stores/workspace.ts` (workspace, tree, recent) and `stores/history.ts`. Mutations go through store actions: they call the api, refresh the tree, and keep open tabs in step (rename, delete, move). The app's own writes don't fire `workspace:changed`, so actions must refresh themselves.
   - Tabs record the `workspaceId` they were saved in. `syncTabs` reconciles them after every tree load; `fromDisk: true` also re-reads open requests (used for external changes and on start).
   - `features/sidebar/treeModel.ts` holds the pure tree logic (filter, visible rows, drag moves); keep `CollectionTree` thin and test logic there.
-  - Tree rows don't spread dnd-kit's `attributes` (they'd override `role="treeitem"`/`tabIndex`); only `listeners` and the node ref.
-  - Nested Tailwind groups need distinct names (`group/col`, `group/req`, `group/row`): a collection `li` contains its request rows.
+  - Tree keys are `c:`/`f:`/`r:` + id. Tree rows don't spread dnd-kit's `attributes` (they'd override `role="treeitem"`/`tabIndex`); only `listeners` and the node ref. Rows are flat (`aria-level`), so the tree uses `group/row` and `group/item`; nested groups need distinct names.
+  - Pure tree helpers (walk, find, positions, `moveChild`, `destinations`) are in `src/lib/tree.ts`, shared by the store and the sidebar.
 
 ## Testing
 
@@ -140,9 +167,17 @@ docs/                    architecture and plans
 - Mock Wails bindings in frontend tests. Never call real Go services from Vitest.
   - `@/lib/api` is mocked globally in `src/test/setup.ts`, with fresh `vi.fn()` stubs before each test. Override them per test with `vi.mocked(api.x).mockResolvedValue(...)`.
   - CodeMirror: use `src/test/editor.ts` (`setEditorText`, `editorText`, `editorView`). user-event can't type into contenteditable reliably in jsdom. `setup.ts` polyfills the Range rects CodeMirror measures with.
-  - Use `src/test/store.ts` (`resetTabs`, `activeTab`) to seed the tabs store, and `src/test/fixtures.ts` (`makeResponse`) for responses. The workspace and history stores are reset before every test (`resetSidebarStores` in `setup.ts`).
+  - Use `src/test/store.ts` (`resetTabs`, `activeTab`) to seed the tabs store. `src/test/fixtures.ts` has `makeResponse`, `makeResult`, `makeHistorySummary`, tree nodes `col`/`folder`/`req`, `makeVar`, `makeEnv`, `makePreview`, `makePreviewVar`, `makeCodeResult`, `makeExample`, `makeExampleSummary`. Every store (workspace, history, environments, secrets, tree, examples, palette, code dialogs) is reset before each test (`resetSidebarStores` in `setup.ts`).
+  - Variable fields: type with `typeInField`/`setFieldText`/`focusField` (`src/test/editor.ts`); user-event typing into CodeMirror puts the caret at the start once it has focus. `waitFor` the blur swap back to static text (CodeMirror reports focus changes after 10 ms); completions ignore Enter for 75 ms after opening.
+  - Paste into CodeMirror by dispatching a `paste` Event with a `clipboardData` stub; sonner mocks need `dismiss` where a paste toast meets a dialog.
+  - Tests that capture `onWorkspaceChanged` must keep every listener (the workspace store and `useScopeSync` both subscribe).
+  - Lazy pieces arrive asynchronously: use `findBy…` after opening a lazy dialog, `waitFor` a language (or `preloadLanguages([...])` first).
+  - Palette: open with `usePaletteStore.getState().openPalette()`, query the `combobox`/`option` roles. A reveal focuses on the next tick, so `waitFor` focus.
+  - Radix: Select names come from `ItemText`; menu items with a shortcut include it in their accessible name (query `/^Rename/`); a closing dialog keeps the page `aria-hidden` for a tick, so use `findByRole` right after.
+  - Don't assert on states that only last until a real timer fires (debounces): hold the mocked promise and resolve it in the test. Pin the clock with `vi.useFakeTimers({ toFake: ["Date"], now })` for anything that depends on "today".
+  - Timing (`KeyValueTable.perf.test.tsx`) is an opt-in bench: `PAKPOS_BENCH=1 npx vitest run KeyValueTable.perf`. The regular suite asserts structure (one editor, no extra re-renders), never wall-clock time.
   - Spy on store actions with `vi.spyOn(useWorkspaceStore.getState(), "action")` to test components without the api.
-  - Drag and drop can't be driven in jsdom (no layout). Test the handlers by mocking `DndContext` and calling the captured props (see `CollectionTreeDnd.test.tsx`).
+  - Drag and drop can't be driven in jsdom (no layout). Test the handlers by mocking `DndContext` and calling the captured props (`over.rect`, `activatorEvent.clientY`, `delta.y`, `data-drop`; see `CollectionTreeDnd.test.tsx`).
   - Radix submenus need real geometry for pointer selection: focus the submenu item and press Enter instead.
 - `src/lib/api.ts` is excluded from coverage because it's a thin binding adapter that's always mocked.
 
@@ -150,6 +185,7 @@ docs/                    architecture and plans
 
 - `frontend/bindings` only exists after `wails3 build`, `wails3 dev` or `wails3 generate bindings`. A plain `vite build` fails without it.
 - `go vet ./...` at the root fails until `frontend/dist` exists, because of the `//go:embed`. Lint tasks run `go vet ./internal/...`.
+- Text files are checked out with LF everywhere (`.gitattributes`); golden files and fixtures rely on it on Windows.
 - npm prints `Unknown project config "minimum-release-age"`. This comes from `frontend/.npmrc` (a supply-chain guard for pnpm/bun) and is harmless.
 - `@wailsio/runtime` is pinned to exactly `3.0.0` to match the Go module. Upgrade both together.
 - yaml.v3 panics, rather than returning an error, on values it can't encode; `fsstore.marshalYAML` recovers from this.
@@ -158,6 +194,7 @@ docs/                    architecture and plans
 - An input that mounts while a Radix menu is open (e.g. "Rename" from a context menu) loses `autoFocus` to the menu's focus trap. Focus it on the next tick, as `InlineRename` does.
 - `fsstore.Open` errors contain "not a pakpos workspace" and `Create` errors contain "a workspace already exists here"; the frontend matches on these strings to offer the right next step.
 - Tailwind's `sr-only` is `position: absolute`, so inside a CSS grid it drops out of the column flow. Wrap screen-reader-only header text in a normal grid cell: `<span role="columnheader"><span className="sr-only">…</span></span>`.
+- An input that mounts inside a just-opened dialog or menu, or a row revealed from the palette, gets focus on the next tick; don't move focus synchronously after opening one.
 - To screenshot the UI with fake data, run `vite preview` and use Playwright to route `**/wails/runtime*`. The body is `{object, method, args: {methodID, args}}`; return the JSON result for the method ID (IDs are in `frontend/bindings/.../*service.ts`).
 - **Windows is stricter than Linux/macOS; CI is its first test.** Rename or delete a directory only after `ws.unwatchDir(dir)` (the watcher's open handle makes it fail with "Access is denied"), then `watchDir` the new path. Don't rely on `chmod` to make writes fail (skip such tests on Windows). Never call fsnotify `Add` from the watcher's event loop. Check with `GOOS=windows go vet ./internal/...`, but only CI proves behavior.
 - The Linux webview is WebKitGTK. Avoid bleeding-edge CSS and check rendering on Linux.

@@ -9,7 +9,7 @@ describe("autoHeaders", () => {
     expect(names(autoHeaders(base, "UA"))).toEqual([
       "Host: a.dev",
       "User-Agent: UA",
-      "Accept-Encoding: gzip",
+      "Accept-Encoding: gzip, deflate, br",
     ]);
     const ct = (type: "raw" | "urlencoded" | "form-data" | "binary") =>
       autoHeaders({ ...base, body: { ...emptyBody(), type, language: "xml" } }, "UA").find(

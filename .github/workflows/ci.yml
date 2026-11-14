@@ -73,6 +73,46 @@ jobs:
             frontend/coverage/
           if-no-files-found: ignore
 
+  # Compiles or syntax-checks every generated-code golden case with the real
+  # toolchains (TestSyntax in internal/core/codegen). ubuntu-latest (24.04)
+  # already has bash, Python 3, a Temurin JDK (javac on PATH) and PHP 8.x;
+  # Go and Node come from setup-*. Anything missing is installed with apt, and
+  # the check step fails if a tool is still absent, because TestSyntax only
+  # logs and skips a language whose tool isn't found.
+  codegen-syntax:
+    name: Codegen syntax check (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Ensure PHP, Python 3 and a JDK
+        run: |
+          missing=()
+          command -v php >/dev/null || missing+=(php-cli)
+          command -v python3 >/dev/null || missing+=(python3)
+          command -v javac >/dev/null || missing+=(default-jdk-headless)
+          if [ ${#missing[@]} -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends "${missing[@]}"
+          fi
+          for tool in bash go node python3 javac php; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool not found"; exit 1; }
+          done
+          go version; node --version; python3 --version; javac -version; php --version | head -n1
+
+      - name: Generated code compiles (bash -n, node --check, py_compile, go vet, javac, php -l)
+        env:
+          PAKPOS_CODEGEN_SYNTAX: "1"
+        run: go test -count=1 ./internal/core/codegen/...
+
   build:
     name: Build & unit tests (${{ matrix.os }})
     strategy:

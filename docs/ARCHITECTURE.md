@@ -14,9 +14,10 @@ A desktop REST API client (Postman-style), REST only.
 | HTTP execution | **Go backend** (`net/http`) | No CORS; full control of TLS, proxy, cookies, timing |
 | Storage | **Hybrid**: YAML files for workspace data, **SQLite** for history/app state | Git-friendly collections; queryable history |
 | Workspace | **Open folder as workspace** (VS Code/Bruno style) + recent list | Collections can live in a git repo |
-| Secrets | **OS keychain** (`zalando/go-keyring`) | Files hold only references → safe to commit |
+| Secrets | **OS keychain** (`zalando/go-keyring`), else an **encrypted file** unlocked with a master password | Files hold only references → safe to commit; works on Linux without a Secret Service |
 | Scripting | **goja** (pure-Go JS engine) in backend, sandboxed | Works in UI and a future headless CLI |
-| Import | cURL only for now (Postman/OpenAPI later) | |
+| Import | cURL only for now (OpenAPI/HAR later) | |
+| Code generation | In Go (`core/codegen`), golden-file tested | Reusable by the future CLI; one place masks secrets |
 | Testing | Go `testing` + testify; Vitest + React Testing Library; ≥ 80% coverage on new code | |
 
 ## 2. High-level layout
@@ -30,12 +31,15 @@ A desktop REST API client (Postman-style), REST only.
 ┌──────────────────────────────▼───────────────────────────────┐
 │  Go services (thin, bound to Wails)                          │
 │   WorkspaceService  RequestService  EnvService  HistoryService│
-│   SettingsService                                            │
+│   SettingsService   ExampleService                           │
+├──────────────────────────────────────────────────────────────┤
+│  pipeline (send/preview/codegen preparation, secret          │
+│  bookkeeping; no Wails)                                      │
 ├──────────────────────────────────────────────────────────────┤
 │  Core (pure Go, no Wails import → reusable by future CLI)    │
-│   model  · vars (resolve {{x}}) · auth · httpexec · script   │
-│   store/fs (YAML) · store/sqlite · secrets · curl (import/   │
-│   export) · codegen                                          │
+│   model · vars (resolve {{x}}) · inherit · auth · httpexec   │
+│   curl (import/export) · codegen · (script: Tier 3)          │
+│   store/fsstore (YAML) · store/sqlite · secrets              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -50,18 +54,20 @@ pakpos/
 ├── build/                      # Wails build assets (icons, platform configs)
 ├── internal/
 │   ├── service/                # Wails-bound services (adapters)
+│   ├── pipeline/               # chain → inherit → scopes → secrets → resolve; secret bookkeeping
 │   ├── core/
-│   │   ├── model/              # Collection, Folder, Request, Environment, Auth, Body…
+│   │   ├── model/              # Request, Auth, Body, Variable, Response…
 │   │   ├── vars/               # variable scopes + {{var}} / {{$dynamic}} resolution
+│   │   ├── inherit/            # auth and headers from collection and folders
 │   │   ├── auth/               # Basic, Bearer, API Key (OAuth2 later)
-│   │   ├── httpexec/           # build http.Request, execute, timing, cancel
-│   │   ├── script/             # goja sandbox + pm-like API
+│   │   ├── httpexec/           # build http.Request, execute, timing, cancel, decode gzip/deflate/br
 │   │   ├── curl/               # parse/generate cURL
-│   │   └── codegen/            # snippet generators
+│   │   ├── codegen/            # code generators (golden files)
+│   │   └── script/             # (Tier 3) goja sandbox + pm-like API
 │   ├── store/
 │   │   ├── fsstore/            # YAML workspace read/write + file watcher
-│   │   └── sqlite/             # history, settings, recent workspaces (migrations)
-│   └── secrets/                # keychain wrapper (interface + fake for tests)
+│   │   └── sqlite/             # history, settings, recent workspaces, workspace state (migrations)
+│   └── secrets/                # Store interface: keychain, encrypted file, fake for tests
 ├── frontend/
 │   ├── src/
 │   │   ├── components/ui/      # shadcn components
@@ -75,23 +81,36 @@ pakpos/
 
 ## 4. Workspace on disk
 
+Manifest version 2 (Tier 2). Every change from v1 is additive: a Tier 1
+workspace opens unchanged and its manifest stays at v1 until the first
+v2-only write (a folder, an environment, the globals, an example or a
+collection secret).
+
 ```
 my-api-workspace/
-├── pakpos.yaml                 # workspace manifest (name, version)
+├── pakpos.yaml                  # manifest: id, name, version: 2
 ├── collections/
 │   └── users-api/
-│       ├── _collection.yaml    # collection-level auth, headers, variables
-│       ├── auth/
-│       │   ├── _folder.yaml
-│       │   └── login.yaml
+│       ├── _collection.yaml     # id, name, seq, auth, headers, variables
+│       ├── auth/                # a folder (any depth)
+│       │   ├── _folder.yaml     # id, name, seq, auth, headers
+│       │   ├── login.yaml
+│       │   └── login.examples.yaml   # saved responses for login.yaml
 │       └── get-user.yaml
-├── environments/
-│   ├── dev.yaml
-│   └── prod.yaml
-└── .pakpos/                    # local-only, gitignored (UI state cache)
+└── environments/
+    ├── _globals.yaml            # id, variables (other _*.yaml names are reserved)
+    ├── dev.yaml                 # id, name, seq, variables
+    └── prod.yaml
 ```
 
-One request per file → clean git diffs, minimal merge conflicts. Ordering via `seq:` field.
+- One request per file → clean git diffs, minimal merge conflicts. Folders
+  and requests in one parent share one `seq:` order. IDs are ULIDs, stable
+  across renames and moves; file and folder names are slugs.
+- A subdirectory without `_folder.yaml`, a broken file, or an examples
+  sidecar that is broken or belongs to another request is listed under
+  Problems and left alone; the rest of the tree loads.
+- Paths are derived from parent ids on every use, never cached, so renaming
+  or moving a folder can't leave stale paths.
 
 Example `get-user.yaml`:
 
@@ -106,42 +125,92 @@ query:       [{ key: verbose, value: "true", enabled: false }]
 headers:     [{ key: Accept, value: application/json }]
 auth:        { type: inherit }
 body:        { type: none }
-scripts:
-  pre: ""
-  test: |
-    pm.test("200", () => pm.expect(pm.response.code).to.equal(200))
 ```
 
-Secret env var: `{ key: token, secret: true }` — value lives in keychain under
-`pakpos/<workspaceId>/<env>/<key>`.
+Variable rows (environments, globals, collections) are
+`{ key, value, enabled, secret }`. With `secret: true` the value is omitted
+(and dropped if someone writes one by hand); see §5a.
+
+An examples sidecar (`<request file stem>.examples.yaml`) holds
+`{requestId, examples: [{id, name, savedAt, request, response}]}`: the request
+as written for that send (`{{vars}}` unresolved) and the response status,
+headers, content type and body (at most 1 MB). It follows its request on
+rename, move, duplicate and delete. Before saving, the response is checked
+for the values of visible secrets, including their base64 and URL-encoded
+forms and Basic credentials; the user can save with `{{name}}` in their
+place instead.
 
 ## 5. SQLite (app data dir)
 
 Driver: `modernc.org/sqlite` (pure Go, no CGO → easy cross-compilation).
+Migrations are numbered files (`0001_init.sql`, `0002_workspace_state.sql`);
+an applied one is never edited.
 
-- `history` — id, timestamp, workspace_id, request snapshot (JSON), response meta, body (truncated / blob ref)
-- `settings` — key/value
-- `recent_workspaces` — path, last_opened
-- Response bodies > 1 MB stored as files in app data dir, referenced by path.
-- Retention setting (e.g. last N entries / N days).
+- `history`: id, timestamp, workspace_id, environment_name, the request **as
+  written** (JSON, `{{vars}}` unresolved, so secrets stay out), response
+  meta, body (inline, or a file in `<data>/bodies` when over 1 MB). The final
+  response URL is stored as received: a secret sent in the query string
+  shows up there (documented).
+- History is **per workspace**: listing, clearing and the "Requests to keep"
+  limit apply to the open workspace; entries sent without a workspace are
+  their own group. A send prunes only its own group.
+- `workspace_state`: per-workspace app state that isn't committed (the
+  selected environment).
+- `settings`: key/value. `recent_workspaces`: path, last_opened.
+
+## 5a. Secrets
+
+- A variable in any scope can be `secret: true`. The value lives in a
+  `secrets.Store` under `pakpos/<workspaceId>/<scopeId>/<key>`; scope IDs
+  rather than names, so renaming an environment or collection keeps values.
+- At startup the OS keychain is probed (set/get/delete with a 3 s timeout).
+  Without one (e.g. Linux without a Secret Service) the **file store** is
+  used: `<data>/secrets.enc`, AES-256-GCM over the whole key→value map with a
+  key derived by Argon2id from a **master password** (at least 8 characters,
+  set on first use, unlocked once per session, never stored). A wrong
+  password and a damaged file look the same to GCM and are reported alike.
+- The pipeline owns the bookkeeping: values are deleted with their variable
+  or scope, copied when an environment is duplicated, and moved by explicit
+  `{from, to}` rename pairs. A value leaves the store only when the user
+  reveals it or makes the variable plain.
+- An unset or locked secret still shadows lower scopes; its name stays
+  unresolved and the lower value is never sent.
 
 ## 6. Request execution pipeline
 
+As built (`internal/pipeline`, `Session.Prepare`, then `httpexec`):
+
 ```
-Request (model)
-  → merge inherited (collection → folder → request): headers, auth, vars
-  → run pre-request script (goja, timeout)
-  → resolve variables (local > env > collection > global; {{$guid}} etc.)
-  → apply auth
-  → build http.Request (body encoding, multipart files)
-  → execute with httptrace (DNS / connect / TLS / TTFB / total timings), cancellable via context
-  → run test script → test results
-  → persist history → return Response DTO to UI
+Request (as written) + parentId + selected environment
+  → chain: the saved request's parents on disk (or the draft's parentId)
+  → inherit (core/inherit): auth walks request → folders → collection
+    (first non-`inherit` wins, else none); headers merge collection → folders
+    → request, a deeper enabled header replacing the same name
+  → scopes, lowest first: globals, collection, environment, local (empty
+    until scripts, Tier 3)
+  → secret values from the store (unset/locked ones shadow but stay unresolved)
+  → resolve {{vars}} (core/vars): nesting up to 10 levels, cycles are errors,
+    dynamic {{$guid}} {{$timestamp}}… fresh per occurrence; unresolved names
+    are sent as written and reported
+  → apply auth, build http.Request (body encoding, multipart files,
+    Content-Type, User-Agent, Accept-Encoding: gzip, deflate, br)
+  → execute with httptrace (DNS / connect / TLS / TTFB / total), cancellable
+  → decode the body (gzip, deflate, br), cap it inline at 10 MB (the rest
+    spills to a file)
+  → history (request as written + environment name) → SendResult to the UI
 ```
 
 - Each send has an ID; `RequestService.Cancel(id)` cancels its context.
-- Large responses: body returned to UI capped (e.g. 10 MB in viewer), full body saveable to file.
-- Per-workspace `http.Client` with cookie jar; settings: timeout, redirects, TLS verify, proxy, client certs.
+- A variable cycle or too-deep nesting fails the send (`error.kind =
+  "variables"`) before anything goes on the wire.
+- The same preparation feeds the editor (`Preview`, `VisibleVariables`:
+  inherited headers and auth, visible variables with secret values masked)
+  and code generation (`PrepareCode`: secrets kept as `{{name}}` unless
+  revealed).
+- Planned for Tier 3: a pre-request script after resolving scopes and a test
+  script after the response (§7).
+- Per-workspace `http.Client` with cookie jar; settings: timeout, redirects,
+  TLS verify (proxy and client certs in Tier 3).
 
 ## 7. Scripting (goja)
 
@@ -153,14 +222,15 @@ Request (model)
 
 - State: **Zustand** (tabs, active workspace, env selection); server data via bound service calls.
 - Layout: resizable panes (`react-resizable-panels`), sidebar (collections / history / environments), tabbed editors.
-- CodeMirror extensions: JSON/XML/HTML/JS languages, `{{var}}` highlight + hover tooltip + autocomplete.
+- CodeMirror extensions: `{{var}}` highlight + hover tooltip + autocomplete (Mod+I from the keyboard), in the URL bar, bodies and every value cell (a cell is static text until focused, so large tables stay fast).
+- Code splitting: every editor language (JSON, XML, HTML, JavaScript and the generated-code ones) is its own chunk, loaded on first use (plain text until then); the settings, code, import-cURL dialogs and the command palette load on first open.
 - Theme: light/dark/system via CSS variables (shadcn tokens); command palette (`cmdk`), keyboard shortcuts.
 - Drag & drop in tree: `dnd-kit`.
 
 ## 9. Backend ↔ frontend contract
 
 - Wails v3 services → generated TS bindings (`wails3 generate bindings`).
-- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`), `request:progress`, `script:console`.
+- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars). Planned: `request:progress`, `script:console`.
 - DTOs are plain structs with JSON tags in `internal/core/model`.
 
 ## 10. Testing & quality

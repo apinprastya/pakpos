@@ -113,6 +113,8 @@ export type SendErrorKind =
   | "canceled"
   | "too_many_redirects"
   | "network"
+  /** The body didn't match its Content-Encoding (gzip, deflate, br). */
+  | "decode"
   /** {{variables}} couldn't be resolved (a loop, or nested too deeply). */
   | "variables";
 

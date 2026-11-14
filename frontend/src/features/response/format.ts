@@ -96,6 +96,10 @@ const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
     settings: "requests",
   },
   network: { title: "The request failed", hint: "Check your network connection and try again." },
+  decode: {
+    title: "The response couldn't be decompressed",
+    hint: "The body doesn't match its Content-Encoding. To see it as sent, add the header Accept-Encoding: identity.",
+  },
   variables: {
     title: "Variables couldn't be resolved",
     hint: "Nothing was sent. Fix the variables named above, then send again.",

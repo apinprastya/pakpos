@@ -5,7 +5,8 @@ import { makePreviewVar } from "@/test/fixtures";
 import { useState } from "react";
 import { editorText, editorView, setEditorText } from "@/test/editor";
 import { CodeEditor } from "./CodeEditor";
-import { languageExtension } from "./languages";
+import { language as languageFacet } from "@codemirror/language";
+import { needsLoading, preloadLanguages } from "./languages";
 
 describe("CodeEditor", () => {
   it("reports user edits but not external value changes", () => {
@@ -59,10 +60,20 @@ describe("CodeEditor", () => {
     expect(onView).toHaveBeenLastCalledWith(null);
   });
 
-  it("maps every language", () => {
-    for (const l of ["json", "xml", "html", "javascript", "text"] as const) {
-      expect(languageExtension(l)).toBeDefined();
-    }
+  it("shows plain text until its language has loaded, then highlights", async () => {
+    // Nothing else in this file uses HTML, so its chunk hasn't loaded yet.
+    expect(needsLoading("html")).toBe(true);
+    render(<CodeEditor ariaLabel="Ed" value="<p>hi</p>" language="html" />);
+    const view = editorView("Ed");
+    expect(view.state.facet(languageFacet)).toBeNull();
+    await waitFor(() => expect(view.state.facet(languageFacet)?.name).toBe("html"));
+    expect(editorText("Ed")).toBe("<p>hi</p>");
+  });
+
+  it("uses an already loaded language from the first render", async () => {
+    await preloadLanguages(["javascript"]);
+    render(<CodeEditor ariaLabel="Ed" value="let a = 1" language="javascript" />);
+    expect(editorView("Ed").state.facet(languageFacet)?.name).toBe("javascript");
   });
 
   it("focuses on mount with the cursor where asked", () => {

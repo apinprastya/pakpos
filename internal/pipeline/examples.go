@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"errors"
+	"net/url"
 	"slices"
 	"strings"
 	"unicode/utf8"
@@ -46,6 +47,83 @@ func (s *Session) SecretValues(requestID, envID string) (values []SecretValue, l
 	// Longest first, so a value containing another is replaced whole.
 	slices.SortStableFunc(values, func(a, b SecretValue) int { return len(b.Value) - len(a.Value) })
 	return values, len(scopes.Locked) > 0
+}
+
+// ExampleSecrets is SecretValues plus the encoded forms a response could echo
+// them in (see EncodedForms), and, when the request sent was authenticated
+// with Basic auth whose username or password holds a secret, the base64 of
+// "username:password" as it went into the Authorization header. sent is the
+// request as written for that send (the history entry's request); it is
+// resolved like Send resolves it. Every form keeps its secret's name, so the
+// UI names the secret and masking writes {{name}} in its place. Longest first.
+func (s *Session) ExampleSecrets(requestID, envID string, sent model.Request) (values []SecretValue, locked bool) {
+	plain, locked := s.SecretValues(requestID, envID)
+	values = append(values, plain...)
+	values = append(values, EncodedForms(plain)...)
+	sent.ID = requestID
+	if p, err := s.Prepare(sent, "", envID); err == nil && p.Request.Auth.Type == model.AuthBasic {
+		a := p.Request.Auth
+		if name := secretIn(plain, a.Password, a.Username); name != "" {
+			creds := []byte(a.Username + ":" + a.Password)
+			values = append(values,
+				SecretValue{Name: name, Value: base64.StdEncoding.EncodeToString(creds)},
+				SecretValue{Name: name, Value: base64.RawStdEncoding.EncodeToString(creds)})
+		}
+	}
+	values = dedupe(values)
+	slices.SortStableFunc(values, func(a, b SecretValue) int { return len(b.Value) - len(a.Value) })
+	return values, locked
+}
+
+// EncodedForms returns the forms of each value that commonly show up when a
+// server echoes it: base64 (standard and URL alphabets, padded and not) and
+// URL encoding (query and path escaping), where they differ from the value.
+// A base64 form only matches the value encoded on its own; inside a longer
+// encoded string (such as Basic credentials) the alignment differs, which is
+// why ExampleSecrets adds those separately.
+func EncodedForms(values []SecretValue) []SecretValue {
+	var out []SecretValue
+	for _, sv := range values {
+		b := []byte(sv.Value)
+		for _, form := range []string{
+			base64.StdEncoding.EncodeToString(b),
+			base64.RawStdEncoding.EncodeToString(b),
+			base64.URLEncoding.EncodeToString(b),
+			base64.RawURLEncoding.EncodeToString(b),
+			url.QueryEscape(sv.Value),
+			url.PathEscape(sv.Value),
+		} {
+			if form != sv.Value && len(form) >= MinSecretLength {
+				out = append(out, SecretValue{Name: sv.Name, Value: form})
+			}
+		}
+	}
+	return out
+}
+
+// secretIn returns the name of the first secret (in the order of values)
+// whose value appears in one of fields, or "".
+func secretIn(values []SecretValue, fields ...string) string {
+	for _, f := range fields {
+		for _, sv := range values {
+			if strings.Contains(f, sv.Value) {
+				return sv.Name
+			}
+		}
+	}
+	return ""
+}
+
+func dedupe(values []SecretValue) []SecretValue {
+	seen := map[SecretValue]bool{}
+	out := values[:0:0]
+	for _, v := range values {
+		if !seen[v] {
+			seen[v] = true
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // exampleBody returns the example's body as bytes (decoded when base64) and

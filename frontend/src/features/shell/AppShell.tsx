@@ -10,18 +10,15 @@ import { CloseTabDialog } from "./CloseTabDialog";
 import { SaveRequestDialog } from "./SaveRequestDialog";
 import { useShortcuts } from "@/hooks/useShortcuts";
 import { useWorkspaceSync } from "@/hooks/useWorkspaceSync";
-import { SettingsDialog } from "@/features/settings/SettingsDialog";
 import { useSettingsStore } from "@/stores/settings";
 import { useEffect } from "react";
 import { useActiveTab } from "@/stores/tabs";
 import { DocEditor } from "@/features/scopes/DocEditor";
 import { useScopeSync } from "@/features/scopes/useScopeSync";
 import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
-import { CodeDialog } from "@/features/code/CodeDialog";
-import { ImportCurlDialog } from "@/features/code/ImportCurlDialog";
 import { useDismissToastsOnDialog } from "@/lib/dialogToasts";
 import { useExamplesSync } from "@/features/examples/useExamplesSync";
-import { CommandPalette } from "@/features/palette/CommandPalette";
+import { LazyDialogs } from "./LazyDialogs";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
@@ -71,11 +68,8 @@ export function AppShell() {
       <StatusBar />
       <CloseTabDialog />
       <SaveRequestDialog />
-      <SettingsDialog />
       <SecretsDialogs />
-      <ImportCurlDialog />
-      <CodeDialog />
-      <CommandPalette />
+      <LazyDialogs />
     </div>
   );
 }

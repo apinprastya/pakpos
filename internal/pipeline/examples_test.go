@@ -127,3 +127,121 @@ func TestMaskExample(t *testing.T) {
 		t.Fatalf("clean binary = %+v %v", got.Response, err)
 	}
 }
+
+func TestEncodedForms(t *testing.T) {
+	got := EncodedForms([]SecretValue{{"k", "a+b/c?d=e f"}, {"s", "plain"}})
+	has := func(name, val string) bool {
+		for _, sv := range got {
+			if sv.Name == name && sv.Value == val {
+				return true
+			}
+		}
+		return false
+	}
+	for _, want := range []SecretValue{
+		{"k", base64.StdEncoding.EncodeToString([]byte("a+b/c?d=e f"))},
+		{"k", base64.RawURLEncoding.EncodeToString([]byte("a+b/c?d=e f"))},
+		{"k", "a%2Bb%2Fc%3Fd%3De+f"}, // query escaping
+		{"k", "a+b%2Fc%3Fd=e%20f"},   // path escaping
+		{"s", "cGxhaW4="},
+		{"s", "cGxhaW4"},
+	} {
+		if !has(want.Name, want.Value) {
+			t.Errorf("missing %+v in %+v", want, got)
+		}
+	}
+	// URL encoding that changes nothing isn't repeated.
+	for _, sv := range got {
+		if sv.Value == "plain" {
+			t.Errorf("unchanged form listed: %+v", sv)
+		}
+	}
+	if len(EncodedForms(nil)) != 0 {
+		t.Error("no values, no forms")
+	}
+}
+
+func TestExampleSecrets(t *testing.T) {
+	f := newFixture(t)
+	wsID := f.ws.Manifest().ID
+	f.dev = must(f.ws.SaveEnvironmentVariables(f.dev.ID, []model.Variable{v("user", "alice"), secret("pw")}))
+	_ = f.sec.Set(secrets.Key(wsID, f.dev.ID, "pw"), "hunter22")
+	creds := base64.StdEncoding.EncodeToString([]byte("alice:hunter22"))
+	contains := func(values []SecretValue, sv SecretValue) bool {
+		for _, x := range values {
+			if x == sv {
+				return true
+			}
+		}
+		return false
+	}
+
+	basic := model.Request{Method: "GET", URL: "https://x", Auth: model.Auth{Type: model.AuthBasic, Username: "{{user}}", Password: "{{pw}}"}}
+	got, locked := f.sess.ExampleSecrets(f.req.ID, f.dev.ID, basic)
+	if locked {
+		t.Fatal("not locked")
+	}
+	for _, want := range []SecretValue{
+		{"pw", "hunter22"}, {"token", "s3cret"},
+		{"pw", base64.StdEncoding.EncodeToString([]byte("hunter22"))},
+		{"token", base64.StdEncoding.EncodeToString([]byte("s3cret"))},
+		{"pw", creds}, {"pw", strings.TrimRight(creds, "=")},
+	} {
+		if !contains(got, want) {
+			t.Errorf("missing %+v", want)
+		}
+	}
+	for i := 1; i < len(got); i++ {
+		if len(got[i].Value) > len(got[i-1].Value) {
+			t.Fatalf("not longest first: %+v", got)
+		}
+	}
+
+	// A secret username counts too; the password is checked first.
+	f.dev = must(f.ws.SaveEnvironmentVariables(f.dev.ID, []model.Variable{secret("user"), v("pw", "plain-pass")}))
+	_ = f.sec.Set(secrets.Key(wsID, f.dev.ID, "user"), "root-admin")
+	got, _ = f.sess.ExampleSecrets(f.req.ID, f.dev.ID, basic)
+	if !contains(got, SecretValue{"user", base64.StdEncoding.EncodeToString([]byte("root-admin:plain-pass"))}) {
+		t.Errorf("secret username: %+v", got)
+	}
+
+	// Literal credentials, or auth that isn't basic, add no credentials.
+	literal := basic
+	literal.Auth = model.Auth{Type: model.AuthBasic, Username: "bob", Password: "literal"}
+	got, _ = f.sess.ExampleSecrets(f.req.ID, f.dev.ID, literal)
+	if contains(got, SecretValue{"user", base64.StdEncoding.EncodeToString([]byte("bob:literal"))}) {
+		t.Errorf("literal credentials listed: %+v", got)
+	}
+	// The request inherits bearer auth from the collection: no Basic header.
+	inherited := model.Request{Method: "GET", URL: "https://x", Auth: model.Auth{Type: model.AuthInherit}}
+	got, _ = f.sess.ExampleSecrets(f.req.ID, f.dev.ID, inherited)
+	for _, sv := range got {
+		if sv.Name == "user" && len(sv.Value) > len("root-admin")*2 {
+			t.Errorf("unexpected credentials: %+v", sv)
+		}
+	}
+	// A variable loop can't be resolved: the plain and encoded values remain.
+	f.dev = must(f.ws.SaveEnvironmentVariables(f.dev.ID, []model.Variable{v("a", "{{b}}"), v("b", "{{a}}")}))
+	loop := basic
+	loop.Auth.Username = "{{a}}"
+	got, _ = f.sess.ExampleSecrets(f.req.ID, f.dev.ID, loop)
+	if !contains(got, SecretValue{"token", "s3cret"}) {
+		t.Errorf("loop: %+v", got)
+	}
+}
+
+func TestScanAndMaskEchoedBasicAuth(t *testing.T) {
+	creds := base64.StdEncoding.EncodeToString([]byte("alice:hunter22"))
+	values := dedupe(append([]SecretValue{{"pw", "hunter22"}, {"pw", creds}}, EncodedForms([]SecretValue{{"pw", "hunter22"}})...))
+	ex := fsstore.Example{Response: fsstore.ExampleResponse{
+		Body:     `{"headers":{"Authorization":"Basic ` + creds + `"},"q":"hunter%2022"}`,
+		Encoding: model.EncodingUTF8,
+	}}
+	if got := ScanExample(ex, values); !reflect.DeepEqual(got, []string{"pw"}) {
+		t.Fatalf("found = %v", got)
+	}
+	masked, err := MaskExample(ex, values)
+	if err != nil || strings.Contains(masked.Response.Body, creds) || !strings.Contains(masked.Response.Body, "Basic {{pw}}") {
+		t.Fatalf("masked = %q err=%v", masked.Response.Body, err)
+	}
+}

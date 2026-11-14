@@ -173,14 +173,11 @@ describe("sidebar: collections tree", () => {
     expect(filter).toHaveValue("");
   });
 
-  it("supports arrow keys, Enter, F2 rename and Delete", async () => {
+  // Split in three: as one test it ran ~40 user-event steps and, under a loaded
+  // coverage run, crossed the 5 s test timeout (the only cause of its flakes).
+  it("moves with arrow keys, Home/End, and expands or opens with Enter", async () => {
     const user = userEvent.setup();
     ready();
-    const store = useWorkspaceStore.getState();
-    const renameRequest = vi.spyOn(store, "renameRequest").mockResolvedValue();
-    const renameCollection = vi.spyOn(store, "renameCollection").mockResolvedValue();
-    const deleteRequest = vi.spyOn(store, "deleteRequest").mockResolvedValue();
-    const deleteCollection = vi.spyOn(store, "deleteCollection").mockResolvedValue();
     renderSidebar();
 
     act(() => item("Users").focus());
@@ -205,7 +202,21 @@ describe("sidebar: collections tree", () => {
     await user.keyboard("{Enter}{ArrowDown}{Enter}");
     await waitFor(() => expect(activeTab().saved?.id).toBe("r1"));
 
+    // Unhandled keys do nothing.
+    await user.keyboard("a");
+    expect(item("GET List users")).toHaveFocus();
+  });
+
+  it("renames the focused request or collection with F2", async () => {
+    const user = userEvent.setup();
+    ready();
+    const store = useWorkspaceStore.getState();
+    const renameRequest = vi.spyOn(store, "renameRequest").mockResolvedValue();
+    const renameCollection = vi.spyOn(store, "renameCollection").mockResolvedValue();
+    renderSidebar();
+
     // F2 renames the focused request; Escape cancels, Enter saves.
+    act(() => item("GET List users").focus());
     await user.keyboard("{F2}");
     const input = screen.getByRole("textbox", { name: "Request name" });
     await user.keyboard("{Escape}");
@@ -215,12 +226,6 @@ describe("sidebar: collections tree", () => {
     await user.keyboard("Fetch users{Enter}");
     expect(renameRequest).toHaveBeenCalledWith("r1", "Fetch users");
 
-    await user.keyboard("{Delete}");
-    const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText('Delete request "List users"?')).toBeInTheDocument();
-    await user.click(within(dialog).getByRole("button", { name: "Delete request" }));
-    expect(deleteRequest).toHaveBeenCalledWith("r1");
-
     act(() => item("Users").focus());
     await user.keyboard("{F2}");
     await user.clear(screen.getByRole("textbox", { name: "Collection name" }));
@@ -228,7 +233,26 @@ describe("sidebar: collections tree", () => {
     expect(renameCollection).toHaveBeenCalledWith("c1", "People");
     await user.keyboard("{F2}");
     await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Collection name" })).not.toBeInTheDocument();
+    expect(renameCollection).toHaveBeenCalledTimes(1);
+  });
 
+  it("deletes the focused request or collection with Delete after confirming", async () => {
+    const user = userEvent.setup();
+    ready();
+    const store = useWorkspaceStore.getState();
+    const deleteRequest = vi.spyOn(store, "deleteRequest").mockResolvedValue();
+    const deleteCollection = vi.spyOn(store, "deleteCollection").mockResolvedValue();
+    renderSidebar();
+
+    act(() => item("GET List users").focus());
+    await user.keyboard("{Delete}");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText('Delete request "List users"?')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Delete request" }));
+    expect(deleteRequest).toHaveBeenCalledWith("r1");
+
+    act(() => item("Users").focus());
     await user.keyboard("{Delete}");
     const d2 = await screen.findByRole("alertdialog");
     expect(within(d2).getByText(/and 2 requests in it/)).toBeInTheDocument();
@@ -241,9 +265,6 @@ describe("sidebar: collections tree", () => {
     expect(within(d3).getByText(/empty collection/)).toBeInTheDocument();
     await user.click(within(d3).getByRole("button", { name: "Delete collection" }));
     expect(deleteCollection).toHaveBeenCalledWith("c3");
-
-    // Unhandled keys do nothing.
-    await user.keyboard("a");
   });
 
   it("reorders with Alt+Arrow keys, within bounds", async () => {

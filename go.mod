@@ -3,6 +3,7 @@ module pakpos
 go 1.26.0
 
 require (
+	github.com/andybalholm/brotli v1.2.7
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/wailsapp/wails/v3 v3.0.0
