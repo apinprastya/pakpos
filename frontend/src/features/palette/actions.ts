@@ -17,6 +17,7 @@ import { useSettingsStore, type SettingsSection } from "@/stores/settings";
 import { useTabsStore, type Tab } from "@/stores/tabs";
 import { resolveTheme, useThemeStore } from "@/stores/theme";
 import { useTreeStore } from "@/stores/tree";
+import { useUpdateStore } from "@/stores/update";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 import type { PalettePage } from "@/stores/palette";
@@ -284,6 +285,14 @@ export const ACTIONS: PaletteAction[] = [
     enabled: () => true,
     run: () => useSettingsStore.getState().openDialog(s.id),
   })),
+  {
+    id: "check-for-updates",
+    label: "Check for updates",
+    keywords: ["upgrade", "version", "release"],
+    group: "Help",
+    enabled: () => true,
+    run: () => void useUpdateStore.getState().check(),
+  },
 ];
 
 /** The actions that apply in `ctx`, in registry order. */

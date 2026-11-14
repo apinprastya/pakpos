@@ -9,6 +9,7 @@ export interface SettingsDraft {
   maxRedirects: string;
   verifyTls: boolean;
   historyRetention: string;
+  checkForUpdates: boolean;
 }
 
 export type DraftErrors = Partial<Record<"timeoutSeconds" | "maxRedirects" | "historyRetention", string>>;
@@ -22,6 +23,7 @@ export function toDraft(s: AppSettings): SettingsDraft {
     maxRedirects: String(s.maxRedirects),
     verifyTls: s.verifyTls,
     historyRetention: String(s.historyRetention),
+    checkForUpdates: s.checkForUpdates,
   };
 }
 
@@ -70,6 +72,7 @@ export function fromDraft(
       maxRedirects: maxRedirects!,
       verifyTls: d.verifyTls,
       historyRetention: retention!,
+      checkForUpdates: d.checkForUpdates,
     },
     errors: null,
   };

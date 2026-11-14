@@ -11,10 +11,11 @@ import {
   HistoryService,
   RequestService,
   SettingsService,
+  UpdateService,
   WorkspaceService,
 } from "../../bindings/pakpos/internal/service";
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
-import { WorkspaceChanged } from "../../bindings/events";
+import { UpdateProgress as UpdateProgressEvent, WorkspaceChanged } from "../../bindings/events";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
@@ -23,6 +24,8 @@ import {
   normalizeSettings,
   type AppSettings,
   type BuildInfo,
+  type UpdateInfo,
+  type UpdateProgress,
   normalizeHistoryEntry,
   normalizeRequest,
   normalizeSendResult,
@@ -91,6 +94,30 @@ export interface WorkspaceChange {
 export const api = {
   async buildInfo(): Promise<BuildInfo> {
     return AppService.BuildInfo();
+  },
+
+  /** Asks GitHub for the latest stable release. */
+  async checkForUpdates(): Promise<UpdateInfo> {
+    const info = await UpdateService.Check();
+    if (!info) throw new Error("No update information was returned");
+    return info;
+  },
+  /** Downloads, verifies and installs the release found by the last check. */
+  async installUpdate(): Promise<void> {
+    await UpdateService.Install();
+  },
+  async cancelUpdate(): Promise<boolean> {
+    return UpdateService.Cancel();
+  },
+  /** Starts the installed update and quits this instance. */
+  async restartToUpdate(): Promise<void> {
+    await UpdateService.Restart();
+  },
+  async openReleasePage(): Promise<void> {
+    await UpdateService.OpenReleasePage();
+  },
+  onUpdateProgress(cb: (p: UpdateProgress) => void): () => void {
+    return Events.On(UpdateProgressEvent, (ev) => cb({ done: ev.data.done, total: ev.data.total }));
   },
 
   async getSettings(): Promise<AppSettings> {

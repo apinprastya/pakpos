@@ -84,6 +84,7 @@ describe("settingsForm", () => {
       maxRedirects: 2,
       verifyTls: false,
       historyRetention: 3,
+      checkForUpdates: false,
     };
     expect(normalizeSettings(full, DEFAULT_SETTINGS)).toEqual(full);
   });

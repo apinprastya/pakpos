@@ -171,6 +171,26 @@ describe("SettingsDialog", () => {
     expect(within(dialog).getByText("Loading version details…")).toBeInTheDocument();
   });
 
+  it("About turns automatic update checks off and checks now", async () => {
+    const { user, dialog } = await openSettings();
+    await user.click(section(dialog, "About"));
+    const auto = within(dialog).getByRole("switch", { name: "Check for updates automatically" });
+    expect(auto).toBeChecked();
+    await user.click(auto);
+    await user.click(within(dialog).getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.setSettings).toHaveBeenCalledWith({ ...DEFAULT_SETTINGS, checkForUpdates: false }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    const again = await screen.findByRole("dialog", { name: "Settings" });
+    await user.click(section(again, "About"));
+    await user.click(within(again).getByRole("button", { name: "Check for updates now" }));
+    expect(await screen.findByRole("dialog", { name: "Software update" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument();
+    expect(api.checkForUpdates).toHaveBeenCalled();
+  });
+
   it("quick theme and layout changes are saved to Go", async () => {
     const user = userEvent.setup();
     render(<App />);

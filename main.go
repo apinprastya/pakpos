@@ -8,6 +8,7 @@ import (
 
 	"pakpos/internal/secrets"
 	"pakpos/internal/service"
+	"pakpos/internal/update"
 )
 
 //go:embed all:frontend/dist
@@ -16,6 +17,7 @@ var assets embed.FS
 func init() {
 	// Registering events lets the binding generator emit typed TS for them.
 	application.RegisterEvent[service.WorkspaceChangedEvent](service.EventWorkspaceChanged)
+	application.RegisterEvent[service.UpdateProgress](service.EventUpdateProgress)
 }
 
 func main() {
@@ -28,6 +30,7 @@ func main() {
 	// the services, so the adapters hold a pointer filled in after New.
 	dialogs := &wailsDialogs{}
 	events := &wailsEvents{}
+	control := &wailsApp{}
 	// Secret values go to the OS keychain when it works (probed once), else to
 	// the encrypted file <data>/secrets.enc unlocked with a master password.
 	store := secrets.Select(secrets.NewKeyring(), secrets.NewFileStore(dataDir))
@@ -35,6 +38,16 @@ func main() {
 	if err != nil {
 		log.Fatalf("start pakpos: %v", err)
 	}
+
+	// In-app updates come from GitHub Releases, verified with the compiled-in
+	// update.PublicKey. Remove what a previous update left behind first.
+	install := update.Current()
+	install.Cleanup()
+	updates := service.NewUpdateService(service.UpdateConfig{
+		Updater: &update.Updater{PublicKey: update.PublicKey, Install: install},
+		Events:  events,
+		App:     control,
+	})
 
 	app := application.New(application.Options{
 		Name:        "Pakpos",
@@ -47,6 +60,7 @@ func main() {
 			application.NewService(service.NewSettingsService(core)),
 			application.NewService(service.NewEnvService(core)),
 			application.NewService(service.NewExampleService(core)),
+			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
@@ -60,7 +74,7 @@ func main() {
 			}
 		},
 	})
-	dialogs.app, events.app = app, app
+	dialogs.app, events.app, control.app = app, app, app
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "Pakpos",

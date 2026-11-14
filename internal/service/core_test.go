@@ -63,6 +63,23 @@ func TestNewCoreCleansUpAndLoadsSettings(t *testing.T) {
 	}
 }
 
+func TestNewCoreKeepsDefaultsForMissingSettings(t *testing.T) {
+	dir := t.TempDir()
+	db, _ := sqlite.Open(dir)
+	// Saved by a version without checkForUpdates.
+	_ = db.SetSetting(settingsKey, map[string]any{"theme": "dark", "timeoutMs": 1000, "followRedirects": true,
+		"maxRedirects": 5, "verifyTls": true, "historyRetention": 10, "layout": "vertical"})
+	_ = db.Close()
+	c, err := NewCore(Config{DataDir: dir, Dialogs: &fakeDialogs{}, Events: &fakeEvents{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if s := c.currentSettings(); s.Theme != settings.ThemeDark || !s.CheckForUpdates {
+		t.Fatalf("settings = %+v", s)
+	}
+}
+
 func TestNewCoreIgnoresInvalidStoredSettings(t *testing.T) {
 	dir := t.TempDir()
 	db, _ := sqlite.Open(dir)

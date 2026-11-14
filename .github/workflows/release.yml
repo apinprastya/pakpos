@@ -19,6 +19,9 @@ name: Release
 #     (App Store Connect API key; preferred), or
 #   APPLE_ID, APPLE_TEAM_ID, APPLE_APP_PASSWORD                  notarization
 #     (Apple ID + app-specific password)
+#   UPDATE_SIGNING_KEY                                           in-app updates
+#     (ed25519 private key; signs SHA256SUMS into SHA256SUMS.sig, see
+#     README "In-app update key")
 #
 # Third-party code: none. GitHub's own actions are pinned to commit SHAs.
 
@@ -329,8 +332,15 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      HAVE_UPDATE_SIGNING: ${{ secrets.UPDATE_SIGNING_KEY != '' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: tools/go.mod
+          cache: false # tools/ has no dependencies (no go.sum)
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -344,6 +354,24 @@ jobs:
           sha256sum -- * > ../SHA256SUMS
           mv ../SHA256SUMS SHA256SUMS
           cat SHA256SUMS
+
+      - name: Sign SHA256SUMS for in-app updates
+        if: env.HAVE_UPDATE_SIGNING == 'true'
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          go -C tools run ./updatesign sign "$PWD/dist/SHA256SUMS" > dist/SHA256SUMS.sig
+          # The key must match the public key compiled into the app.
+          pub=$(sed -n 's/^var PublicKey = "\(.*\)"$/\1/p' internal/update/update.go)
+          if [ -n "$pub" ]; then
+            go -C tools run ./updatesign verify "$pub" "$PWD/dist/SHA256SUMS" "$PWD/dist/SHA256SUMS.sig"
+          else
+            echo "::warning::internal/update.PublicKey is empty: this build cannot install updates"
+          fi
+
+      - name: Warn about unsigned updates
+        if: env.HAVE_UPDATE_SIGNING != 'true'
+        run: echo "::warning::UPDATE_SIGNING_KEY is not set; this release cannot be installed from inside Pakpos"
 
       - name: Create draft release
         env:

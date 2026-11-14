@@ -35,3 +35,11 @@ func (d wailsDialogs) SaveFile(title, defaultName string) (string, error) {
 type wailsEvents struct{ app *application.App }
 
 func (e wailsEvents) Emit(name string, data any) { e.app.Event.Emit(name, data) }
+
+// wailsApp implements service.AppControl with the running Wails app.
+type wailsApp struct{ app *application.App }
+
+func (a wailsApp) OpenURL(url string) error { return a.app.Browser.OpenURL(url) }
+
+// Quit quits the app; OnShutdown closes the core first.
+func (a wailsApp) Quit() { a.app.Quit() }

@@ -19,6 +19,7 @@ import { errorMessage } from "@/lib/errors";
 import { DEFAULT_SETTINGS, type AppSettings, type BuildInfo } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, type SettingsSection } from "@/stores/settings";
+import { useUpdateStore } from "@/stores/update";
 import { SecretsSection } from "@/features/secrets/SecretsControls";
 import { fromDraft, lowersRetention, toDraft, type DraftErrors, type SettingsDraft } from "./settingsForm";
 
@@ -165,7 +166,7 @@ function SettingsDialogBody() {
               <HistorySection draft={draft} update={update} errors={errors} saved={saved} />
             )}
             {section === "secrets" && <SecretsSection />}
-            {section === "about" && <AboutSection build={build} />}
+            {section === "about" && <AboutSection build={build} draft={draft} update={update} />}
           </div>
         </div>
         {formError && (
@@ -403,7 +404,12 @@ function HistorySection({
   );
 }
 
-function AboutSection({ build }: { build: BuildInfo | null }) {
+function AboutSection({ build, draft, update }: SectionProps & { build: BuildInfo | null }) {
+  const checkNow = () => {
+    // One dialog at a time: the update dialog replaces settings.
+    useSettingsStore.getState().closeDialog();
+    void useUpdateStore.getState().check();
+  };
   // [label, value, isCode]
   const rows: [string, string, boolean][] = build
     ? [
@@ -431,6 +437,19 @@ function AboutSection({ build }: { build: BuildInfo | null }) {
       ) : (
         <p className="text-xs text-muted-foreground">Loading version details…</p>
       )}
+      <div className="flex flex-col gap-3 border-t pt-4">
+        <SwitchField
+          label="Check for updates automatically"
+          hint="Looks for a new release at startup and once a day. Pakpos only installs one when you ask."
+          checked={draft.checkForUpdates}
+          onChange={(v) => update({ checkForUpdates: v })}
+        />
+        <div>
+          <Button type="button" variant="outline" size="sm" onClick={checkNow}>
+            Check for updates now
+          </Button>
+        </div>
+      </div>
     </section>
   );
 }

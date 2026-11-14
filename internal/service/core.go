@@ -34,6 +34,13 @@ type Events interface {
 	Emit(name string, data any)
 }
 
+// AppControl does what needs the running Wails app outside dialogs and
+// events: opening a URL in the browser and quitting. main.go implements it.
+type AppControl interface {
+	OpenURL(url string) error
+	Quit()
+}
+
 // EventWorkspaceChanged fires when workspace files change outside the app.
 const EventWorkspaceChanged = "workspace:changed"
 

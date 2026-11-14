@@ -1,8 +1,9 @@
-import { Columns2, Folder, Layers, Rows2 } from "lucide-react";
+import { ArrowDownToLine, Columns2, Folder, Layers, RotateCw, Rows2 } from "lucide-react";
 import { LockIndicator } from "@/features/secrets/SecretsControls";
 import { useSelectedEnvironment } from "@/stores/environments";
 import { useLayoutStore } from "@/stores/layout";
 import { useSettingsStore } from "@/stores/settings";
+import { selectUpdateBadge, useUpdateStore } from "@/stores/update";
 import { useWorkspaceStore } from "@/stores/workspace";
 
 export function StatusBar() {
@@ -33,6 +34,7 @@ export function StatusBar() {
             <span className="truncate">{environment?.name ?? "No environment"}</span>
           </button>
         )}
+        <UpdateIndicator />
         <LockIndicator />
         <button
           type="button"
@@ -45,5 +47,25 @@ export function StatusBar() {
         </button>
       </span>
     </footer>
+  );
+}
+
+/** Shown while a new release waits to be installed, or installed and waiting for a restart. */
+function UpdateIndicator() {
+  const badge = useUpdateStore(selectUpdateBadge);
+  const latest = useUpdateStore((s) => s.info?.latest);
+  if (!badge) return null;
+  const label = badge === "installed" ? "Restart to update" : "Update available";
+  const Icon = badge === "installed" ? RotateCw : ArrowDownToLine;
+  return (
+    <button
+      type="button"
+      title={`Pakpos ${latest}`}
+      onClick={() => useUpdateStore.getState().openDialog()}
+      className="flex items-center gap-1 rounded px-1 text-primary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <Icon aria-hidden className="size-3 shrink-0" />
+      {label}
+    </button>
   );
 }
