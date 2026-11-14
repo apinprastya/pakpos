@@ -1,0 +1,14 @@
+const response = await fetch("https://cdn.example.com/x", {
+  method: "PURGE",
+  headers: {
+    "X-Empty": "",
+    "X-Api-Key": "set",
+  },
+});
+
+console.log(response.status);
+console.log(await response.text());
+
+# warnings:
+# Browsers don't let fetch set the Host header, so it was left out.
+# Browsers don't let fetch set the Cookie header, so it was left out.

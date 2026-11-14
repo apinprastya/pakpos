@@ -17,14 +17,6 @@ import (
 	"pakpos/internal/core/urlx"
 )
 
-var rawContentTypes = map[model.RawLanguage]string{
-	model.LangJSON:       "application/json",
-	model.LangXML:        "application/xml",
-	model.LangHTML:       "text/html; charset=utf-8",
-	model.LangJavaScript: "application/javascript",
-	model.LangText:       "text/plain; charset=utf-8",
-}
-
 // Build converts a model.Request into an *http.Request bound to ctx.
 //
 //   - The query table (req.Query) is the source of truth for query params; the
@@ -116,14 +108,10 @@ func buildBody(b model.Body) (io.ReadCloser, string, int64, error) {
 	case "", model.BodyNone:
 		return nil, "", 0, nil
 	case model.BodyRaw:
-		ct := rawContentTypes[b.Language]
-		if ct == "" {
-			ct = rawContentTypes[model.LangText]
-		}
-		return io.NopCloser(strings.NewReader(b.Raw)), ct, int64(len(b.Raw)), nil
+		return io.NopCloser(strings.NewReader(b.Raw)), b.DefaultContentType(), int64(len(b.Raw)), nil
 	case model.BodyURLEncoded:
 		s := urlx.EncodeWireQuery(b.URLEncoded)
-		return io.NopCloser(strings.NewReader(s)), "application/x-www-form-urlencoded", int64(len(s)), nil
+		return io.NopCloser(strings.NewReader(s)), b.DefaultContentType(), int64(len(s)), nil
 	case model.BodyBinary:
 		return openBinary(b.BinaryPath)
 	case model.BodyFormData:

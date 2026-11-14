@@ -1,0 +1,11 @@
+const response = await fetch("https://example.com/notes", {
+  method: "POST",
+  headers: {
+    "Content-Type": "text/plain",
+  },
+  body: `first line
+second \`line\` with café	tab`,
+});
+
+console.log(response.status);
+console.log(await response.text());

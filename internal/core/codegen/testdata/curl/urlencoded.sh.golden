@@ -1,0 +1,4 @@
+curl https://example.com/login \
+  --data-urlencode user=jane@example.com \
+  --data-urlencode 'pass=p&ss word' \
+  --data odd%20key=v%3D1

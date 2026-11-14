@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { SendHorizontal, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,9 +17,13 @@ interface Props {
   onChange: (update: (req: Request) => Request) => void;
   onSend: () => void;
   onCancel: () => void;
+  /** Pasted text; return true to handle it (e.g. a curl command) instead of inserting it. */
+  onPaste?: (text: string) => boolean;
+  /** Actions shown after Send. */
+  children?: ReactNode;
 }
 
-export function UrlBar({ tabKey, request, sending, onChange, onSend, onCancel }: Props) {
+export function UrlBar({ tabKey, request, sending, onChange, onSend, onCancel, onPaste, children }: Props) {
   const canSend = request.url.trim() !== "";
   const variables = useVarScope();
   return (
@@ -51,6 +56,7 @@ export function UrlBar({ tabKey, request, sending, onChange, onSend, onCancel }:
           value={request.url}
           onChange={(url) => onChange((r) => setUrl(r, url))}
           onSubmit={onSend}
+          onPaste={onPaste}
           variables={variables}
         />
       </div>
@@ -63,6 +69,7 @@ export function UrlBar({ tabKey, request, sending, onChange, onSend, onCancel }:
           <SendHorizontal /> Send
         </Button>
       )}
+      {children}
     </div>
   );
 }

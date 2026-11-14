@@ -1,0 +1,5 @@
+curl https://api.example.com/orders \
+  -u 'jane:{{password}}' \
+  -H 'X-Request-Id: 7f9c' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"note": "it'\''s \"quoted\" \\ $x ${y}", "items": [{"sku": "A-1", "qty": 2}], "gift": true, "ref": null, "price": 1.5e2, "empty": {}, "none": []}'

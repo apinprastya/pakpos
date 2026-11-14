@@ -1,0 +1,9 @@
+const response = await fetch("https://api.example.com/users/42?q=say%20%22hi%22%20%26%20go", {
+  headers: {
+    "Accept": "application/json",
+    "Authorization": "Bearer {{token}}",
+  },
+});
+
+console.log(response.status);
+console.log(await response.text());

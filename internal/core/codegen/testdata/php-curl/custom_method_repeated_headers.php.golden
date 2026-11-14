@@ -1,0 +1,25 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://cdn.example.com/x',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => 'PURGE',
+    CURLOPT_HTTPHEADER => [
+        'Host: origin.example.com',
+        'Cookie: a=1',
+        'Cookie: b=2',
+        'X-Empty;',
+        'X-Api-Key: set',
+    ],
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}

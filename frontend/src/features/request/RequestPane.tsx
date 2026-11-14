@@ -10,6 +10,9 @@ import { BodySection } from "./BodySection";
 import { HeadersSection } from "./HeadersSection";
 import { ParamsSection } from "./ParamsSection";
 import { UrlBar } from "./UrlBar";
+import { RequestActions } from "./RequestActions";
+import { importCurlIntoTab } from "@/features/code/actions";
+import { looksLikeCurl } from "@/features/code/summary";
 import { usePreview } from "./usePreview";
 
 function Count({ n }: { n: number }) {
@@ -45,7 +48,14 @@ export function RequestPane() {
           onChange={onChange}
           onSend={() => void sendTab(tab.id)}
           onCancel={() => void cancelTab(tab.id)}
-        />
+          onPaste={(text) => {
+            if (!looksLikeCurl(text)) return false;
+            void importCurlIntoTab(tab.id, text);
+            return true;
+          }}
+        >
+          <RequestActions tab={tab} />
+        </UrlBar>
         <Tabs defaultValue="params" className="flex min-h-0 flex-1 flex-col gap-0">
           <TabsList variant="line" className="h-9 w-full shrink-0 justify-start rounded-none border-b px-3">
             <TabsTrigger value="params" className="flex-none px-2">

@@ -1,0 +1,7 @@
+curl -X POST https://upload.example.com/v1/files \
+  -H "Authorization: Token abc" \
+  -F "purpose=avatar" \
+  -F "file=@/home/jane/Pictures/me.png;type=image/png" \
+  -F 'meta=<meta.json' \
+  -F "notes=hello;type=text/plain" \
+  --form-string 'raw=@not-a-file'

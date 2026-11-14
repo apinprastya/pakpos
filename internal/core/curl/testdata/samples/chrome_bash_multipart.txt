@@ -1,0 +1,4 @@
+curl 'https://example.com/upload' \
+  -H 'accept: */*' \
+  -H 'content-type: multipart/form-data; boundary=----WebKitFormBoundaryX3bY6PBMcxB1vCan' \
+  --data-raw $'------WebKitFormBoundaryX3bY6PBMcxB1vCan\r\nContent-Disposition: form-data; name="title"\r\n\r\nHoliday\r\n------WebKitFormBoundaryX3bY6PBMcxB1vCan\r\nContent-Disposition: form-data; name="photo"; filename="beach.jpg"\r\nContent-Type: image/jpeg\r\n\r\n\r\n------WebKitFormBoundaryX3bY6PBMcxB1vCan--\r\n'

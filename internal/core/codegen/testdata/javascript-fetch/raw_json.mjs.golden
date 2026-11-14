@@ -1,0 +1,25 @@
+const response = await fetch("https://api.example.com/orders", {
+  method: "POST",
+  headers: {
+    "X-Request-Id": "7f9c",
+    "Content-Type": "application/json",
+    "Authorization": "Basic " + Buffer.from("jane:{{password}}").toString("base64"),
+  },
+  body: JSON.stringify({
+    "note": "it's \"quoted\" \\ $x ${y}",
+    "items": [
+      {
+        "sku": "A-1",
+        "qty": 2
+      }
+    ],
+    "gift": true,
+    "ref": null,
+    "price": 1.5e2,
+    "empty": {},
+    "none": []
+  }),
+});
+
+console.log(response.status);
+console.log(await response.text());

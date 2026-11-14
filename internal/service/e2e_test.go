@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -722,5 +723,143 @@ func TestEndToEndRenamedSecretKeepsValue(t *testing.T) {
 	}
 	if keys := h.secrets.Keys(); len(keys) != 1 {
 		t.Fatalf("stored keys = %v, want only the new one", keys)
+	}
+}
+
+// TestEndToEndCurl imports a curl command, saves it, sends it to a live
+// server and checks what arrived; then generates cURL for it with secrets
+// masked by default and revealed only when asked, and sends the generated
+// command back through import to get the same request on the wire.
+func TestEndToEndCurl(t *testing.T) {
+	const secretValue = "sk-SECRET-41d2"
+	type seen struct {
+		method, path, query, auth, ctype, custom, cookie string
+		body                                             string
+	}
+	var last atomic.Pointer[seen]
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		last.Store(&seen{method: r.Method, path: r.URL.Path, query: r.URL.RawQuery, auth: r.Header.Get("Authorization"),
+			ctype: r.Header.Get("Content-Type"), custom: r.Header.Get("X-Custom"), cookie: r.Header.Get("Cookie"), body: string(body)})
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(srv.Close)
+
+	h := newHarness(t)
+	ctx := context.Background()
+	wsDir := t.TempDir()
+	if _, err := h.ws.Create(wsDir, "Curl"); err != nil {
+		t.Fatal(err)
+	}
+	col, err := h.ws.CreateCollection("API")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Import a Chrome-style command and save it.
+	cmd := "curl '" + srv.URL + "/v1/orders?page=2&q=a%20b' \\\n" +
+		"  -H 'x-custom: one' \\\n" +
+		"  -H 'content-type: application/json' \\\n" +
+		"  -H 'authorization: Bearer tok-1' \\\n" +
+		"  -b 'session=abc' \\\n" +
+		"  --data-raw '{\"items\":[1,2],\"note\":\"it'\\''s\"}' \\\n" +
+		"  --compressed"
+	imp, err := h.req.ImportCurl(cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imp.Warnings) != 1 || imp.Request.Auth.Type != model.AuthBearer {
+		t.Fatalf("import = %+v", imp)
+	}
+	saved, err := h.req.SaveAs(col.ID, "Orders", imp.Request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := h.req.Get(saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	send := func(id string, req model.Request, parentID string) seen {
+		t.Helper()
+		last.Store(nil)
+		res, err := h.req.Send(ctx, id, req, parentID)
+		if err != nil || res.Error != nil {
+			t.Fatalf("send: %+v %v", res.Error, err)
+		}
+		return *last.Load()
+	}
+	want := seen{method: "POST", path: "/v1/orders", query: "page=2&q=a%20b", auth: "Bearer tok-1",
+		ctype: "application/json", custom: "one", cookie: "session=abc", body: `{"items":[1,2],"note":"it's"}`}
+	if got := send("curl-1", reopened, ""); got != want {
+		t.Fatalf("server saw %+v\nwant %+v", got, want)
+	}
+
+	// 2. A secret token: generated cURL masks it unless revealed.
+	if _, err := h.ws.SaveCollection(col.ID, fsstore.CollectionSettings{
+		Variables: []model.Variable{{Key: "token", Enabled: true, Secret: true}, {Key: "base", Value: srv.URL, Enabled: true}},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeCollection, ID: col.ID}, "token", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	reopened.URL = strings.Replace(reopened.URL, srv.URL, "{{base}}", 1)
+	reopened.Auth.Token = "{{token}}"
+	if _, err := h.req.Save(reopened); err != nil {
+		t.Fatal(err)
+	}
+
+	masked, err := h.req.GenerateCode(reopened, "", "curl", CodeOptions{ResolveVariables: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(masked.Code, secretValue) || !strings.Contains(masked.Code, "Bearer {{token}}") ||
+		!strings.Contains(masked.Code, srv.URL+"/v1/orders") || !slices.Equal(masked.Masked, []string{"token"}) {
+		t.Fatalf("masked = %+v", masked)
+	}
+	for _, lang := range h.req.CodeLanguages() {
+		res, err := h.req.GenerateCode(reopened, "", lang.ID, CodeOptions{ResolveVariables: true})
+		if err != nil || strings.Contains(res.Code, secretValue) {
+			t.Fatalf("%s leaks the secret or failed: %v\n%s", lang.ID, err, res.Code)
+		}
+	}
+
+	revealed, err := h.req.GenerateCode(reopened, "", "curl", CodeOptions{ResolveVariables: true, RevealSecrets: true})
+	if err != nil || !strings.Contains(revealed.Code, "Bearer "+secretValue) || len(revealed.Masked) != 0 {
+		t.Fatalf("revealed = %+v %v", revealed, err)
+	}
+
+	// Generating code stored nothing: the secret is in neither the workspace
+	// nor the data dir (DB, WAL, bodies).
+	assertNoSecret(t, secretValue, h.dataDir, wsDir)
+
+	// 3. The revealed command imports and sends the same request as the saved
+	// one. (That draft holds the value as plain text, so its history entry
+	// does too, as for any literal the user sends.)
+	back, err := h.req.ImportCurl(revealed.Code)
+	if err != nil || len(back.Warnings) != 0 {
+		t.Fatalf("re-import: %+v %v", back, err)
+	}
+	direct := send("curl-2", reopened, "")
+	again := send("curl-3", back.Request, "")
+	if direct != again || direct.auth != "Bearer "+secretValue {
+		t.Fatalf("saved sent %+v\nre-imported sent %+v", direct, again)
+	}
+}
+
+func assertNoSecret(t *testing.T, secret string, dirs ...string) {
+	t.Helper()
+	for _, dir := range dirs {
+		_ = filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, rerr := os.ReadFile(p)
+			if rerr == nil && bytes.Contains(data, []byte(secret)) {
+				t.Errorf("secret found in %s", p)
+			}
+			return nil
+		})
 	}
 }

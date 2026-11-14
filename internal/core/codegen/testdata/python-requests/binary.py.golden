@@ -1,0 +1,14 @@
+import requests
+
+url = "https://example.com/blob/1"
+
+headers = {
+    "Content-Type": "application/octet-stream",
+}
+
+payload = open("/data/blob.bin", "rb")
+
+response = requests.patch(url, headers=headers, data=payload)
+
+print(response.status_code)
+print(response.text)

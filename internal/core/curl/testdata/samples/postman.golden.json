@@ -1,0 +1,48 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "PATCH",
+    "url": "https://api.example.com/v1/users/42?include=roles",
+    "pathParams": [],
+    "query": [
+      {
+        "key": "include",
+        "value": "roles",
+        "enabled": true
+      }
+    ],
+    "headers": [
+      {
+        "key": "X-Request-Id",
+        "value": "7f9c2ba4",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "raw",
+      "raw": "{\n    \"name\": \"Jane Doe\",\n    \"email\": \"jane@example.com\"\n}",
+      "language": "json",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "basic",
+      "username": "admin",
+      "password": "s3cr3t",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": [
+    {
+      "option": "--location",
+      "message": "Pakpos follows redirects as set in Settings; this option wasn't imported."
+    }
+  ]
+}

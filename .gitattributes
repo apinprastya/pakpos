@@ -1,0 +1,7 @@
+# Keep text files LF on every OS. Windows checkouts otherwise convert to CRLF,
+# which leaks into golden files and multi-line fixtures and breaks tests.
+* text=auto eol=lf
+*.png binary
+*.ico binary
+*.icns binary
+*.woff2 binary

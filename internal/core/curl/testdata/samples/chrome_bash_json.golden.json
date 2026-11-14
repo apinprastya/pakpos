@@ -1,0 +1,93 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://api.example.com/v1/orders?page=2&sort=-created",
+    "pathParams": [],
+    "query": [
+      {
+        "key": "page",
+        "value": "2",
+        "enabled": true
+      },
+      {
+        "key": "sort",
+        "value": "-created",
+        "enabled": true
+      }
+    ],
+    "headers": [
+      {
+        "key": "accept",
+        "value": "application/json, text/plain, */*",
+        "enabled": true
+      },
+      {
+        "key": "accept-language",
+        "value": "en-US,en;q=0.9",
+        "enabled": true
+      },
+      {
+        "key": "Cookie",
+        "value": "session=abc123; theme=dark",
+        "enabled": true
+      },
+      {
+        "key": "origin",
+        "value": "https://app.example.com",
+        "enabled": true
+      },
+      {
+        "key": "priority",
+        "value": "u=1, i",
+        "enabled": true
+      },
+      {
+        "key": "referer",
+        "value": "https://app.example.com/orders",
+        "enabled": true
+      },
+      {
+        "key": "sec-ch-ua",
+        "value": "\"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\"",
+        "enabled": true
+      },
+      {
+        "key": "sec-ch-ua-mobile",
+        "value": "?0",
+        "enabled": true
+      },
+      {
+        "key": "sec-ch-ua-platform",
+        "value": "\"Linux\"",
+        "enabled": true
+      },
+      {
+        "key": "user-agent",
+        "value": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "raw",
+      "raw": "{\"items\":[{\"sku\":\"A-1\",\"qty\":2}],\"note\":\"It's a gift\"}",
+      "language": "json",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "bearer",
+      "username": "",
+      "password": "",
+      "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": []
+}

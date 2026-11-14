@@ -1,0 +1,21 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://api.example.com/users/42?q=say%20%22hi%22%20%26%20go',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => [
+        'Accept: application/json',
+        'Authorization: Bearer {{token}}',
+    ],
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}

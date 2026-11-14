@@ -1,0 +1,8 @@
+import requests
+
+url = "http://example.com/status?api_key=k%201"
+
+response = requests.head(url)
+
+print(response.status_code)
+print(response.text)

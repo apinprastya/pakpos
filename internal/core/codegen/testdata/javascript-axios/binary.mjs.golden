@@ -1,0 +1,15 @@
+import axios from "axios";
+import { createReadStream } from "node:fs";
+
+const response = await axios.request({
+  method: "patch",
+  url: "https://example.com/blob/1",
+  headers: {
+    "Content-Type": "application/octet-stream",
+  },
+  data: createReadStream("/data/blob.bin"),
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

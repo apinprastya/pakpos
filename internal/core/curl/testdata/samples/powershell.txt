@@ -1,0 +1,5 @@
+curl.exe `
+  -X PUT `
+  -H "Content-Type: application/xml" `
+  --data-binary "@C:\data\order.xml" `
+  https://example.com/orders/7

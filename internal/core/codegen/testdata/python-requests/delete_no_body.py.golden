@@ -1,0 +1,8 @@
+import requests
+
+url = "https://example.com/items/7"
+
+response = requests.delete(url)
+
+print(response.status_code)
+print(response.text)

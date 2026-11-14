@@ -1,0 +1,89 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"log"
+	"mime/multipart"
+	"net/http"
+	"net/textproto"
+	"os"
+)
+
+func main() {
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	if err := form.WriteField("title", `Holiday "2026"`); err != nil {
+		log.Fatal(err)
+	}
+	{
+		part, err := form.CreatePart(textproto.MIMEHeader{
+			"Content-Disposition": {`form-data; name="meta"`},
+			"Content-Type":        {"application/json"},
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := io.WriteString(part, `{"a":1}`); err != nil {
+			log.Fatal(err)
+		}
+	}
+	{
+		file, err := os.Open("/home/jane/My Pictures/beach.jpg")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		part, err := form.CreatePart(textproto.MIMEHeader{
+			"Content-Disposition": {`form-data; name="photo"; filename="beach.jpg"`},
+			"Content-Type":        {"image/jpeg"},
+		})
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			log.Fatal(err)
+		}
+	}
+	{
+		file, err := os.Open(`C:\Users\jane\report.pdf`)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		part, err := form.CreateFormFile("doc", "report.pdf")
+		if err != nil {
+			log.Fatal(err)
+		}
+		if _, err := io.Copy(part, file); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if err := form.WriteField("title", "again"); err != nil {
+		log.Fatal(err)
+	}
+	if err := form.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, "https://example.com/upload", &body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Content-Type", form.FormDataContentType())
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(resp.Status)
+	fmt.Println(string(data))
+}

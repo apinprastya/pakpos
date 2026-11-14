@@ -1,0 +1,10 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "head",
+  url: "http://example.com/status?api_key=k%201",
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

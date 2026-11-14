@@ -1,0 +1,36 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"strings"
+)
+
+func main() {
+	form := url.Values{}
+	form.Add("tag", "a")
+	form.Add("tag", "b")
+	body := strings.NewReader(form.Encode())
+
+	req, err := http.NewRequest(http.MethodPost, "https://example.com/tags", body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(resp.Status)
+	fmt.Println(string(data))
+}

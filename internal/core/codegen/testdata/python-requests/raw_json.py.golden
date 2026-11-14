@@ -1,0 +1,28 @@
+import requests
+
+url = "https://api.example.com/orders"
+
+headers = {
+    "X-Request-Id": "7f9c",
+    "Content-Type": "application/json",
+}
+
+payload = {
+    "note": "it's \"quoted\" \\ $x ${y}",
+    "items": [
+        {
+            "sku": "A-1",
+            "qty": 2,
+        },
+    ],
+    "gift": True,
+    "ref": None,
+    "price": 1.5e2,
+    "empty": {},
+    "none": [],
+}
+
+response = requests.post(url, headers=headers, json=payload, auth=("jane", "{{password}}"))
+
+print(response.status_code)
+print(response.text)

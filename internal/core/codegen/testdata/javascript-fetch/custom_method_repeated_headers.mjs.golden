@@ -1,0 +1,13 @@
+const response = await fetch("https://cdn.example.com/x", {
+  method: "PURGE",
+  headers: [
+    ["Host", "origin.example.com"],
+    ["Cookie", "a=1"],
+    ["Cookie", "b=2"],
+    ["X-Empty", ""],
+    ["X-Api-Key", "set"],
+  ],
+});
+
+console.log(response.status);
+console.log(await response.text());

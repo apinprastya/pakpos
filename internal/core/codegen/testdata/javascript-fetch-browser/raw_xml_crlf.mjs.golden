@@ -1,0 +1,10 @@
+const response = await fetch("https://example.com/soap", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/xml",
+  },
+  body: "<a>\r\n  <b>x</b>\r\n</a>",
+});
+
+console.log(response.status);
+console.log(await response.text());

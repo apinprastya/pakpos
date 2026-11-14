@@ -1,0 +1,51 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://api.github.com/repos/OWNER/REPO/issues",
+    "pathParams": [],
+    "query": [],
+    "headers": [
+      {
+        "key": "Accept",
+        "value": "application/vnd.github+json",
+        "enabled": true
+      },
+      {
+        "key": "X-GitHub-Api-Version",
+        "value": "2022-11-28",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "raw",
+      "raw": "{\"title\":\"Found a bug\",\"body\":\"I'm having a problem with this.\",\"assignees\":[\"octocat\"],\"labels\":[\"bug\"]}",
+      "language": "json",
+      "formData": null,
+      "urlEncoded": null,
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "bearer",
+      "username": "",
+      "password": "",
+      "token": "<YOUR-TOKEN>",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": [
+    {
+      "option": "-L",
+      "message": "Pakpos follows redirects as set in Settings; this option wasn't imported."
+    },
+    {
+      "option": "",
+      "message": "The data is JSON but no Content-Type was given (curl would send it as a form), so it was imported as JSON."
+    }
+  ]
+}

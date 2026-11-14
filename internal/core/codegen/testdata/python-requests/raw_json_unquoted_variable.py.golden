@@ -1,0 +1,19 @@
+import requests
+
+url = "https://api.example.com/limits"
+
+headers = {
+    "Content-Type": "application/json",
+}
+
+payload = (
+    "{\n"
+    "  \"max\": {{max}},\n"
+    "  \"big\": 12345678901234567890\n"
+    "}"
+)
+
+response = requests.put(url, headers=headers, data=payload)
+
+print(response.status_code)
+print(response.text)

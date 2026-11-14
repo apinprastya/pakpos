@@ -1,0 +1,10 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "delete",
+  url: "https://example.com/items/7",
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

@@ -1,0 +1,17 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "post",
+  url: "https://example.com/tags",
+  headers: {
+    "Content-Type": "application/x-www-form-urlencoded",
+  },
+  data: new URLSearchParams([
+    ["tag", "a"],
+    ["tag", "b"],
+  ]),
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

@@ -13,3 +13,4 @@ build/linux/pakpos.desktop
 dist
 *.syso
 build/windows/info.stamped.json
+frontend/tsconfig.tsbuildinfo

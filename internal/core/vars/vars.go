@@ -117,12 +117,27 @@ func WithRand(src io.Reader) Option {
 	return func(r *Resolver) { r.rand = src }
 }
 
+// KeepSecrets leaves references to secret variables that have a value as
+// written ({{name}}, whitespace trimmed) instead of resolving them, and calls
+// kept (when not nil) with each such name. They are not reported as
+// unresolved. Code generation uses it so secret values stay out of the code
+// unless the user reveals them. Unset secrets stay unresolved as usual.
+func KeepSecrets(kept func(name string)) Option {
+	return func(r *Resolver) {
+		r.keepSecrets = true
+		r.kept = kept
+	}
+}
+
 // Resolver resolves references against a fixed set of scopes. It is safe
-// for concurrent use if its random source is.
+// for concurrent use if its random source is (and, with KeepSecrets, its
+// callback).
 type Resolver struct {
-	vars map[string]Match
-	now  func() time.Time
-	rand io.Reader
+	vars        map[string]Match
+	now         func() time.Time
+	rand        io.Reader
+	keepSecrets bool
+	kept        func(string)
 }
 
 // New builds a Resolver. scopes are ordered lowest precedence first.
@@ -225,6 +240,12 @@ func (r *Resolver) value(name string, stack []string, unresolved map[string]stru
 	m, ok := r.vars[name]
 	if !ok || m.Unset {
 		return "", false, nil
+	}
+	if r.keepSecrets && m.Secret {
+		if r.kept != nil {
+			r.kept(name)
+		}
+		return "{{" + name + "}}", true, nil
 	}
 	for i, n := range stack {
 		if n == name {

@@ -34,6 +34,12 @@ import {
   normalizeVariables,
   normalizeCollection,
   normalizeFolder,
+  normalizeCodeResult,
+  normalizeCurlImport,
+  type CodeLanguage,
+  type CodeOptions,
+  type CodeResult,
+  type CurlImport,
   type CollectionSettings,
   type FolderSettings,
   type CollectionNode,
@@ -111,6 +117,30 @@ export const api = {
   },
   async saveResponseBody(historyId: number): Promise<string> {
     return RequestService.SaveResponseBody(historyId);
+  },
+  /** Reads a curl command into a request; rejects with a message for the user when it can't. */
+  async importCurl(text: string): Promise<CurlImport> {
+    return normalizeCurlImport(await RequestService.ImportCurl(text));
+  },
+  /**
+   * Writes the request as code (language "curl" for Copy as cURL). Inherits like `send`
+   * (`parentId` for drafts) and uses the selected environment. Secrets stay `{{name}}`
+   * unless `revealSecrets`; never keep a revealed result beyond the dialog showing it.
+   */
+  async generateCode(
+    req: Request,
+    parentId: string,
+    language: string,
+    opts: CodeOptions,
+  ): Promise<CodeResult> {
+    return normalizeCodeResult(await RequestService.GenerateCode(toBinding(req), parentId, language, opts));
+  },
+  async codeLanguages(): Promise<CodeLanguage[]> {
+    return ((await RequestService.CodeLanguages()) ?? []).map((l) => ({
+      id: l.id,
+      label: l.label,
+      editor: l.editor,
+    }));
   },
   async getRequest(id: string): Promise<Request> {
     return normalizeRequest(await RequestService.Get(id));

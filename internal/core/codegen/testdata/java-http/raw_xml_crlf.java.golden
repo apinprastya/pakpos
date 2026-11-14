@@ -1,0 +1,25 @@
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        String body = "<a>\r\n"
+                + "  <b>x</b>\r\n"
+                + "</a>";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://example.com/soap"))
+                .header("Content-Type", "application/xml")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}

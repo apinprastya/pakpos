@@ -1,0 +1,32 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "post",
+  url: "https://api.example.com/orders",
+  headers: {
+    "X-Request-Id": "7f9c",
+    "Content-Type": "application/json",
+  },
+  auth: {
+    username: "jane",
+    password: "{{password}}",
+  },
+  data: {
+    "note": "it's \"quoted\" \\ $x ${y}",
+    "items": [
+      {
+        "sku": "A-1",
+        "qty": 2
+      }
+    ],
+    "gift": true,
+    "ref": null,
+    "price": 1.5e2,
+    "empty": {},
+    "none": []
+  },
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

@@ -1,0 +1,18 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'http://example.com/status?api_key=k%201',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_NOBODY => true,
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}

@@ -1,0 +1,13 @@
+const response = await fetch("https://api.example.com/limits", {
+  method: "PUT",
+  headers: {
+    "Content-Type": "application/json",
+  },
+  body: `{
+  "max": {{max}},
+  "big": 12345678901234567890
+}`,
+});
+
+console.log(response.status);
+console.log(await response.text());

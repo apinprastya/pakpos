@@ -1,0 +1,27 @@
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        String body = "{\"note\": \"it's \\\"quoted\\\" \\\\ $x ${y}\", \"items\": [{\"sku\": \"A-1\", \"qty\": 2}], \"gift\": true, \"ref\": null, \"price\": 1.5e2, \"empty\": {}, \"none\": []}";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.example.com/orders"))
+                .header("X-Request-Id", "7f9c")
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString("jane:{{password}}".getBytes(StandardCharsets.UTF_8)))
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}

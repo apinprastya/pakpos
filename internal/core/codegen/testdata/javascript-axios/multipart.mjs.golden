@@ -1,0 +1,22 @@
+import axios from "axios";
+import { openAsBlob } from "node:fs";
+
+const form = new FormData();
+form.append("title", "Holiday \"2026\"");
+form.append("meta", new Blob(["{\"a\":1}"], { type: "application/json" }));
+form.append("photo", await openAsBlob("/home/jane/My Pictures/beach.jpg", { type: "image/jpeg" }), "beach.jpg");
+form.append("doc", await openAsBlob("C:\\Users\\jane\\report.pdf"), "report.pdf");
+form.append("title", "again");
+
+const response = await axios.request({
+  method: "post",
+  url: "https://example.com/upload",
+  headers: {
+    "Accept": "*/*",
+  },
+  data: form,
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);

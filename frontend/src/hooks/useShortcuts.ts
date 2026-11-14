@@ -1,13 +1,27 @@
 import { useEffect } from "react";
 import { saveTab, sendTab } from "@/features/request/actions";
+import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { useSettingsStore } from "@/stores/settings";
 import { useTabsStore } from "@/stores/tabs";
 
-/** App-wide shortcuts: Mod+Enter send, Mod+S save, Mod+T new tab, Mod+W close tab, Mod+, settings. */
+/**
+ * App-wide shortcuts: Mod+Enter send, Mod+S save, Mod+T new tab, Mod+W close tab, Mod+, settings,
+ * Mod+Shift+C generate code (request tabs).
+ */
 export function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      if (e.shiftKey) {
+        if (e.key.toLowerCase() === "c") {
+          const { tabs, activeId } = useTabsStore.getState();
+          const tab = tabs.find((t) => t.id === activeId);
+          if (!tab || tab.doc) return;
+          e.preventDefault();
+          useCodeDialogsStore.getState().openCode(tab.id);
+        }
+        return;
+      }
       const { activeId, newTab, requestClose } = useTabsStore.getState();
       switch (e.key.toLowerCase()) {
         case "enter":

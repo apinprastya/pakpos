@@ -1,0 +1,6 @@
+curl ^"https://api.example.com/v1/search?q=caf^%^C3^%^A9^&limit=10^" ^
+  -H ^"accept: application/json^" ^
+  -H ^"content-type: application/json^" ^
+  -b ^"session=abc123^" ^
+  --data-raw ^"^{^\^"query^\^":^\^"shoes ^& socks^\^",^\^"tags^\^":^[^\^"a^\^",^\^"b^\^"^]^}^" ^
+  --compressed

@@ -1,0 +1,93 @@
+{
+  "request": {
+    "id": "",
+    "name": "",
+    "seq": 0,
+    "method": "POST",
+    "url": "https://api.example.com/v2/login",
+    "pathParams": [],
+    "query": [],
+    "headers": [
+      {
+        "key": "User-Agent",
+        "value": "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
+        "enabled": true
+      },
+      {
+        "key": "Accept",
+        "value": "*/*",
+        "enabled": true
+      },
+      {
+        "key": "Accept-Language",
+        "value": "en-US,en;q=0.5",
+        "enabled": true
+      },
+      {
+        "key": "Accept-Encoding",
+        "value": "gzip, deflate, br, zstd",
+        "enabled": true
+      },
+      {
+        "key": "Content-Type",
+        "value": "application/x-www-form-urlencoded; charset=UTF-8",
+        "enabled": true
+      },
+      {
+        "key": "Origin",
+        "value": "https://app.example.com",
+        "enabled": true
+      },
+      {
+        "key": "Connection",
+        "value": "keep-alive",
+        "enabled": true
+      },
+      {
+        "key": "Cookie",
+        "value": "csrftoken=xyz",
+        "enabled": true
+      },
+      {
+        "key": "Sec-Fetch-Dest",
+        "value": "empty",
+        "enabled": true
+      }
+    ],
+    "body": {
+      "type": "urlencoded",
+      "raw": "",
+      "language": "",
+      "formData": null,
+      "urlEncoded": [
+        {
+          "key": "username",
+          "value": "jane@example.com",
+          "enabled": true
+        },
+        {
+          "key": "password",
+          "value": "p&ss word",
+          "enabled": true
+        },
+        {
+          "key": "remember",
+          "value": "on",
+          "enabled": true
+        }
+      ],
+      "binaryPath": ""
+    },
+    "auth": {
+      "type": "none",
+      "username": "",
+      "password": "",
+      "token": "",
+      "prefix": "",
+      "apiKey": "",
+      "apiValue": "",
+      "apiIn": ""
+    }
+  },
+  "warnings": []
+}
