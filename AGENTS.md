@@ -159,6 +159,7 @@ docs/                    architecture and plans
 - `fsstore.Open` errors contain "not a pakpos workspace" and `Create` errors contain "a workspace already exists here"; the frontend matches on these strings to offer the right next step.
 - Tailwind's `sr-only` is `position: absolute`, so inside a CSS grid it drops out of the column flow. Wrap screen-reader-only header text in a normal grid cell: `<span role="columnheader"><span className="sr-only">…</span></span>`.
 - To screenshot the UI with fake data, run `vite preview` and use Playwright to route `**/wails/runtime*`. The body is `{object, method, args: {methodID, args}}`; return the JSON result for the method ID (IDs are in `frontend/bindings/.../*service.ts`).
+- **Windows is stricter than Linux/macOS; CI is its first test.** Rename or delete a directory only after `ws.unwatchDir(dir)` (the watcher's open handle makes it fail with "Access is denied"), then `watchDir` the new path. Don't rely on `chmod` to make writes fail (skip such tests on Windows). Never call fsnotify `Add` from the watcher's event loop. Check with `GOOS=windows go vet ./internal/...`, but only CI proves behavior.
 - The Linux webview is WebKitGTK. Avoid bleeding-edge CSS and check rendering on Linux.
 
 ## Build, packaging and release

@@ -1,6 +1,7 @@
 package fsstore
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +12,15 @@ import (
 )
 
 // Watcher reloads the workspace when files change outside the app (git pull,
-// editor) in collections/, environments/ or the manifest, and notifies a callback, debounced. Changes made through the
-// Workspace itself are ignored.
+// editor) in collections/ (at any depth), environments/ or the manifest, and
+// notifies a callback, debounced. Changes made through the Workspace itself
+// are ignored.
+//
+// fsnotify is not recursive: every directory under collections/ gets its
+// own watch. Directories the app creates, renames or moves are watched
+// synchronously (Workspace.watchDir); ones created outside the app are
+// added from their Create event, with everything below them; and any
+// rename or removal of a directory re-syncs all watches.
 type Watcher struct {
 	ws       *Workspace
 	fsw      *fsnotify.Watcher
@@ -60,37 +68,97 @@ func (w *Workspace) Watch(debounce time.Duration, onChange func([]Problem)) (*Wa
 	return wt, nil
 }
 
-// watchDir starts watching a collection folder the app just created, without
-// waiting for the asynchronous create event, so files written into it right
-// away are not missed.
+// watchDir starts watching a directory the app just created, renamed or
+// moved (with every directory below it), without waiting for the
+// asynchronous create event, so files written into it right away are not
+// missed.
 func (w *Workspace) watchDir(dir string) {
 	w.watchersMu.Lock()
 	defer w.watchersMu.Unlock()
 	for wt := range w.watchers {
-		wt.add(dir)
+		wt.addTree(dir)
 	}
+}
+
+// unwatchDir stops watching dir and every directory below it. Windows can't
+// rename a directory while a watch holds it open ("Access is denied"), so
+// the app releases the watches before renaming or moving a folder and
+// re-adds them afterwards with watchDir.
+func (w *Workspace) unwatchDir(dir string) {
+	// Suspend first: a queued add from the watcher's event loop must not
+	// re-open the directory between here and the rename.
+	w.suspMu.Lock()
+	if w.suspended == nil {
+		w.suspended = map[string]struct{}{}
+	}
+	w.suspended[dir] = struct{}{}
+	w.suspMu.Unlock()
+	w.watchersMu.Lock()
+	defer w.watchersMu.Unlock()
+	for wt := range w.watchers {
+		wt.removeTree(dir)
+	}
+}
+
+// resumeDir lifts the suspension set by unwatchDir.
+func (w *Workspace) resumeDir(dir string) {
+	w.suspMu.Lock()
+	delete(w.suspended, dir)
+	w.suspMu.Unlock()
+}
+
+func (w *Workspace) isSuspended(path string) bool {
+	w.suspMu.Lock()
+	defer w.suspMu.Unlock()
+	for d := range w.suspended {
+		if path == d || strings.HasPrefix(path, d+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (wt *Watcher) removeTree(dir string) {
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		_ = wt.fsw.Remove(p) // not watched (hidden, new) is fine
+		return nil
+	})
 }
 
 func (wt *Watcher) add(dir string) {
+	if wt.ws.isSuspended(dir) {
+		return
+	}
 	_ = wt.fsw.Add(dir) // directories that vanish or can't be watched are skipped
 }
 
+// addTree watches dir and every non-hidden directory below it.
+func (wt *Watcher) addTree(dir string) {
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil // unreadable entries are skipped, like in Reload
+		}
+		if !d.IsDir() {
+			return nil
+		}
+		if p != dir && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
+		}
+		wt.add(p)
+		return nil
+	})
+}
+
 // resync (re-)adds watches for the environments dir, the collections dir
-// and every collection folder. fsnotify drops a folder's watch when the folder is renamed, so this
-// runs after renames/removals. Adding an already-watched path is a no-op.
+// and every directory below it. fsnotify drops a folder's watch when the
+// folder is renamed, so this runs after renames/removals. Adding an
+// already-watched path is a no-op.
 func (wt *Watcher) resync() {
 	wt.add(filepath.Join(wt.ws.root, EnvironmentsDir))
-	colRoot := filepath.Join(wt.ws.root, CollectionsDir)
-	wt.add(colRoot)
-	entries, err := os.ReadDir(colRoot)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			wt.add(filepath.Join(colRoot, e.Name()))
-		}
-	}
+	wt.addTree(filepath.Join(wt.ws.root, CollectionsDir))
 }
 
 func (wt *Watcher) loop() {
@@ -118,7 +186,7 @@ func (wt *Watcher) handle(ev fsnotify.Event) {
 	switch {
 	case (ev.Name == colRoot || ev.Name == envDir) && (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
 		wt.queueResync()
-	case wt.watchable(ev.Name) && (ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
+	case wt.watchable(ev.Name) && maybeDir(ev.Name) && (ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
 		wt.queueResync()
 	case wt.watchable(ev.Name) && ev.Has(fsnotify.Create):
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
@@ -184,14 +252,25 @@ func (wt *Watcher) adder() {
 			wt.resync()
 		}
 		for d := range dirs {
-			wt.add(d)
+			wt.addTree(d)
 		}
 	}
 }
 
-// watchable: only the collections dir and its direct children are watched.
-func (wt *Watcher) watchable(dir string) bool {
-	return filepath.Dir(dir) == filepath.Join(wt.ws.root, CollectionsDir)
+// watchable reports whether path is inside the collections dir, where every
+// directory is watched.
+func (wt *Watcher) watchable(path string) bool {
+	rel, err := filepath.Rel(filepath.Join(wt.ws.root, CollectionsDir), path)
+	return err == nil && rel != "." && !filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// maybeDir tells whether a renamed or removed path may have been a watched
+// directory. It can't be checked on disk any more, so it goes by name:
+// request files and the app's temp files (renamed over the target on every
+// save) don't need a re-sync.
+func maybeDir(path string) bool {
+	base := filepath.Base(path)
+	return !strings.HasPrefix(base, tempPrefix) && !isYAML(base)
 }
 
 func (wt *Watcher) relevant(path string) bool {

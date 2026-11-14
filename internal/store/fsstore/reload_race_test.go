@@ -53,7 +53,7 @@ func TestReloadDoesNotDropConcurrentSaves(t *testing.T) {
 	close(stop)
 	wg.Wait()
 
-	if n := len(ws.Tree().Collections[0].Requests); n != 200 {
+	if n := len(ws.Tree().Collections[0].Children); n != 200 {
 		t.Fatalf("requests in index = %d, want 200", n)
 	}
 }

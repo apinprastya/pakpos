@@ -77,15 +77,43 @@ describe("sidebar model helpers", () => {
     expect(
       normalizeTree({
         collections: [
-          { id: "c", name: "C", seq: 1, requests: [{ id: "r", name: "R", method: "", seq: 2 }] },
+          {
+            id: "c",
+            name: "C",
+            seq: 1,
+            children: [
+              { kind: "request", id: "r", name: "R", method: "", seq: 2 },
+              { kind: "folder", id: "f", name: "F", seq: 3, children: [{ kind: "request", id: "r2" }] },
+              { kind: "folder", id: "g", parentId: "c", children: null },
+            ],
+          },
           {},
         ],
         problems: [{ path: "x.yaml", message: "bad" }],
       }),
     ).toEqual({
       collections: [
-        { id: "c", name: "C", seq: 1, requests: [{ id: "r", name: "R", method: "GET", url: "", seq: 2 }] },
-        { id: "", name: "", seq: 0, requests: [] },
+        {
+          kind: "collection",
+          id: "c",
+          name: "C",
+          seq: 1,
+          children: [
+            { kind: "request", id: "r", name: "R", method: "GET", url: "", seq: 2, parentId: "c" },
+            {
+              kind: "folder",
+              id: "f",
+              name: "F",
+              seq: 3,
+              parentId: "c",
+              children: [
+                { kind: "request", id: "r2", name: "", method: "GET", url: "", seq: 0, parentId: "f" },
+              ],
+            },
+            { kind: "folder", id: "g", name: "", seq: 0, parentId: "c", children: [] },
+          ],
+        },
+        { kind: "collection", id: "", name: "", seq: 0, children: [] },
       ],
       problems: [{ path: "x.yaml", message: "bad" }],
     });

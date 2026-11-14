@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { api, type WorkspaceChange } from "@/lib/api";
 import { errorMessage, plural } from "@/lib/errors";
 import {
+  emptyAuth,
   emptyRequest,
   requestsEqual,
   type CollectionNode,
@@ -10,6 +11,16 @@ import {
   type RecentWorkspace,
   type WorkspaceInfo,
 } from "@/lib/model";
+import {
+  findContainer,
+  findNode,
+  findRequest,
+  moveChild,
+  positionOf,
+  requestIds,
+  requestParents,
+  type ChildKind,
+} from "@/lib/tree";
 import { isDirty, tabTitle, useTabsStore } from "@/stores/tabs";
 
 export type WorkspaceStatus = "loading" | "none" | "ready";
@@ -20,7 +31,7 @@ interface WorkspaceState {
   collections: CollectionNode[];
   problems: Problem[];
   recent: RecentWorkspace[];
-  /** Tree item that should start in rename mode (just created). */
+  /** Id of the tree item (collection, folder or request) that should start in rename mode (just created). */
   renameTarget: string | null;
 
   init: () => Promise<void>;
@@ -42,13 +53,23 @@ interface WorkspaceState {
   deleteCollection: (id: string) => Promise<void>;
   reorderCollections: (ids: string[]) => Promise<void>;
 
+  createFolder: (parentId: string, name?: string) => Promise<string | null>;
+  renameFolder: (id: string, name: string) => Promise<void>;
+  deleteFolder: (id: string) => Promise<void>;
+  /**
+   * Moves a folder into a collection or folder at `index` among its children
+   * (not counting the folder itself), or reorders within its own parent.
+   */
+  moveFolder: (id: string, toParentId: string, index: number) => Promise<void>;
+
   openRequest: (id: string) => Promise<void>;
-  newRequest: (collectionId: string) => Promise<void>;
+  /** Creates a request at the end of a collection or folder; it inherits auth from there. */
+  newRequest: (parentId: string) => Promise<void>;
   renameRequest: (id: string, name: string) => Promise<void>;
   duplicateRequest: (id: string) => Promise<void>;
   deleteRequest: (id: string) => Promise<void>;
-  /** Moves a request to another collection at `index`, or reorders within its own. */
-  moveRequest: (id: string, toCollectionId: string, index: number) => Promise<void>;
+  /** Like moveFolder, for a request. */
+  moveRequest: (id: string, toParentId: string, index: number) => Promise<void>;
 }
 
 const NOT_WORKSPACE = "not a pakpos workspace";
@@ -56,10 +77,6 @@ const ALREADY_EXISTS = "a workspace already exists here";
 
 function fail(title: string, e: unknown) {
   toast.error(title, { description: errorMessage(e) });
-}
-
-function collectionOf(collections: CollectionNode[], requestId: string): CollectionNode | undefined {
-  return collections.find((c) => c.requests.some((r) => r.id === requestId));
 }
 
 /**
@@ -85,10 +102,13 @@ function releaseForeignTabs(workspaceId: string | null) {
   }
 }
 
-/** Brings open tabs in line with the tree (and, with `fromDisk`, with file contents). */
+/**
+ * Brings open tabs in line with the tree (and, with `fromDisk`, with file
+ * contents): a tab follows its request to a new parent after a move, and is
+ * detached when the request is gone.
+ */
 async function syncTabs(workspaceId: string, collections: CollectionNode[], fromDisk: boolean) {
-  const location = new Map<string, string>();
-  for (const c of collections) for (const r of c.requests) location.set(r.id, c.id);
+  const location = requestParents(collections);
 
   const deleted: string[] = [];
   const changedWithEdits: string[] = [];
@@ -98,8 +118,8 @@ async function syncTabs(workspaceId: string, collections: CollectionNode[], from
 
   for (const candidate of candidates) {
     const id = candidate.saved!.id;
-    const collectionId = location.get(id);
-    if (!collectionId) {
+    const parentId = location.get(id);
+    if (!parentId) {
       deleted.push(tabTitle(candidate));
       useTabsStore.getState().detach(candidate.id);
       continue;
@@ -110,14 +130,14 @@ async function syncTabs(workspaceId: string, collections: CollectionNode[], from
         const tab = useTabsStore.getState().tabs.find((t) => t.id === candidate.id);
         if (tab?.saved && !requestsEqual(disk, tab.saved)) {
           if (isDirty(tab)) changedWithEdits.push(tabTitle(tab));
-          useTabsStore.getState().applyDiskVersion(tab.id, disk, collectionId);
+          useTabsStore.getState().applyDiskVersion(tab.id, disk, parentId);
         }
       } catch {
         // Unreadable right now (e.g. mid-write); the next change event retries.
       }
     }
     useTabsStore.setState((s) => ({
-      tabs: s.tabs.map((t) => (t.id === candidate.id ? { ...t, collectionId, workspaceId } : t)),
+      tabs: s.tabs.map((t) => (t.id === candidate.id ? { ...t, parentId, workspaceId } : t)),
     }));
   }
 
@@ -305,7 +325,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
         fail("Couldn't delete the collection", e);
         return;
       }
-      for (const r of col?.requests ?? []) closeOrDetach(r.id);
+      for (const id of col ? requestIds(col) : []) closeOrDetach(id);
       await get().refresh();
       toast.success("Collection deleted");
     },
@@ -321,6 +341,45 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       await get().refresh();
     },
 
+    createFolder: async (parentId, name = "New folder") => {
+      try {
+        const f = await api.createFolder(parentId, name);
+        await get().refresh();
+        set({ renameTarget: f.id });
+        return f.id;
+      } catch (e) {
+        fail("Couldn't create the folder", e);
+        return null;
+      }
+    },
+
+    renameFolder: async (id, name) => {
+      const trimmed = name.trim();
+      const current = findNode(get().collections, id, "folder");
+      if (!trimmed || !current || current.name === trimmed) return;
+      try {
+        await api.renameFolder(id, trimmed);
+      } catch (e) {
+        fail("Couldn't rename the folder", e);
+      }
+      await get().refresh();
+    },
+
+    deleteFolder: async (id) => {
+      const folder = findNode(get().collections, id, "folder");
+      try {
+        await api.deleteFolder(id);
+      } catch (e) {
+        fail("Couldn't delete the folder", e);
+        return;
+      }
+      for (const rid of folder ? requestIds(folder) : []) closeOrDetach(rid);
+      await get().refresh();
+      toast.success("Folder deleted");
+    },
+
+    moveFolder: (id, toParentId, index) => moveItem("folder", id, toParentId, index),
+
     openRequest: async (id) => {
       const ws = get().workspace;
       const existing = useTabsStore.getState().tabs.find((t) => t.saved?.id === id);
@@ -330,18 +389,23 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       }
       try {
         const req = await api.getRequest(id);
-        const col = collectionOf(get().collections, id);
-        useTabsStore.getState().openSaved(req, col?.id ?? "", ws?.id ?? "");
+        const parentId = requestParents(get().collections).get(id) ?? "";
+        useTabsStore.getState().openSaved(req, parentId, ws?.id ?? "");
       } catch (e) {
         fail("Couldn't open the request", e);
       }
     },
 
-    newRequest: async (collectionId) => {
+    newRequest: async (parentId) => {
       try {
-        const req = await api.saveAs(collectionId, "New request", { ...emptyRequest(), name: "New request" });
+        const draft = {
+          ...emptyRequest(),
+          name: "New request",
+          auth: { ...emptyAuth(), type: "inherit" as const },
+        };
+        const req = await api.saveAs(parentId, "New request", draft);
         await get().refresh();
-        useTabsStore.getState().openSaved(req, collectionId, get().workspace?.id ?? "");
+        useTabsStore.getState().openSaved(req, parentId, get().workspace?.id ?? "");
         set({ renameTarget: req.id });
       } catch (e) {
         fail("Couldn't create the request", e);
@@ -350,9 +414,7 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
 
     renameRequest: async (id, name) => {
       const trimmed = name.trim();
-      const summary = get()
-        .collections.flatMap((c) => c.requests)
-        .find((r) => r.id === id);
+      const summary = findRequest(get().collections, id);
       if (!trimmed || !summary || summary.name === trimmed) return;
       try {
         await api.renameRequest(id, trimmed);
@@ -386,35 +448,32 @@ export const useWorkspaceStore = create<WorkspaceState>()((set, get) => {
       toast.success("Request deleted");
     },
 
-    moveRequest: async (id, toCollectionId, index) => {
-      const collections = get().collections;
-      const from = collectionOf(collections, id);
-      const to = collections.find((c) => c.id === toCollectionId);
-      if (!from || !to) return;
-      const moving = from.requests.find((r) => r.id === id)!;
-      const target = to.requests.filter((r) => r.id !== id);
-      const at = Math.max(0, Math.min(index, target.length));
-      target.splice(at, 0, moving);
-      const ids = target.map((r) => r.id);
-      if (from.id === to.id && ids.join() === from.requests.map((r) => r.id).join()) return;
-
-      // Optimistic: show the new order right away.
-      set({
-        collections: collections.map((c) => {
-          if (c.id === to.id) return { ...c, requests: target };
-          if (c.id === from.id) return { ...c, requests: c.requests.filter((r) => r.id !== id) };
-          return c;
-        }),
-      });
-      try {
-        if (from.id !== to.id) await api.moveRequest(id, to.id);
-        await api.reorderRequests(to.id, ids);
-      } catch (e) {
-        fail("Couldn't move the request", e);
-      }
-      await get().refresh();
-    },
+    moveRequest: (id, toParentId, index) => moveItem("request", id, toParentId, index),
   };
+
+  /**
+   * Moves a folder or request, showing the result right away. Open tabs
+   * follow through the refresh (syncTabs): a moved request's tab gets its
+   * new parent, and tabs inside a moved folder keep theirs.
+   */
+  async function moveItem(kind: ChildKind, id: string, toParentId: string, index: number) {
+    const collections = get().collections;
+    const from = positionOf(collections, kind, id);
+    const target = findContainer(collections, toParentId);
+    if (!from || !target) return;
+    const others = target.children.filter((c) => !(c.kind === kind && c.id === id));
+    const at = Math.max(0, Math.min(index, others.length));
+    if (from.parentId === toParentId && from.index === at) return;
+
+    set({ collections: moveChild(collections, kind, id, toParentId, at) });
+    try {
+      if (kind === "folder") await api.moveFolder(id, toParentId, at);
+      else await api.moveRequest(id, toParentId, at);
+    } catch (e) {
+      fail(kind === "folder" ? "Couldn't move the folder" : "Couldn't move the request", e);
+    }
+    await get().refresh();
+  }
 
   async function createAt(path: string) {
     try {

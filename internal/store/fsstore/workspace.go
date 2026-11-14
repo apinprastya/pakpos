@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +22,12 @@ const (
 	ManifestFile   = "pakpos.yaml"
 	CollectionsDir = "collections"
 	CollectionFile = "_collection.yaml"
+	// FolderFile marks a subdirectory of a collection (at any depth) as a
+	// folder. A subdirectory without one is reported as a problem.
+	FolderFile = "_folder.yaml"
+	// ExamplesSuffix marks a request's saved response examples (a sidecar
+	// file next to the request, see M7). The request loader skips it.
+	ExamplesSuffix = ".examples.yaml"
 	// EnvironmentsDir holds one file per environment plus GlobalsFile.
 	EnvironmentsDir = "environments"
 	GlobalsFile     = "_globals.yaml"
@@ -31,11 +36,12 @@ const (
 	// FormatVersion is the newest workspace format this build understands
 	// and the version new workspaces are created with.
 	//
-	// v2 adds environments/, globals, secret variables and (later) nested
-	// folders; every change is additive, so a v1 workspace opens as is. Its
-	// manifest is only rewritten to v2 when the app first writes something
-	// v2-specific (an environment or the globals), so merely opening a
-	// Tier 1 workspace never changes it.
+	// v2 adds environments/, globals, secret variables and nested folders;
+	// every change is additive, so a v1 workspace opens as is. Its manifest
+	// is only rewritten to v2 when the app first writes something
+	// v2-specific (an environment, the globals, a folder, or collection
+	// settings with a secret variable), so merely opening a Tier 1
+	// workspace never changes it.
 	FormatVersion = 2
 )
 
@@ -45,6 +51,9 @@ var (
 	ErrAlreadyExists = errors.New("a workspace already exists here")
 	ErrNotFound      = errors.New("not found")
 	ErrUnsupported   = errors.New("workspace format is newer than this app")
+	// ErrInvalidMove is returned when a folder would be moved into itself
+	// or one of its own subfolders.
+	ErrInvalidMove = errors.New("a folder can't be moved into itself or one of its subfolders")
 )
 
 // Manifest is the content of pakpos.yaml.
@@ -75,14 +84,8 @@ type RequestSummary struct {
 	// URL lets the sidebar filter match on the request URL.
 	URL string `json:"url"`
 	Seq int    `json:"seq"`
-}
-
-// CollectionNode is one collection with its requests, ordered by Seq.
-type CollectionNode struct {
-	ID       string           `json:"id"`
-	Name     string           `json:"name"`
-	Seq      int              `json:"seq"`
-	Requests []RequestSummary `json:"requests"`
+	// ParentID is the collection or folder holding the request.
+	ParentID string `json:"parentId"`
 }
 
 // Problem is a file that could not be loaded (e.g. hand-edited invalid YAML).
@@ -92,16 +95,17 @@ type Problem struct {
 	Message string `json:"message"`
 }
 
-// Tree is the whole workspace as shown in the sidebar.
+// Tree is the whole workspace as shown in the sidebar: collection nodes,
+// each holding folders and requests (see Node).
 type Tree struct {
-	Collections []CollectionNode `json:"collections"`
-	Problems    []Problem        `json:"problems"`
+	Collections []Node    `json:"collections"`
+	Problems    []Problem `json:"problems"`
 }
 
 type reqEntry struct {
-	collectionID string
-	file         string // file name inside the collection dir
-	summary      RequestSummary
+	parentID string // collection or folder id
+	file     string // file name inside the parent's directory
+	summary  RequestSummary
 }
 
 type colEntry struct {
@@ -116,6 +120,7 @@ type Workspace struct {
 
 	mu          sync.Mutex
 	collections map[string]*colEntry
+	folders     map[string]*folderEntry
 	requests    map[string]*reqEntry
 	envs        map[string]*envEntry
 	globals     *Globals // nil until _globals.yaml exists
@@ -129,6 +134,11 @@ type Workspace struct {
 
 	watchersMu sync.Mutex
 	watchers   map[*Watcher]struct{}
+
+	// Directories about to be renamed or deleted; no watch is added below
+	// them until resumeDir (see unwatchDir).
+	suspMu    sync.Mutex
+	suspended map[string]struct{}
 }
 
 // Create initialises a new workspace in root (created if missing).
@@ -194,6 +204,7 @@ func newWorkspace(root string, m Manifest) *Workspace {
 		root:        root,
 		manifest:    m,
 		collections: map[string]*colEntry{},
+		folders:     map[string]*folderEntry{},
 		requests:    map[string]*reqEntry{},
 		envs:        map[string]*envEntry{},
 		writes:      map[string]time.Time{},
@@ -235,17 +246,19 @@ func (w *Workspace) upgradeManifestLocked() error {
 func (w *Workspace) Reload() []Problem {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	cols := map[string]*colEntry{}
-	reqs := map[string]*reqEntry{}
-	var problems []Problem
-	addProblem := func(abs, msg string) {
-		problems = append(problems, Problem{Path: w.rel(abs), Message: msg})
+	sc := &scan{
+		cols:    map[string]*colEntry{},
+		folders: map[string]*folderEntry{},
+		reqs:    map[string]*reqEntry{},
+	}
+	sc.addProblem = func(abs, msg string) {
+		sc.problems = append(sc.problems, Problem{Path: w.rel(abs), Message: msg})
 	}
 
 	colRoot := filepath.Join(w.root, CollectionsDir)
 	dirs, err := os.ReadDir(colRoot)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		addProblem(colRoot, err.Error())
+		sc.addProblem(colRoot, err.Error())
 	}
 	for _, d := range dirs {
 		if !d.IsDir() || strings.HasPrefix(d.Name(), ".") {
@@ -259,85 +272,130 @@ func (w *Workspace) Reload() []Problem {
 			if errors.Is(err, os.ErrNotExist) {
 				msg = "folder has no " + CollectionFile + "; it is not loaded as a collection"
 			}
-			addProblem(metaPath, msg)
+			sc.addProblem(metaPath, msg)
 			continue
 		}
 		if meta.ID == "" {
-			addProblem(metaPath, "missing id")
+			sc.addProblem(metaPath, "missing id")
 			continue
 		}
-		if _, dup := cols[meta.ID]; dup {
-			addProblem(metaPath, "duplicate collection id "+meta.ID)
+		if sc.containerExists(meta.ID) {
+			sc.addProblem(metaPath, "duplicate collection id "+meta.ID)
 			continue
 		}
 		if meta.Name == "" {
 			meta.Name = d.Name()
 		}
-		cols[meta.ID] = &colEntry{meta: meta, dir: d.Name()}
-		w.loadRequests(meta.ID, dirPath, reqs, addProblem)
+		sc.cols[meta.ID] = &colEntry{meta: meta, dir: d.Name()}
+		w.loadDir(sc, meta.ID, dirPath)
 	}
 
-	envs, globals := w.loadEnvironments(addProblem)
+	envs, globals := w.loadEnvironments(sc.addProblem)
 
-	w.collections, w.requests, w.problems = cols, reqs, problems
+	w.collections, w.folders, w.requests, w.problems = sc.cols, sc.folders, sc.reqs, sc.problems
 	if globals == nil && w.globals != nil {
 		// _globals.yaml vanished (e.g. git checkout): keep its ID, so a later
 		// save reuses it and secret keys stay valid.
 		w.pendingGlobalsID = w.globals.ID
 	}
 	w.envs, w.globals = envs, globals
-	return problems
+	return sc.problems
 }
 
-func (w *Workspace) loadRequests(colID, dirPath string, reqs map[string]*reqEntry, addProblem func(string, string)) {
-	files, err := os.ReadDir(dirPath)
+// scan collects the index while Reload walks the workspace.
+type scan struct {
+	cols       map[string]*colEntry
+	folders    map[string]*folderEntry
+	reqs       map[string]*reqEntry
+	problems   []Problem
+	addProblem func(abs, msg string)
+}
+
+// containerExists reports whether a collection or folder already uses id;
+// both share one namespace because either can be a request's parent.
+func (sc *scan) containerExists(id string) bool {
+	_, col := sc.cols[id]
+	_, folder := sc.folders[id]
+	return col || folder
+}
+
+// loadDir loads the requests and folders directly inside dirPath, which is
+// the directory of the collection or folder parentID, and recurses into
+// the folders.
+func (w *Workspace) loadDir(sc *scan, parentID, dirPath string) {
+	entries, err := os.ReadDir(dirPath)
 	if err != nil {
-		addProblem(dirPath, err.Error())
+		sc.addProblem(dirPath, err.Error())
 		return
 	}
-	for _, f := range files {
+	for _, f := range entries {
 		name := f.Name()
-		if f.IsDir() || name == CollectionFile || !isYAML(name) || strings.HasPrefix(name, ".") {
+		if strings.HasPrefix(name, ".") {
 			continue
 		}
 		p := filepath.Join(dirPath, name)
+		if f.IsDir() {
+			w.loadFolder(sc, parentID, p)
+			continue
+		}
+		if !isRequestFile(name) {
+			continue
+		}
 		var r model.Request
 		if err := readYAML(p, &r); err != nil {
-			addProblem(p, err.Error())
+			sc.addProblem(p, err.Error())
 			continue
 		}
 		if r.ID == "" {
-			addProblem(p, "missing id")
+			sc.addProblem(p, "missing id")
 			continue
 		}
-		if _, dup := reqs[r.ID]; dup {
-			addProblem(p, "duplicate request id "+r.ID)
+		if _, dup := sc.reqs[r.ID]; dup {
+			sc.addProblem(p, "duplicate request id "+r.ID)
 			continue
 		}
-		reqs[r.ID] = &reqEntry{collectionID: colID, file: name, summary: summarize(r)}
+		s := summarize(r)
+		s.ParentID = parentID
+		sc.reqs[r.ID] = &reqEntry{parentID: parentID, file: name, summary: s}
 	}
 }
 
-// Tree returns the collections and request summaries ordered by Seq (then name).
-func (w *Workspace) Tree() Tree {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	nodes := make([]CollectionNode, 0, len(w.collections))
-	byCol := map[string][]RequestSummary{}
-	for _, r := range w.requests {
-		byCol[r.collectionID] = append(byCol[r.collectionID], r.summary)
-	}
-	for id, c := range w.collections {
-		reqs := byCol[id]
-		if reqs == nil {
-			reqs = []RequestSummary{}
+// loadFolder loads the folder in dirPath (a subdirectory of parentID's
+// directory). A subdirectory without a valid _folder.yaml is reported and
+// skipped together with everything inside it.
+func (w *Workspace) loadFolder(sc *scan, parentID, dirPath string) {
+	metaPath := filepath.Join(dirPath, FolderFile)
+	var meta Folder
+	if err := readYAML(metaPath, &meta); err != nil {
+		msg := err.Error()
+		if errors.Is(err, os.ErrNotExist) {
+			msg = "folder has no " + FolderFile + "; it and its contents are not loaded"
 		}
-		sort.Slice(reqs, func(i, j int) bool { return lessSeq(reqs[i].Seq, reqs[j].Seq, reqs[i].Name, reqs[j].Name) })
-		nodes = append(nodes, CollectionNode{ID: id, Name: c.meta.Name, Seq: c.meta.Seq, Requests: reqs})
+		sc.addProblem(metaPath, msg)
+		return
 	}
-	sort.Slice(nodes, func(i, j int) bool { return lessSeq(nodes[i].Seq, nodes[j].Seq, nodes[i].Name, nodes[j].Name) })
-	problems := append([]Problem{}, w.problems...)
-	return Tree{Collections: nodes, Problems: problems}
+	if meta.ID == "" {
+		sc.addProblem(metaPath, "missing id")
+		return
+	}
+	if sc.containerExists(meta.ID) {
+		sc.addProblem(metaPath, "duplicate folder id "+meta.ID)
+		return
+	}
+	if meta.Name == "" {
+		meta.Name = filepath.Base(dirPath)
+	}
+	sc.folders[meta.ID] = &folderEntry{meta: meta, parentID: parentID, dir: filepath.Base(dirPath)}
+	w.loadDir(sc, meta.ID, dirPath)
+}
+
+// isRequestFile reports whether a file in a collection or folder directory
+// holds a request: YAML, and not one of the reserved files.
+func isRequestFile(name string) bool {
+	if !isYAML(name) || name == CollectionFile || name == FolderFile {
+		return false
+	}
+	return !strings.HasSuffix(strings.ToLower(name), ExamplesSuffix)
 }
 
 func lessSeq(a, b int, an, bn string) bool {
@@ -357,7 +415,7 @@ func (w *Workspace) GetCollection(id string) (Collection, error) {
 	if !ok {
 		return Collection{}, fmt.Errorf("collection %s: %w", id, ErrNotFound)
 	}
-	return c.meta, nil
+	return copyCollection(c.meta), nil
 }
 
 // CreateCollection adds a collection at the end of the list.
@@ -368,7 +426,7 @@ func (w *Workspace) CreateCollection(name string) (Collection, error) {
 
 	colRoot := filepath.Join(w.root, CollectionsDir)
 	if err := os.MkdirAll(colRoot, 0o755); err != nil {
-		return Collection{}, err
+		return Collection{}, fmt.Errorf("create collections folder: %w", err)
 	}
 	dir := uniqueName(colRoot, slugify(name, "collection"), "")
 	meta := Collection{ID: model.NewID(), Name: name, Seq: w.nextCollectionSeq()}
@@ -402,21 +460,66 @@ func (w *Workspace) RenameCollection(id, name string) (Collection, error) {
 		oldPath, newPath := filepath.Join(colRoot, c.dir), filepath.Join(colRoot, newDir)
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
-		if err := os.Rename(oldPath, newPath); err != nil {
+		w.unwatchDir(oldPath)
+		rerr := os.Rename(oldPath, newPath)
+		w.resumeDir(oldPath)
+		if rerr != nil {
+			w.watchDir(oldPath)
+			err := rerr
 			return Collection{}, fmt.Errorf("rename collection folder: %w", err)
 		}
+		c.dir = newDir
 		w.watchDir(newPath)
 	}
-	meta := c.meta
+	meta := copyCollection(c.meta)
 	meta.Name = name
 	if err := w.writeYAML(filepath.Join(colRoot, newDir, CollectionFile), meta); err != nil {
 		return Collection{}, err
 	}
-	c.meta, c.dir = meta, newDir
-	return meta, nil
+	c.meta = meta
+	return copyCollection(meta), nil
 }
 
-// DeleteCollection removes a collection folder and all its requests.
+// CollectionSettings are the parts of a collection its requests inherit
+// (auth, headers) or resolve variables from.
+type CollectionSettings struct {
+	Auth      model.Auth       `json:"auth"`
+	Headers   []model.KeyValue `json:"headers"`
+	Variables []model.Variable `json:"variables"`
+}
+
+// SaveCollection replaces a collection's auth, headers and variables.
+// Secret variable values are never written (only the key and flag are);
+// the returned collection has them cleared too. Saving a secret variable
+// upgrades a v1 manifest, since a Tier 1 build would drop the flag.
+func (w *Workspace) SaveCollection(id string, s CollectionSettings) (Collection, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	c, ok := w.collections[id]
+	if !ok {
+		return Collection{}, fmt.Errorf("collection %s: %w", id, ErrNotFound)
+	}
+	meta := c.meta
+	meta.Auth = s.Auth
+	meta.Headers = append([]model.KeyValue(nil), s.Headers...)
+	meta.Variables = normalizeVars(s.Variables)
+	for _, v := range meta.Variables {
+		if v.Secret {
+			if err := w.upgradeManifestLocked(); err != nil {
+				return Collection{}, err
+			}
+			break
+		}
+	}
+	path := filepath.Join(w.root, CollectionsDir, c.dir, CollectionFile)
+	if err := w.writeYAML(path, meta); err != nil {
+		return Collection{}, fmt.Errorf("save collection %q: %w", meta.Name, err)
+	}
+	c.meta = meta
+	return copyCollection(meta), nil
+}
+
+// DeleteCollection removes a collection folder with all its folders and requests.
 func (w *Workspace) DeleteCollection(id string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -425,16 +528,16 @@ func (w *Workspace) DeleteCollection(id string) error {
 		return fmt.Errorf("collection %s: %w", id, ErrNotFound)
 	}
 	dirPath := filepath.Join(w.root, CollectionsDir, c.dir)
-	w.markWrite(dirPath)
-	if err := os.RemoveAll(dirPath); err != nil {
-		return fmt.Errorf("delete collection: %w", err)
+	w.markTree(dirPath)
+	w.unwatchDir(dirPath)
+	rerr := os.RemoveAll(dirPath)
+	w.resumeDir(dirPath)
+	if rerr != nil {
+		w.watchDir(dirPath)
+		return fmt.Errorf("delete collection: %w", rerr)
 	}
+	w.dropSubtreeLocked(id)
 	delete(w.collections, id)
-	for rid, r := range w.requests {
-		if r.collectionID == id {
-			delete(w.requests, rid)
-		}
-	}
 	return nil
 }
 
@@ -471,6 +574,12 @@ func (w *Workspace) nextCollectionSeq() int {
 	return maxSeq + 1
 }
 
+func copyCollection(c Collection) Collection {
+	c.Headers = append([]model.KeyValue{}, c.Headers...)
+	c.Variables = append([]model.Variable{}, c.Variables...)
+	return c
+}
+
 // ---- requests ----
 
 // GetRequest reads a request from disk.
@@ -488,7 +597,8 @@ func (w *Workspace) GetRequest(id string) (model.Request, error) {
 	return r, nil
 }
 
-// RequestCollection returns the id of the collection holding a request.
+// RequestCollection returns the id of the collection holding a request,
+// directly or through folders.
 func (w *Workspace) RequestCollection(id string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -496,35 +606,45 @@ func (w *Workspace) RequestCollection(id string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("request %s: %w", id, ErrNotFound)
 	}
-	return r.collectionID, nil
+	return w.collectionOfLocked(r.parentID)
 }
 
-// CreateRequest saves a new request at the end of a collection. A new ID is
-// assigned when req.ID is empty or already used.
-func (w *Workspace) CreateRequest(collectionID string, req model.Request) (model.Request, error) {
+// RequestParent returns the id of the collection or folder directly holding a request.
+func (w *Workspace) RequestParent(id string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.createLocked(collectionID, req)
+	r, ok := w.requests[id]
+	if !ok {
+		return "", fmt.Errorf("request %s: %w", id, ErrNotFound)
+	}
+	return r.parentID, nil
 }
 
-func (w *Workspace) createLocked(collectionID string, req model.Request) (model.Request, error) {
-	c, ok := w.collections[collectionID]
-	if !ok {
-		return model.Request{}, fmt.Errorf("collection %s: %w", collectionID, ErrNotFound)
+// CreateRequest saves a new request at the end of a collection or folder.
+// A new ID is assigned when req.ID is empty or already used.
+func (w *Workspace) CreateRequest(parentID string, req model.Request) (model.Request, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.createLocked(parentID, req)
+}
+
+func (w *Workspace) createLocked(parentID string, req model.Request) (model.Request, error) {
+	dirPath, err := w.dirLocked(parentID)
+	if err != nil {
+		return model.Request{}, err
 	}
 	if _, used := w.requests[req.ID]; req.ID == "" || used {
 		req.ID = model.NewID()
 	}
 	req.Name = cleanName(req.Name, "Untitled request")
 	normalizeRequest(&req)
-	req.Seq = w.nextRequestSeq(collectionID)
+	req.Seq = w.nextSeqLocked(parentID)
 
-	dirPath := filepath.Join(w.root, CollectionsDir, c.dir)
 	file := uniqueName(dirPath, slugify(req.Name, "request"), ".yaml")
 	if err := w.writeYAML(filepath.Join(dirPath, file), req); err != nil {
 		return model.Request{}, err
 	}
-	w.requests[req.ID] = &reqEntry{collectionID: collectionID, file: file, summary: summarize(req)}
+	w.requests[req.ID] = &reqEntry{parentID: parentID, file: file, summary: summaryIn(req, parentID)}
 	return req, nil
 }
 
@@ -547,7 +667,10 @@ func (w *Workspace) SaveRequest(req model.Request) (model.Request, error) {
 
 // writeRequest writes req to e's file, renaming the file if the name's slug changed.
 func (w *Workspace) writeRequest(e *reqEntry, req model.Request) error {
-	dirPath := filepath.Join(w.root, CollectionsDir, w.collections[e.collectionID].dir)
+	dirPath, err := w.dirLocked(e.parentID)
+	if err != nil {
+		return err
+	}
 	file := e.file
 	if slug := slugify(req.Name, "request"); slug+".yaml" != file {
 		file = uniqueName(dirPath, slug, ".yaml")
@@ -563,7 +686,7 @@ func (w *Workspace) writeRequest(e *reqEntry, req model.Request) error {
 		}
 	}
 	e.file = file
-	e.summary = summarize(req)
+	e.summary = summaryIn(req, e.parentID)
 	return nil
 }
 
@@ -586,7 +709,7 @@ func (w *Workspace) RenameRequest(id, name string) (model.Request, error) {
 	return r, nil
 }
 
-// DuplicateRequest copies a request into the same collection as "<name> copy".
+// DuplicateRequest copies a request into the same parent as "<name> copy".
 func (w *Workspace) DuplicateRequest(id string) (model.Request, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -600,7 +723,7 @@ func (w *Workspace) DuplicateRequest(id string) (model.Request, error) {
 	}
 	r.ID = ""
 	r.Name += " copy"
-	return w.createLocked(e.collectionID, r)
+	return w.createLocked(e.parentID, r)
 }
 
 // DeleteRequest removes a request file.
@@ -619,87 +742,26 @@ func (w *Workspace) DeleteRequest(id string) error {
 	return nil
 }
 
-// MoveRequest moves a request to the end of another collection, keeping its ID.
-func (w *Workspace) MoveRequest(id, toCollectionID string) (model.Request, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	path, e, err := w.requestPath(id)
-	if err != nil {
-		return model.Request{}, err
-	}
-	if _, ok := w.collections[toCollectionID]; !ok {
-		return model.Request{}, fmt.Errorf("collection %s: %w", toCollectionID, ErrNotFound)
-	}
-	var r model.Request
-	if err := readYAML(path, &r); err != nil {
-		return model.Request{}, fmt.Errorf("read request %s: %w", id, err)
-	}
-	if e.collectionID == toCollectionID {
-		return r, nil
-	}
-	delete(w.requests, id)
-	moved, err := w.createLocked(toCollectionID, r)
-	if err != nil {
-		w.requests[id] = e
-		return model.Request{}, err
-	}
-	w.markWrite(path)
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return model.Request{}, fmt.Errorf("remove moved request: %w", err)
-	}
-	return moved, nil
-}
-
-// ReorderRequests sets Seq within a collection from the given order.
-func (w *Workspace) ReorderRequests(collectionID string, ids []string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if _, ok := w.collections[collectionID]; !ok {
-		return fmt.Errorf("collection %s: %w", collectionID, ErrNotFound)
-	}
-	for _, id := range ids {
-		if e, ok := w.requests[id]; !ok || e.collectionID != collectionID {
-			return fmt.Errorf("request %s in collection %s: %w", id, collectionID, ErrNotFound)
-		}
-	}
-	for i, id := range ids {
-		e := w.requests[id]
-		if e.summary.Seq == i+1 {
-			continue
-		}
-		path := filepath.Join(w.root, CollectionsDir, w.collections[collectionID].dir, e.file)
-		var r model.Request
-		if err := readYAML(path, &r); err != nil {
-			return fmt.Errorf("read request %s: %w", id, err)
-		}
-		r.Seq = i + 1
-		if err := w.writeYAML(path, r); err != nil {
-			return err
-		}
-		e.summary.Seq = r.Seq
-	}
-	return nil
-}
-
 func (w *Workspace) requestPath(id string) (string, *reqEntry, error) {
 	e, ok := w.requests[id]
 	if !ok {
 		return "", nil, fmt.Errorf("request %s: %w", id, ErrNotFound)
 	}
-	return filepath.Join(w.root, CollectionsDir, w.collections[e.collectionID].dir, e.file), e, nil
-}
-
-func (w *Workspace) nextRequestSeq(collectionID string) int {
-	maxSeq := 0
-	for _, r := range w.requests {
-		if r.collectionID == collectionID {
-			maxSeq = max(maxSeq, r.summary.Seq)
-		}
+	dir, err := w.dirLocked(e.parentID)
+	if err != nil {
+		return "", nil, err
 	}
-	return maxSeq + 1
+	return filepath.Join(dir, e.file), e, nil
 }
 
 // ---- helpers ----
+
+// summaryIn summarizes r as a child of parentID.
+func summaryIn(r model.Request, parentID string) RequestSummary {
+	s := summarize(r)
+	s.ParentID = parentID
+	return s
+}
 
 func summarize(r model.Request) RequestSummary {
 	method := strings.ToUpper(r.Method)

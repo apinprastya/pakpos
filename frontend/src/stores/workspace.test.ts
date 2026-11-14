@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { api } from "@/lib/api";
-import { emptyRequest, type CollectionNode, type Request } from "@/lib/model";
+import { emptyRequest, type CollectionNode, type FolderNode, type Request } from "@/lib/model";
+import { col as fcol, folder as ffolder, req as freq } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 import { useTabsStore } from "./tabs";
 import { useWorkspaceStore } from "./workspace";
@@ -28,12 +29,13 @@ const req = (id: string, extra: Partial<Request> = {}): Request => ({
   url: `https://x/${id}`,
   ...extra,
 });
-const col = (id: string, reqIds: string[]): CollectionNode => ({
-  id,
-  name: `Col ${id}`,
-  seq: 0,
-  requests: reqIds.map((r, i) => ({ id: r, name: `Req ${r}`, method: "GET", url: `https://x/${r}`, seq: i })),
-});
+const col = (id: string, reqIds: string[], folders: FolderNode[] = []): CollectionNode =>
+  fcol(id, `Col ${id}`, [...reqIds.map((r) => freq(r, `Req ${r}`, "GET", `https://x/${r}`)), ...folders]);
+const fold = (id: string, reqIds: string[], folders: FolderNode[] = []): FolderNode =>
+  ffolder(id, `Folder ${id}`, [
+    ...reqIds.map((r) => freq(r, `Req ${r}`, "GET", `https://x/${r}`)),
+    ...folders,
+  ]);
 
 function mockTree(collections: CollectionNode[], problems = [] as { path: string; message: string }[]) {
   vi.mocked(api.tree).mockResolvedValue({ collections, problems });
@@ -185,7 +187,7 @@ describe("workspace store: tabs follow the workspace", () => {
           id: "a",
           request: clean,
           saved: clean,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "old",
           sendId: null,
           result: null,
@@ -194,7 +196,7 @@ describe("workspace store: tabs follow the workspace", () => {
           id: "b",
           request: { ...req("r2"), url: "https://edited" },
           saved: req("r2"),
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "old",
           sendId: null,
           result: null,
@@ -218,7 +220,7 @@ describe("workspace store: tabs follow the workspace", () => {
           id: "a",
           request: r1,
           saved: r1,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "w1",
           sendId: null,
           result: null,
@@ -227,7 +229,7 @@ describe("workspace store: tabs follow the workspace", () => {
           id: "b",
           request: { ...r2, url: "https://mine" },
           saved: r2,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "",
           sendId: null,
           result: null,
@@ -236,7 +238,7 @@ describe("workspace store: tabs follow the workspace", () => {
           id: "c",
           request: r1,
           saved: r1,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "w1",
           sendId: null,
           result: null,
@@ -253,7 +255,7 @@ describe("workspace store: tabs follow the workspace", () => {
 
     const [a, b] = tabs();
     expect(a.request.url).toBe("https://disk/r1");
-    expect(a.collectionId).toBe("c2");
+    expect(a.parentId).toBe("c2");
     expect(b.request.url).toBe("https://mine");
     expect(b.saved?.url).toBe("https://disk/r2");
     expect(b.workspaceId).toBe("w1");
@@ -291,7 +293,7 @@ describe("workspace store: tabs follow the workspace", () => {
           id: "a",
           request: r1,
           saved: r1,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "w1",
           sendId: null,
           result: null,
@@ -352,7 +354,7 @@ describe("workspace store: collections and requests", () => {
           id: "a",
           request: r1,
           saved: r1,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "w1",
           sendId: null,
           result: null,
@@ -361,7 +363,7 @@ describe("workspace store: collections and requests", () => {
           id: "b",
           request: { ...r2, url: "https://edit" },
           saved: r2,
-          collectionId: "c1",
+          parentId: "c1",
           workspaceId: "w1",
           sendId: null,
           result: null,
@@ -394,7 +396,7 @@ describe("workspace store: collections and requests", () => {
   it("openRequest opens a tab once and focuses it after", async () => {
     await s().openRequest("r1");
     const opened = useTabsStore.getState().activeId;
-    expect(activeTab()).toMatchObject({ collectionId: "c1", workspaceId: "w1" });
+    expect(activeTab()).toMatchObject({ parentId: "c1", workspaceId: "w1" });
     useTabsStore.getState().newTab();
     await s().openRequest("r1");
     expect(useTabsStore.getState().activeId).toBe(opened);
@@ -412,7 +414,7 @@ describe("workspace store: collections and requests", () => {
     expect(api.saveAs).toHaveBeenCalledWith(
       "c1",
       "New request",
-      expect.objectContaining({ name: "New request" }),
+      expect.objectContaining({ name: "New request", auth: expect.objectContaining({ type: "inherit" }) }),
     );
     expect(activeTab().saved?.id).toBe("r9");
     expect(s().renameTarget).toBe("r9");
@@ -463,26 +465,147 @@ describe("workspace store: collections and requests", () => {
     await s().moveRequest("r1", "c1", 0);
     await s().moveRequest("missing", "c1", 0);
     await s().moveRequest("r1", "missing", 0);
-    expect(api.reorderRequests).not.toHaveBeenCalled();
-
-    await s().moveRequest("r1", "c1", 5);
     expect(api.moveRequest).not.toHaveBeenCalled();
-    expect(api.reorderRequests).toHaveBeenCalledWith("c1", ["r2", "r1"]);
+
+    vi.mocked(api.moveRequest).mockResolvedValue(req("r1"));
+    await s().moveRequest("r1", "c1", 5);
+    expect(api.moveRequest).toHaveBeenCalledWith("r1", "c1", 1);
 
     vi.mocked(api.moveRequest).mockImplementation(async () => {
-      expect(
-        s()
-          .collections.find((c) => c.id === "c2")
-          ?.requests.map((r) => r.id),
-      ).toEqual(["r2"]);
+      const c2 = s().collections.find((c) => c.id === "c2");
+      expect(c2?.children.map((r) => [r.id, r.parentId])).toEqual([["r2", "c2"]]);
       return req("r2");
     });
     await s().moveRequest("r2", "c2", 0);
-    expect(api.moveRequest).toHaveBeenCalledWith("r2", "c2");
-    expect(api.reorderRequests).toHaveBeenLastCalledWith("c2", ["r2"]);
+    expect(api.moveRequest).toHaveBeenLastCalledWith("r2", "c2", 0);
 
     vi.mocked(api.moveRequest).mockRejectedValue(new Error("x"));
     await s().moveRequest("r1", "c2", 0);
     expect(toast.error).toHaveBeenCalledWith("Couldn't move the request", { description: "x" });
+  });
+});
+
+describe("workspace store: folders", () => {
+  // c1[ r1, f1[ r2, f2[ r3 ] ] ]  c2[]
+  const nested = () => [col("c1", ["r1"], [fold("f1", ["r2"], [fold("f2", ["r3"])])]), col("c2", [])];
+  beforeEach(async () => {
+    await openReady(nested());
+  });
+
+  const openTab = (id: string, parentId: string, edited = false): void => {
+    const r = req(id);
+    useTabsStore.setState((st) => ({
+      tabs: [
+        ...st.tabs,
+        {
+          id: `t-${id}`,
+          request: edited ? { ...r, url: "https://edited" } : r,
+          saved: r,
+          parentId,
+          workspaceId: "w1",
+          sendId: null,
+          result: null,
+        },
+      ],
+    }));
+  };
+
+  it("createFolder refreshes and starts renaming it", async () => {
+    vi.mocked(api.createFolder).mockResolvedValue({ id: "f9", name: "New folder" });
+    expect(await s().createFolder("f1")).toBe("f9");
+    expect(api.createFolder).toHaveBeenCalledWith("f1", "New folder");
+    expect(s().renameTarget).toBe("f9");
+
+    vi.mocked(api.createFolder).mockRejectedValue(new Error("x"));
+    expect(await s().createFolder("c1", "Y")).toBeNull();
+    expect(toast.error).toHaveBeenCalledWith("Couldn't create the folder", { description: "x" });
+  });
+
+  it("renameFolder skips blank or unchanged names and reports errors", async () => {
+    await s().renameFolder("f1", " ");
+    await s().renameFolder("f1", "Folder f1");
+    await s().renameFolder("r1", "Not a folder");
+    expect(api.renameFolder).not.toHaveBeenCalled();
+    await s().renameFolder("f2", " Tokens ");
+    expect(api.renameFolder).toHaveBeenCalledWith("f2", "Tokens");
+    vi.mocked(api.renameFolder).mockRejectedValue(new Error("busy"));
+    await s().renameFolder("f2", "Other");
+    expect(toast.error).toHaveBeenCalledWith("Couldn't rename the folder", { description: "busy" });
+  });
+
+  it("deleteFolder closes clean tabs inside it (at any depth) and detaches edited ones", async () => {
+    openTab("r1", "c1");
+    openTab("r2", "f1");
+    openTab("r3", "f2", true);
+    mockTree([col("c1", ["r1"]), col("c2", [])]);
+    await s().deleteFolder("f1");
+    expect(api.deleteFolder).toHaveBeenCalledWith("f1");
+    expect(tabs().map((t) => [t.id, t.saved?.id ?? null])).toEqual([
+      ["t1", null],
+      ["t-r1", "r1"],
+      ["t-r3", null],
+    ]);
+    expect(toast.success).toHaveBeenCalledWith("Folder deleted");
+
+    vi.mocked(api.deleteFolder).mockRejectedValue(new Error("x"));
+    await s().deleteFolder("f2");
+    expect(toast.error).toHaveBeenCalledWith("Couldn't delete the folder", { description: "x" });
+  });
+
+  it("deleteCollection also handles requests inside folders", async () => {
+    openTab("r3", "f2");
+    mockTree([col("c2", [])]);
+    await s().deleteCollection("c1");
+    expect(tabs().some((t) => t.saved?.id === "r3")).toBe(false);
+  });
+
+  it("moveFolder moves optimistically; tabs inside keep their folder, moved requests get the new parent", async () => {
+    openTab("r3", "f2");
+    openTab("r2", "f1");
+    vi.mocked(api.moveFolder).mockImplementation(async () => {
+      expect(
+        s()
+          .collections.find((c) => c.id === "c2")
+          ?.children.map((c) => c.id),
+      ).toEqual(["f2"]);
+    });
+    mockTree([col("c1", ["r1"], [fold("f1", ["r2"])]), col("c2", [], [fold("f2", ["r3"])])]);
+    await s().moveFolder("f2", "c2", 0);
+    expect(api.moveFolder).toHaveBeenCalledWith("f2", "c2", 0);
+    expect(tabs().find((t) => t.id === "t-r3")?.parentId).toBe("f2");
+
+    vi.mocked(api.moveRequest).mockResolvedValue(req("r2"));
+    mockTree([col("c1", ["r1", "r2"], [fold("f1", [])]), col("c2", [], [fold("f2", ["r3"])])]);
+    await s().moveRequest("r2", "c1", 1);
+    expect(api.moveRequest).toHaveBeenCalledWith("r2", "c1", 1);
+    expect(tabs().find((t) => t.id === "t-r2")?.parentId).toBe("c1");
+
+    // No-op: already there.
+    vi.mocked(api.moveFolder).mockClear();
+    await s().moveFolder("f1", "c1", 5);
+    expect(api.moveFolder).not.toHaveBeenCalled();
+
+    vi.mocked(api.moveFolder).mockRejectedValue(new Error("a folder can't be moved into itself"));
+    await s().moveFolder("f1", "c2", 0);
+    expect(toast.error).toHaveBeenCalledWith("Couldn't move the folder", {
+      description: "a folder can't be moved into itself",
+    });
+  });
+
+  it("newRequest into a folder opens the tab with the folder as parent", async () => {
+    vi.mocked(api.saveAs).mockResolvedValue(req("r9", { name: "New request" }));
+    mockTree([col("c1", ["r1"], [fold("f1", ["r2", "r9"])])]);
+    await s().newRequest("f1");
+    expect(api.saveAs).toHaveBeenCalledWith("f1", "New request", expect.anything());
+    expect(activeTab()).toMatchObject({ parentId: "f1" });
+  });
+
+  it("openRequest and renameRequest find nested requests", async () => {
+    await s().openRequest("r3");
+    expect(activeTab()).toMatchObject({ parentId: "f2" });
+    vi.mocked(api.renameRequest).mockResolvedValue(req("r3", { name: "Deep" }));
+    await s().renameRequest("r3", "Deep");
+    expect(api.renameRequest).toHaveBeenCalledWith("r3", "Deep");
+    expect(activeTab().request.name).toBe("Deep");
   });
 });

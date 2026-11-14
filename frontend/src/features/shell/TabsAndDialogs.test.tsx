@@ -5,6 +5,7 @@ import App from "@/App";
 import { api } from "@/lib/api";
 import { emptyRequest } from "@/lib/model";
 import { useTabsStore } from "@/stores/tabs";
+import { col, folder, req } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 
 vi.mock("sonner", async (orig) => {
@@ -109,16 +110,9 @@ describe("save dialog", () => {
     );
     vi.mocked(api.createWorkspace).mockImplementation(async () => {
       vi.mocked(api.currentWorkspace).mockResolvedValue({ id: "w", name: "api", path: "/work/api" });
-      vi.mocked(api.collections).mockResolvedValue([{ id: "c1", name: "Users", seq: 1, requests: [] }]);
+      vi.mocked(api.collections).mockResolvedValue([col("c1", "Users")]);
       vi.mocked(api.tree).mockResolvedValue({
-        collections: [
-          {
-            id: "c1",
-            name: "Users",
-            seq: 1,
-            requests: [{ id: "saved-id", name: "List users", method: "GET", url: "https://x", seq: 1 }],
-          },
-        ],
+        collections: [col("c1", "Users", [req("saved-id", "List users", "GET", "https://x")])],
         problems: [],
       });
       return { id: "w", name: "api", path: "/work/api" };
@@ -174,6 +168,34 @@ describe("save dialog", () => {
     await user.click(screen.getByRole("button", { name: "Choose folder" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(s().saveDialog).toBeNull();
+  });
+
+  it("saves into a nested folder picked from the list", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.currentWorkspace).mockResolvedValue({ id: "w", name: "ws", path: "/ws" });
+    const tree = [
+      col("c1", "Users", [folder("f1", "Auth", [folder("f2", "Tokens", [req("saved-id")])]), req("r1")]),
+      col("c2", "Orders"),
+    ];
+    vi.mocked(api.collections).mockResolvedValue(tree);
+    vi.mocked(api.tree).mockResolvedValue({ collections: tree, problems: [] });
+    render(<App />);
+    act(() => s().openSaveDialog("t1"));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(await within(dialog).findByRole("combobox", { name: "Save to" }));
+    const options = await screen.findAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "Users",
+      "Users / Auth",
+      "Users / Auth / Tokens",
+      "Orders",
+      "New collection…",
+    ]);
+    // Screen readers get the path; jsdom drops the space at the span boundary.
+    await user.click(screen.getByRole("option", { name: /^Users \/ Auth \/\s?Tokens$/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Save request" }));
+    await waitFor(() => expect(api.saveAs).toHaveBeenCalledWith("f2", "Untitled request", expect.anything()));
+    expect(activeTab().parentId).toBe("f2");
   });
 
   it("reports a failed collection create", async () => {

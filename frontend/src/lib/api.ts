@@ -68,8 +68,9 @@ export const api = {
   async save(req: Request): Promise<Request> {
     return normalizeRequest(await RequestService.Save(toBinding(req)));
   },
-  async saveAs(collectionId: string, name: string, req: Request): Promise<Request> {
-    return normalizeRequest(await RequestService.SaveAs(collectionId, name, toBinding(req)));
+  /** Saves req as a new request at the end of a collection or folder. */
+  async saveAs(parentId: string, name: string, req: Request): Promise<Request> {
+    return normalizeRequest(await RequestService.SaveAs(parentId, name, toBinding(req)));
   },
   async pickFile(): Promise<string> {
     return RequestService.PickFile();
@@ -89,11 +90,9 @@ export const api = {
   async deleteRequest(id: string): Promise<void> {
     return RequestService.Delete(id);
   },
-  async moveRequest(id: string, toCollectionId: string): Promise<Request> {
-    return normalizeRequest(await RequestService.Move(id, toCollectionId));
-  },
-  async reorderRequests(collectionId: string, ids: string[]): Promise<void> {
-    return RequestService.Reorder(collectionId, ids);
+  /** Moves a request into a collection or folder at `index` among its children (-1 appends). */
+  async moveRequest(id: string, toParentId: string, index: number): Promise<Request> {
+    return normalizeRequest(await WorkspaceService.MoveRequest(id, toParentId, index));
   },
 
   async currentWorkspace(): Promise<WorkspaceInfo | null> {
@@ -135,6 +134,24 @@ export const api = {
   },
   async reorderCollections(ids: string[]): Promise<void> {
     return WorkspaceService.ReorderCollections(ids);
+  },
+  async createFolder(parentId: string, name: string): Promise<{ id: string; name: string }> {
+    const f = await WorkspaceService.CreateFolder(parentId, name);
+    return { id: f.id, name: f.name };
+  },
+  async renameFolder(id: string, name: string): Promise<void> {
+    await WorkspaceService.RenameFolder(id, name);
+  },
+  async deleteFolder(id: string): Promise<void> {
+    return WorkspaceService.DeleteFolder(id);
+  },
+  /** Moves a folder into a collection or another folder at `index` among its children. */
+  async moveFolder(id: string, toParentId: string, index: number): Promise<void> {
+    await WorkspaceService.MoveFolder(id, toParentId, index);
+  },
+  /** Sets the order of the folders and requests inside a collection or folder. */
+  async reorder(parentId: string, ids: string[]): Promise<void> {
+    return WorkspaceService.Reorder(parentId, ids);
   },
   /** Subscribes to external workspace changes; returns the unsubscribe function. */
   onWorkspaceChanged(cb: (change: WorkspaceChange) => void): () => void {

@@ -20,6 +20,19 @@ func TestWorkspaceServiceWithoutWorkspace(t *testing.T) {
 		"rename":  func() error { _, e := h.ws.RenameCollection("x", "y"); return e }(),
 		"delete":  h.ws.DeleteCollection("x"),
 		"reorder": h.ws.ReorderCollections(nil),
+		"get col": func() error { _, e := h.ws.GetCollection("x"); return e }(),
+		"save col": func() error {
+			_, e := h.ws.SaveCollection("x", fsstore.CollectionSettings{})
+			return e
+		}(),
+		"create folder": func() error { _, e := h.ws.CreateFolder("x", "y"); return e }(),
+		"get folder":    func() error { _, e := h.ws.GetFolder("x"); return e }(),
+		"rename folder": func() error { _, e := h.ws.RenameFolder("x", "y"); return e }(),
+		"save folder":   func() error { _, e := h.ws.SaveFolder("x", fsstore.FolderSettings{}); return e }(),
+		"delete folder": h.ws.DeleteFolder("x"),
+		"move request":  func() error { _, e := h.ws.MoveRequest("x", "y", 0); return e }(),
+		"move folder":   func() error { _, e := h.ws.MoveFolder("x", "y", 0); return e }(),
+		"reorder items": h.ws.Reorder("x", nil),
 	}
 	for name, err := range checks {
 		if !errors.Is(err, ErrNoWorkspace) {

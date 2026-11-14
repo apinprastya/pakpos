@@ -69,14 +69,14 @@ export async function saveTab(tabId: string, closeAfter = false): Promise<boolea
   }
 }
 
-/** Saves a new request into a collection (used by the Save dialog). */
-export async function saveTabAs(tabId: string, collectionId: string, name: string): Promise<boolean> {
+/** Saves a new request into a collection or folder (used by the Save dialog). */
+export async function saveTabAs(tabId: string, parentId: string, name: string): Promise<boolean> {
   const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId);
   if (!tab) return false;
   try {
-    const saved = await api.saveAs(collectionId, name, compactRequest({ ...tab.request, name }));
+    const saved = await api.saveAs(parentId, name, compactRequest({ ...tab.request, name }));
     const workspaceId = useWorkspaceStore.getState().workspace?.id ?? "";
-    useTabsStore.getState().markSaved(tabId, saved, collectionId, workspaceId);
+    useTabsStore.getState().markSaved(tabId, saved, parentId, workspaceId);
     toast.success("Request saved");
     void useWorkspaceStore.getState().refresh();
     return true;

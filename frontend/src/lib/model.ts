@@ -126,20 +126,44 @@ export interface SendResult {
   historyId: number;
 }
 
+/** A saved request in the sidebar tree. */
 export interface RequestSummary {
+  kind: "request";
   id: string;
   name: string;
   method: string;
   url: string;
   seq: number;
+  /** Collection or folder holding the request. */
+  parentId: string;
 }
 
-export interface CollectionNode {
+/** A folder: a subdirectory of a collection or of another folder. */
+export interface FolderNode {
+  kind: "folder";
   id: string;
   name: string;
   seq: number;
-  requests: RequestSummary[];
+  /** Collection or folder holding this folder. */
+  parentId: string;
+  /** Folders and requests, in one shared order. */
+  children: TreeChild[];
 }
+
+export type TreeChild = FolderNode | RequestSummary;
+
+export interface CollectionNode {
+  kind: "collection";
+  id: string;
+  name: string;
+  seq: number;
+  /** Folders and requests, in one shared order. */
+  children: TreeChild[];
+}
+
+/** Something requests and folders can live in. */
+export type ContainerNode = CollectionNode | FolderNode;
+export type TreeNode = CollectionNode | TreeChild;
 
 /** A workspace file that couldn't be loaded (e.g. hand-edited invalid YAML). */
 export interface Problem {
@@ -318,25 +342,39 @@ export function normalizeSendResult(input: unknown): SendResult {
   };
 }
 
+interface LooseNode {
+  kind?: string | null;
+  id?: string | null;
+  name?: string | null;
+  seq?: number | null;
+  parentId?: string | null;
+  method?: string | null;
+  url?: string | null;
+  children?: LooseNode[] | null;
+}
+
+function normalizeChild(n: LooseNode, parentId: string): TreeChild {
+  const base = { id: n.id ?? "", name: n.name ?? "", seq: n.seq ?? 0, parentId: n.parentId || parentId };
+  if (n.kind === "folder") {
+    return { kind: "folder", ...base, children: (n.children ?? []).map((c) => normalizeChild(c, base.id)) };
+  }
+  return { kind: "request", ...base, method: n.method || "GET", url: n.url ?? "" };
+}
+
+/** Fills defaults in the recursive tree from Go (null children, empty fields). */
 export function normalizeTree(input: unknown): WorkspaceTree {
-  const t = (input ?? {}) as {
-    collections?:
-      (Omit<Loose<CollectionNode>, "requests"> & { requests?: Loose<RequestSummary>[] | null })[] | null;
-    problems?: Problem[] | null;
-  };
+  const t = (input ?? {}) as { collections?: LooseNode[] | null; problems?: Problem[] | null };
   return {
-    collections: (t.collections ?? []).map((c) => ({
-      id: c.id ?? "",
-      name: c.name ?? "",
-      seq: c.seq ?? 0,
-      requests: (c.requests ?? []).map((r) => ({
-        id: r.id ?? "",
-        name: r.name ?? "",
-        method: r.method || "GET",
-        url: r.url ?? "",
-        seq: r.seq ?? 0,
-      })),
-    })),
+    collections: (t.collections ?? []).map((c) => {
+      const id = c.id ?? "";
+      return {
+        kind: "collection",
+        id,
+        name: c.name ?? "",
+        seq: c.seq ?? 0,
+        children: (c.children ?? []).map((n) => normalizeChild(n, id)),
+      };
+    }),
     problems: t.problems ?? [],
   };
 }

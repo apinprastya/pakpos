@@ -2,6 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import App from "@/App";
 import { api, type WorkspaceChange } from "@/lib/api";
 import { emptyRequest } from "@/lib/model";
+import { col } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
 import { sendTab } from "@/features/request/actions";
 import { useHistoryStore } from "@/stores/history";
@@ -22,7 +23,7 @@ describe("workspace sync in the app", () => {
     });
     vi.mocked(api.currentWorkspace).mockResolvedValue({ id: "w1", name: "Shop API", path: "/work/shop" });
     vi.mocked(api.tree).mockResolvedValue({
-      collections: [{ id: "c1", name: "Users", seq: 1, requests: [] }],
+      collections: [col("c1", "Users")],
       problems: [],
     });
     const { unmount } = render(<App />);
@@ -30,7 +31,7 @@ describe("workspace sync in the app", () => {
     expect(within(screen.getByRole("contentinfo")).getByText("Shop API")).toBeInTheDocument();
 
     vi.mocked(api.tree).mockResolvedValue({
-      collections: [{ id: "c2", name: "Orders", seq: 1, requests: [] }],
+      collections: [col("c2", "Orders")],
       problems: [],
     });
     await act(async () => emit({ workspaceId: "w1", problems: [] }));
