@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -563,6 +564,9 @@ func TestManifestUpgradeOnFoldersAndSecrets(t *testing.T) {
 }
 
 func TestFolderWriteErrors(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permission bits are not enforced on Windows")
+	}
 	if os.Getuid() == 0 {
 		t.Skip("permissions are not enforced for root")
 	}

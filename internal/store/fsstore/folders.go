@@ -368,7 +368,9 @@ func (w *Workspace) RenameFolder(id, name string) (Folder, error) {
 		oldPath, newPath := filepath.Join(parentDir, f.dir), filepath.Join(parentDir, newDir)
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
+		w.unwatchDir(oldPath)
 		if err := os.Rename(oldPath, newPath); err != nil {
+			w.watchDir(oldPath)
 			return Folder{}, fmt.Errorf("rename folder %q: %w", f.meta.Name, err)
 		}
 		f.dir = newDir
@@ -603,7 +605,9 @@ func (w *Workspace) MoveFolder(id, toParentID string, index int) (Folder, error)
 		newPath := filepath.Join(dstDir, newDir)
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
+		w.unwatchDir(oldPath)
 		if err := os.Rename(oldPath, newPath); err != nil {
+			w.watchDir(oldPath)
 			return Folder{}, fmt.Errorf("move folder %q: %w", f.meta.Name, err)
 		}
 		from := f.parentID

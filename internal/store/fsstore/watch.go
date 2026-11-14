@@ -80,6 +80,28 @@ func (w *Workspace) watchDir(dir string) {
 	}
 }
 
+// unwatchDir stops watching dir and every directory below it. Windows can't
+// rename a directory while a watch holds it open ("Access is denied"), so
+// the app releases the watches before renaming or moving a folder and
+// re-adds them afterwards with watchDir.
+func (w *Workspace) unwatchDir(dir string) {
+	w.watchersMu.Lock()
+	defer w.watchersMu.Unlock()
+	for wt := range w.watchers {
+		wt.removeTree(dir)
+	}
+}
+
+func (wt *Watcher) removeTree(dir string) {
+	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || !d.IsDir() {
+			return nil
+		}
+		_ = wt.fsw.Remove(p) // not watched (hidden, new) is fine
+		return nil
+	})
+}
+
 func (wt *Watcher) add(dir string) {
 	_ = wt.fsw.Add(dir) // directories that vanish or can't be watched are skipped
 }
