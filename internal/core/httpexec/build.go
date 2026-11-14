@@ -24,6 +24,7 @@ import (
 //   - Path params are substituted, and "http://" is assumed if no scheme is given.
 //   - A Content-Type matching the body type is set unless the user set one.
 //   - User-Agent defaults to the executor's UserAgent unless the user set one.
+//   - Accept-Encoding defaults to AcceptEncoding (gzip, deflate, br).
 //   - Auth is applied last; explicit user headers win (see package auth).
 func (e *Executor) Build(ctx context.Context, req model.Request) (*http.Request, error) {
 	method := strings.ToUpper(strings.TrimSpace(req.Method))
@@ -64,6 +65,11 @@ func (e *Executor) Build(ctx context.Context, req model.Request) (*http.Request,
 	}
 	if r.Header.Get("User-Agent") == "" {
 		r.Header.Set("User-Agent", e.settings.UserAgent)
+	}
+	// Set explicitly (Go's transport would only ask for gzip), so decodedBody
+	// undoes every coding itself.
+	if r.Header.Get("Accept-Encoding") == "" {
+		r.Header.Set("Accept-Encoding", AcceptEncoding)
 	}
 
 	if err := auth.Apply(r, req.Auth); err != nil {

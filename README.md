@@ -1,7 +1,6 @@
 # Pakpos
 
-<!-- Replace OWNER/REPO once the GitHub repository exists. -->
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/apinprastya/pakpos/actions/workflows/ci.yml/badge.svg)](https://github.com/apinprastya/pakpos/actions/workflows/ci.yml)
 
 Pakpos is a desktop REST API client for Linux, macOS and Windows, built with Go, Wails v3 and React/TypeScript.
 
@@ -9,11 +8,23 @@ Pakpos is a desktop REST API client for Linux, macOS and Windows, built with Go,
 - Requests are sent from Go, so there are no CORS limits.
 - History, settings and recent workspaces are kept locally in SQLite.
 
-See [docs/ROADMAP.md](docs/ROADMAP.md) (feature tiers), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PLAN-TIER1.md](docs/PLAN-TIER1.md) and the release checklist [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md).
+## Features
+
+- **Requests:** GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS; query and path parameters synced with the URL; headers; raw (JSON, XML, HTML, JavaScript, text), form-data with files, urlencoded and binary bodies; Basic, Bearer and API key auth.
+- **Responses:** status, timing breakdown and size; pretty, raw and preview views; headers and cookies; search, copy and save to file; gzip, deflate and brotli decoded.
+- **Collections:** nested folders with drag and drop; auth and headers set on a collection or folder are inherited by the requests inside.
+- **Environments and variables:** Dev/Staging/Prod environments with a quick switcher, globals and collection variables, `{{variable}}` substitution everywhere, dynamic variables (`{{$guid}}`, `{{$timestamp}}`…), and highlighting, hover and autocomplete in every editor.
+- **Secrets:** secret variables live in the OS keychain, or in a file encrypted with a master password where there is none. Workspace files only name them, so they're safe to commit.
+- **cURL and code:** paste a `curl` command into the URL bar or import one; copy any request as cURL; generate code for cURL, JavaScript (fetch, axios), Python (requests), Go, Java and PHP.
+- **Command palette** (Ctrl/⌘+K) for requests, folders, environments, examples and actions.
+- **Saved examples** of responses per request, checked for echoed secrets before they're written.
+- **History** per workspace, with the environment each request was sent in.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) (feature tiers), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the plans [docs/PLAN-TIER1.md](docs/PLAN-TIER1.md) and [docs/PLAN-TIER2.md](docs/PLAN-TIER2.md), and the release checklist [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md).
 
 ## Install
 
-Download the build for your OS from the [releases page](https://github.com/OWNER/REPO/releases):
+Download the build for your OS from the [releases page](https://github.com/apinprastya/pakpos/releases):
 
 | OS | File | Notes |
 |---|---|---|
@@ -25,7 +36,7 @@ Download the build for your OS from the [releases page](https://github.com/OWNER
 
 Versions are calendar-based, `vYY.MM.MICRO` (e.g. `v26.11.1`). Every release lists `SHA256SUMS` for its files.
 
-App data (history, settings) lives in `<user config dir>/pakpos`:
+App data (history, settings, and `secrets.enc` when there is no keychain) lives in `<user config dir>/pakpos`:
 - Linux: `~/.config/pakpos`
 - macOS: `~/Library/Application Support/pakpos`
 - Windows: `%AppData%\pakpos`

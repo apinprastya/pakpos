@@ -111,7 +111,7 @@ func (s *ExampleService) Save(requestID, name string, historyID int64, replaceSe
 		Request:  e.Request,
 		Response: fsstore.ExampleResponseFrom(*e.Response),
 	}
-	values, locked := sess.SecretValues(requestID, s.c.selectedEnvironment(ws.Manifest().ID))
+	values, locked := sess.ExampleSecrets(requestID, s.c.selectedEnvironment(ws.Manifest().ID), e.Request)
 	if locked {
 		res.SecretsLocked = true
 		return res, nil

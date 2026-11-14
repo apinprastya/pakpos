@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import { emptyAuth, type Auth } from "@/lib/model";
+import { emptyAuth, type Auth, type ResolvePreview } from "@/lib/model";
 import { col, folder, makeEnv, makePreview, makeVar } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 import { useEnvironmentsStore } from "@/stores/environments";
@@ -64,12 +64,19 @@ describe("inherited headers", () => {
   });
 
   it("says when nothing is inherited, and shows errors", async () => {
+    // Hold the first preview until the test answers it: the preview starts on a
+    // real 300 ms debounce at mount, so under load it could otherwise land before
+    // the Headers tab opens and the loading state would never be seen.
+    let answer!: (p: ResolvePreview) => void;
+    vi.mocked(api.resolvePreview).mockReturnValueOnce(new Promise((resolve) => (answer = resolve)));
     const user = setup();
     await user.click(tab("Headers"));
     expect(screen.getByText("Checking inherited headers…")).toBeInTheDocument();
+    await waitFor(() => expect(api.resolvePreview).toHaveBeenCalled());
+    act(() => answer(makePreview()));
     expect(await screen.findByText(/None. Headers set on the collection/)).toBeInTheDocument();
-    useTabsStore.getState().updateRequest("t1", (r) => ({ ...r, url: "https://y" }));
     vi.mocked(api.resolvePreview).mockRejectedValueOnce(new Error("boom"));
+    act(() => useTabsStore.getState().updateRequest("t1", (r) => ({ ...r, url: "https://y" })));
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't check inherited headers: boom");
   });
 

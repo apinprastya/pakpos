@@ -25,7 +25,8 @@ export function autoHeaders(req: Request, userAgent: string): AutoHeader[] {
   const host = hostOf(req.url);
   if (host) list.push({ name: "Host", value: host });
   list.push({ name: "User-Agent", value: userAgent });
-  list.push({ name: "Accept-Encoding", value: "gzip" });
+  // Keep in step with httpexec.AcceptEncoding.
+  list.push({ name: "Accept-Encoding", value: "gzip, deflate, br" });
 
   const b = req.body;
   if (b.type === "raw") list.push({ name: "Content-Type", value: RAW_CONTENT_TYPES[b.language] });

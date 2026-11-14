@@ -20,6 +20,11 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // Integration tests drive Radix and CodeMirror through user-event step by
+    // step. With coverage on and every core busy (CI runners, parallel jobs)
+    // a long one took 5-7 s, past Vitest's 5 s default, while asserting nothing
+    // about speed. Races are fixed in the tests themselves; this is a budget.
+    testTimeout: 20_000,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

@@ -61,6 +61,7 @@ describe("response format", () => {
 
   it("has copy for every error kind and a fallback", () => {
     expect(errorCopy("dns").title).toBe("Couldn't find the server");
+    expect(errorCopy("decode").title).toBe("The response couldn't be decompressed");
     expect(errorCopy("weird")).toEqual(errorCopy("network"));
   });
 });

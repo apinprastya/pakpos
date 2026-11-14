@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -1022,5 +1023,89 @@ func TestEndToEndExampleEchoedSecret(t *testing.T) {
 	must(err)
 	if bytes.Contains(raw, []byte(secretValue)) || !bytes.Contains(raw, []byte("Bearer {{token}}")) {
 		t.Fatalf("sidecar:\n%s", raw)
+	}
+}
+
+// A server echoing a Basic Authorization header (httpbin's /headers, say)
+// returns the secret password only as base64("user:password"), and a token
+// sent in the query string comes back URL-encoded or base64-encoded.
+func TestEndToEndExampleEchoedEncodedSecrets(t *testing.T) {
+	const password = "pa ss/w0rd+42"
+	const apiKey = "key&value=7"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"headers":{"Authorization":%q},"url":%q,"b64":%q}`,
+			r.Header.Get("Authorization"), r.URL.String(),
+			base64.StdEncoding.EncodeToString([]byte(r.URL.Query().Get("key"))))
+	}))
+	t.Cleanup(srv.Close)
+
+	h := newHarness(t)
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	wsDir := t.TempDir()
+	_, err := h.ws.Create(wsDir, "Echo")
+	must(err)
+	dev, err := h.env.Create("Dev")
+	must(err)
+	scope := pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}
+	_, err = h.env.SaveVariables(scope, []model.Variable{
+		{Key: "user", Value: "alice", Enabled: true},
+		{Key: "password", Enabled: true, Secret: true},
+		{Key: "apiKey", Enabled: true, Secret: true},
+	}, nil)
+	must(err)
+	must(h.env.SetSecret(scope, "password", password))
+	must(h.env.SetSecret(scope, "apiKey", apiKey))
+	must(h.env.Select(dev.ID))
+	col, err := h.ws.CreateCollection("Echo")
+	must(err)
+	creds := base64.StdEncoding.EncodeToString([]byte("alice:" + password))
+
+	tests := []struct {
+		name  string
+		req   model.Request
+		found []string
+		echo  string // what the response holds instead of the plain value
+	}{
+		{"basic auth", model.Request{Method: "GET", URL: srv.URL + "/basic",
+			Auth: model.Auth{Type: model.AuthBasic, Username: "{{user}}", Password: "{{password}}"}},
+			[]string{"password"}, creds},
+		{"query string", model.Request{Method: "GET", URL: srv.URL + "/q",
+			Query: []model.KeyValue{{Key: "key", Value: "{{apiKey}}", Enabled: true}}},
+			[]string{"apiKey"}, "key%26value%3D7"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := h.req.SaveAs(col.ID, tt.name, tt.req)
+			must(err)
+			res, err := h.req.Send(context.Background(), "echo-"+tt.name, r, "")
+			must(err)
+			if res.Response == nil || !strings.Contains(res.Response.Body, tt.echo) {
+				t.Fatalf("server didn't echo %q: %+v", tt.echo, res.Response)
+			}
+			plain, err := h.ex.Save(r.ID, "Echo", res.HistoryID, false)
+			must(err)
+			if plain.Example != nil || !slices.Equal(plain.SecretsFound, tt.found) {
+				t.Fatalf("plain save = %+v", plain)
+			}
+			masked, err := h.ex.Save(r.ID, "Echo", res.HistoryID, true)
+			must(err)
+			if masked.Example == nil {
+				t.Fatalf("masked save = %+v", masked)
+			}
+			ex, err := h.ex.Get(r.ID, masked.Example.ID)
+			must(err)
+			for _, leak := range []string{password, apiKey, creds, tt.echo,
+				base64.StdEncoding.EncodeToString([]byte(apiKey))} {
+				if strings.Contains(ex.Response.Body, leak) {
+					t.Errorf("example body still holds %q: %s", leak, ex.Response.Body)
+				}
+			}
+		})
 	}
 }

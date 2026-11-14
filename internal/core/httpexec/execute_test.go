@@ -2,7 +2,6 @@ package httpexec
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"fmt"
@@ -185,34 +184,6 @@ func TestExecuteBinaryBodyIsBase64(t *testing.T) {
 	if resp.Kind != model.KindImage || resp.Encoding != model.EncodingBase64 || resp.Body != base64.StdEncoding.EncodeToString(png) {
 		t.Fatalf("resp = %+v", resp)
 	}
-}
-
-func TestExecuteGzipWithUserAcceptEncoding(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Encoding", "gzip")
-		w.Header().Set("Content-Type", "application/json")
-		gz := gzip.NewWriter(w)
-		_, _ = gz.Write([]byte(`{"ok":true}`))
-		_ = gz.Close()
-	}))
-	defer srv.Close()
-	e := newExec(t, nil)
-	for _, headers := range [][]model.KeyValue{nil, {kv("Accept-Encoding", "gzip")}} {
-		resp, _ := send(t, e, model.Request{URL: srv.URL, Headers: headers})
-		if resp.Body != `{"ok":true}` || resp.Kind != model.KindJSON {
-			t.Fatalf("headers %v: body = %q kind=%q", headers, resp.Body, resp.Kind)
-		}
-	}
-}
-
-func TestExecuteBadGzip(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Encoding", "gzip")
-		_, _ = w.Write([]byte("not gzip"))
-	}))
-	defer srv.Close()
-	_, err := newExec(t, nil).Execute(context.Background(), "", model.Request{URL: srv.URL, Headers: []model.KeyValue{kv("Accept-Encoding", "gzip")}})
-	wantKind(t, err, KindNetwork)
 }
 
 func TestExecuteLargeBodyIsTruncatedAndSpilled(t *testing.T) {

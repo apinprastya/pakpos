@@ -25,6 +25,8 @@ const (
 	KindCanceled          ErrorKind = "canceled"
 	KindTooManyRedirects  ErrorKind = "too_many_redirects"
 	KindNetwork           ErrorKind = "network"
+	// KindDecode means the body didn't match its Content-Encoding.
+	KindDecode ErrorKind = "decode"
 	// KindVariables means {{variables}} couldn't be resolved (a cycle or
 	// nesting that is too deep). Set by the send pipeline, not by Classify.
 	KindVariables ErrorKind = "variables"

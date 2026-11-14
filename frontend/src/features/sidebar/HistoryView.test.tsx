@@ -9,7 +9,9 @@ import { useHistoryStore } from "@/stores/history";
 import { useLayoutStore } from "@/stores/layout";
 import { useWorkspaceStore } from "@/stores/workspace";
 
-const now = new Date();
+// A fixed local noon: "5m ago" must be today and "1 day ago" yesterday whatever
+// time the suite runs (CI once failed just after midnight UTC).
+const now = new Date(2026, 10, 14, 12, 0, 0);
 const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000).toISOString();
 const daysAgo = (d: number) => {
   const x = new Date(now);
@@ -43,7 +45,12 @@ function renderHistory() {
   );
 }
 
-beforeEach(() => resetTabs());
+beforeEach(() => {
+  resetTabs();
+  // Only Date is faked; timers stay real so findBy/waitFor and user-event work.
+  vi.useFakeTimers({ toFake: ["Date"], now });
+});
+afterEach(() => vi.useRealTimers());
 
 describe("history view", () => {
   it("groups entries by day with status and time", async () => {

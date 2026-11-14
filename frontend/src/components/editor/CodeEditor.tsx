@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { VarScope } from "@/lib/variables";
 import { External, singleLineFilter } from "./extensions";
-import { isLazyLanguage, languageExtension, loadLanguage, type EditorLanguage } from "./languages";
+import { languageExtension, loadLanguage, needsLoading, type EditorLanguage } from "./languages";
 import { pakposHighlight, pakposTheme } from "./theme";
 import { setVarScope, variables as variablesExt } from "./variables";
 
@@ -170,8 +170,8 @@ export function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({ effects: langComp.current.reconfigure(languageExtension(language)) });
-    if (!isLazyLanguage(language)) return;
-    // Generated-code languages load on first use; highlight once they arrive.
+    if (!needsLoading(language)) return;
+    // Languages load on first use: plain text until then, highlighted once they arrive.
     let current = true;
     void loadLanguage(language).then((ext) => {
       if (current) view.current?.dispatch({ effects: langComp.current.reconfigure(ext) });

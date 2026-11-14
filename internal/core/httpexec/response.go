@@ -1,10 +1,14 @@
 package httpexec
 
 import (
+	"bufio"
 	"bytes"
+	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"net/http"
@@ -13,6 +17,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/andybalholm/brotli"
 
 	"pakpos/internal/core/model"
 )
@@ -110,13 +116,126 @@ func (e *Executor) readBody(resp *http.Response, out *model.Response) error {
 	return nil
 }
 
-// decodedBody gunzips the body when the server compressed it but the
-// transport did not (which happens when the user sets Accept-Encoding).
+// decodedBody undoes the Content-Encoding (gzip, deflate, br, or a list of
+// them) when the transport did not. Build always sets Accept-Encoding, so Go's
+// transport never decompresses on its own and every coding is handled here.
+// An empty body, "identity" or an unknown coding is returned as received.
 func decodedBody(resp *http.Response) (io.Reader, error) {
-	if resp.Uncompressed || !strings.EqualFold(resp.Header.Get("Content-Encoding"), "gzip") {
+	codings := contentCodings(resp.Header.Get("Content-Encoding"))
+	if resp.Uncompressed || len(codings) == 0 {
 		return resp.Body, nil
 	}
-	return gzip.NewReader(resp.Body)
+	for _, c := range codings {
+		if !supportedCoding(c) {
+			return resp.Body, nil
+		}
+	}
+	src := &sourceReader{r: resp.Body}
+	var body io.Reader = src
+	// Codings are listed in the order they were applied; undo them backwards.
+	for i := len(codings) - 1; i >= 0; i-- {
+		r, err := decoder(codings[i], body)
+		if err != nil {
+			return nil, src.explain(codings[i], err)
+		}
+		body = &decodingReader{r: r, src: src, coding: codings[i]}
+	}
+	return body, nil
+}
+
+// AcceptEncoding is the Accept-Encoding Pakpos sends unless the user set one.
+// Keep in step with frontend features/request/autoHeaders.ts.
+const AcceptEncoding = "gzip, deflate, br"
+
+func contentCodings(header string) []string {
+	var out []string
+	for _, c := range strings.Split(header, ",") {
+		c = strings.ToLower(strings.TrimSpace(c))
+		if c != "" && c != "identity" {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func supportedCoding(c string) bool {
+	switch c {
+	case "gzip", "x-gzip", "deflate", "br":
+		return true
+	}
+	return false
+}
+
+// decoder wraps r in a decompressor for coding. An empty body stays empty
+// (servers send Content-Encoding on HEAD, 204 and 304 responses too).
+func decoder(coding string, r io.Reader) (io.Reader, error) {
+	br := bufio.NewReader(r)
+	head, err := br.Peek(2)
+	if len(head) == 0 {
+		if err == io.EOF {
+			return br, nil
+		}
+		return nil, err
+	}
+	switch coding {
+	case "gzip", "x-gzip":
+		return gzip.NewReader(br)
+	case "deflate":
+		// "deflate" means zlib-wrapped data (RFC 9110), but some servers send
+		// raw deflate. A zlib header is CM=8 with a CMF/FLG check sum of 31.
+		if len(head) == 2 && head[0]&0x0f == 8 && (uint16(head[0])<<8|uint16(head[1]))%31 == 0 {
+			return zlib.NewReader(br)
+		}
+		return flate.NewReader(br), nil
+	default: // "br"
+		return brotli.NewReader(br), nil
+	}
+}
+
+// sourceReader remembers a read error from the connection, so a network
+// failure while decoding isn't reported as a broken body.
+type sourceReader struct {
+	r   io.Reader
+	err error
+}
+
+func (s *sourceReader) Read(p []byte) (int, error) {
+	n, err := s.r.Read(p)
+	if err != nil && err != io.EOF {
+		s.err = err
+	}
+	return n, err
+}
+
+type decodingReader struct {
+	r      io.Reader
+	src    *sourceReader
+	coding string
+}
+
+func (d *decodingReader) Read(p []byte) (int, error) {
+	n, err := d.r.Read(p)
+	if err == nil || err == io.EOF {
+		return n, err
+	}
+	return n, d.src.explain(d.coding, err)
+}
+
+// explain reports a failure while decoding coding: the connection's own error
+// if it failed, an inner coding's error as is, otherwise a decode error.
+func (s *sourceReader) explain(coding string, err error) error {
+	if s.err != nil {
+		return s.err
+	}
+	var de *Error
+	if errors.As(err, &de) {
+		return err
+	}
+	return decodeError(coding, err)
+}
+
+func decodeError(coding string, err error) *Error {
+	return newError(KindDecode, err, "The response body couldn't be decoded as %s (Content-Encoding). The server may have sent a damaged or mislabelled body", coding)
 }
 
 func (e *Executor) spill(head []byte, rest io.Reader) (string, int64, error) {
