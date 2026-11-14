@@ -39,6 +39,7 @@ func TestEnvServiceNeedsWorkspace(t *testing.T) {
 		"Select":         func() error { return h.env.Select("") },
 		"Selected":       func() error { _, err := h.env.Selected(); return err },
 		"ResolvePreview": func() error { _, err := h.env.ResolvePreview(model.Request{}, ""); return err },
+		"Visible":        func() error { _, err := h.env.VisibleVariables("", ""); return err },
 		"DeleteCol":      func() error { return h.ws.DeleteCollection("x") },
 		"SaveCol":        func() error { _, err := h.ws.SaveCollection("x", fsstore.CollectionSettings{}, nil); return err },
 	}
@@ -164,6 +165,47 @@ func TestEnvServiceResolvePreview(t *testing.T) {
 	}
 	if len(pv.Variables) != 1 || pv.Variables[0].Value != "" || !pv.Variables[0].Set {
 		t.Fatalf("secret must be masked: %+v", pv.Variables)
+	}
+}
+
+func TestEnvServiceVisibleVariables(t *testing.T) {
+	h := newHarness(t)
+	h.openWorkspace(t)
+	col, _ := h.ws.CreateCollection("API")
+	if _, err := h.ws.SaveCollection(col.ID, fsstore.CollectionSettings{
+		Variables: []model.Variable{{Key: "host", Value: "col", Enabled: true}, {Key: "token", Enabled: true, Secret: true}},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	_ = h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeCollection, ID: col.ID}, "token", "s3cret")
+	dev, _ := h.env.Create("Dev")
+	prod, _ := h.env.Create("Prod")
+	_, _ = h.env.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}, []model.Variable{{Key: "host", Value: "dev", Enabled: true}}, nil)
+	_, _ = h.env.SaveVariables(pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: prod.ID}, []model.Variable{{Key: "host", Value: "prod", Enabled: true}}, nil)
+	if err := h.env.Select(dev.ID); err != nil {
+		t.Fatal(err)
+	}
+	value := func(vs []pipeline.PreviewVariable, key string) pipeline.PreviewVariable {
+		for _, x := range vs {
+			if x.Key == key {
+				return x
+			}
+		}
+		t.Fatalf("%s missing from %+v", key, vs)
+		return pipeline.PreviewVariable{}
+	}
+	// "" uses the selected environment.
+	got, err := h.env.VisibleVariables(col.ID, "")
+	if err != nil || got.Environment == nil || got.Environment.ID != dev.ID || value(got.Variables, "host").Value != "dev" {
+		t.Fatalf("selected = %+v %v", got, err)
+	}
+	if tok := value(got.Variables, "token"); tok.Value != "" || !tok.Set {
+		t.Fatalf("token = %+v", tok)
+	}
+	// An environment's own editor sees that environment, selected or not.
+	got, _ = h.env.VisibleVariables("", prod.ID)
+	if got.Environment == nil || got.Environment.ID != prod.ID || value(got.Variables, "host").Value != "prod" {
+		t.Fatalf("prod = %+v", got)
 	}
 }
 

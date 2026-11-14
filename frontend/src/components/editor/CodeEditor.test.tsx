@@ -1,4 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { completionStatus, currentCompletions, startCompletion } from "@codemirror/autocomplete";
+import { makeScope } from "@/lib/variables";
+import { makePreviewVar } from "@/test/fixtures";
 import { useState } from "react";
 import { editorText, editorView, setEditorText } from "@/test/editor";
 import { CodeEditor } from "./CodeEditor";
@@ -60,5 +63,72 @@ describe("CodeEditor", () => {
     for (const l of ["json", "xml", "html", "javascript", "text"] as const) {
       expect(languageExtension(l)).toBeDefined();
     }
+  });
+
+  it("focuses on mount with the cursor where asked", () => {
+    render(<CodeEditor ariaLabel="Ed" value="hello" singleLine autoFocus initialCursor={2} />);
+    const view = editorView("Ed");
+    expect(view.hasFocus).toBe(true);
+    expect(view.state.selection.main.head).toBe(2);
+  });
+
+  it("reports blur, but not when the whole window lost focus", async () => {
+    const onBlur = vi.fn();
+    render(
+      <>
+        <CodeEditor ariaLabel="Ed" value="x" singleLine autoFocus onBlur={onBlur} />
+        <button type="button">Other</button>
+      </>,
+    );
+    const spy = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+    act(() => screen.getByRole("button").focus());
+    await new Promise((r) => setTimeout(r, 30));
+    expect(onBlur).not.toHaveBeenCalled();
+    spy.mockRestore();
+    act(() => editorView("Ed").focus());
+    await waitFor(() => expect(editorView("Ed").hasFocus).toBe(true));
+    await new Promise((r) => setTimeout(r, 30));
+    act(() => screen.getByRole("button").focus());
+    await waitFor(() => expect(onBlur).toHaveBeenCalledTimes(1));
+  });
+
+  it("updates variables without a new editor, and Enter picks a completion instead of submitting", async () => {
+    const onSubmit = vi.fn();
+    const scope = makeScope([], null, true);
+    const { rerender } = render(
+      <CodeEditor ariaLabel="Url" singleLine value="{{host}}" onSubmit={onSubmit} variables={scope} />,
+    );
+    const view = editorView("Url");
+    expect(view.contentDOM.querySelector(".var-unresolved")).not.toBeNull();
+    rerender(
+      <CodeEditor
+        ariaLabel="Url"
+        singleLine
+        value="{{host}}"
+        onSubmit={onSubmit}
+        variables={makeScope([makePreviewVar("host", "h")], null, true)}
+      />,
+    );
+    expect(editorView("Url")).toBe(view);
+    expect(view.contentDOM.querySelector(".var-resolved")).not.toBeNull();
+
+    act(() => view.dispatch({ changes: { from: 8, insert: "/{{ho" }, selection: { anchor: 13 } }));
+    act(() => void startCompletion(view));
+    await waitFor(() => expect(currentCompletions(view.state).length).toBeGreaterThan(0));
+    await new Promise((r) => setTimeout(r, 100));
+    expect(completionStatus(view.state)).toBe("active");
+    act(() => {
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(view.state.doc.toString()).toBe("{{host}}/{{host}}");
+    act(() => {
+      view.contentDOM.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

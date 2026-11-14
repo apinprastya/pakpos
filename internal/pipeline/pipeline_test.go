@@ -312,6 +312,49 @@ func TestPreview(t *testing.T) {
 	}
 }
 
+func TestVisibleVariables(t *testing.T) {
+	keysOf := func(vs []PreviewVariable) string {
+		var ks []string
+		for _, x := range vs {
+			ks = append(ks, x.Key+"@"+string(x.Scope))
+		}
+		return strings.Join(ks, ",")
+	}
+	f := newFixture(t)
+	for _, tc := range []struct {
+		name, parent, env, want, envName string
+	}{
+		{"folder with env", f.folder.ID, f.dev.ID, "apiKey@environment,colOnly@collection,gOnly@global,host@environment,token@collection", "Dev"},
+		{"collection, no env", f.col.ID, "", "colOnly@collection,gOnly@global,host@collection,token@collection", ""},
+		{"no parent", "", f.prod.ID, "gOnly@global,host@global", "Prod"},
+		{"unknown parent and env", "nope", "gone", "gOnly@global,host@global", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := f.sess.VisibleVariables(tc.parent, tc.env)
+			if k := keysOf(got.Variables); k != tc.want {
+				t.Fatalf("keys = %s", k)
+			}
+			name := ""
+			if got.Environment != nil {
+				name = got.Environment.Name
+			}
+			if name != tc.envName {
+				t.Fatalf("env = %q, want %q", name, tc.envName)
+			}
+			for _, x := range got.Variables {
+				if x.Secret && x.Value != "" {
+					t.Fatalf("secret value leaked: %+v", x)
+				}
+			}
+		})
+	}
+	// An empty workspace still returns a non-nil list.
+	empty := New(must(fsstore.Create(t.TempDir(), "E")), secrets.NewFake(), nil)
+	if got := empty.VisibleVariables("", ""); got.Variables == nil || len(got.Variables) != 0 {
+		t.Fatalf("empty = %+v", got)
+	}
+}
+
 func TestNewDefaultsLogger(t *testing.T) {
 	ws := must(fsstore.Create(t.TempDir(), "WS"))
 	if s := New(ws, secrets.NewFake(), nil); s.log == nil {

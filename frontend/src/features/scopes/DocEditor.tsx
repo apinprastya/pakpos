@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { VarScopeContext } from "@/components/editor/varScopeContext";
 import { AuthEditor } from "@/features/request/AuthEditor";
 import { SUGGESTED_NAMES, type SecretField } from "@/features/request/auth";
 import { InheritedAuth } from "@/features/request/Inherited";
 import { KeyValueTable } from "@/features/request/KeyValueTable";
 import { usePreview } from "@/features/request/usePreview";
+import { useVariableScope } from "@/features/variables/useVariableScope";
 import { ConfirmDeleteDialog, type DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 import { InlineRename } from "@/features/sidebar/InlineRename";
 import { ItemMenuContent, type MenuEntry } from "@/features/sidebar/ItemMenu";
@@ -41,6 +43,7 @@ export function DocEditor({ tab }: { tab: Tab }) {
   const [failure, setFailure] = useState<{ attempt: number; message: string } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const loaded = doc.draft !== null && doc.saved !== null;
+  const varScope = useVariableScope(tab);
   // An error belongs to one attempt; "Try again" starts a new one.
   const loadError = failure?.attempt === attempt ? failure.message : null;
 
@@ -87,20 +90,22 @@ export function DocEditor({ tab }: { tab: Tab }) {
   }
 
   return (
-    <section aria-label={title} className="flex h-full min-h-0 flex-col">
-      <DocHeader tab={tab} doc={doc} canSave={loaded} />
-      {doc.missing && (
-        <p
-          role="alert"
-          className="flex shrink-0 items-center gap-2 border-b px-4 py-1.5 text-xs text-muted-foreground"
-        >
-          <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-status-client" />
-          This was deleted outside the app. Your edits are kept here so you can copy them; it can&apos;t be
-          saved.
-        </p>
-      )}
-      {body}
-    </section>
+    <VarScopeContext.Provider value={varScope}>
+      <section aria-label={title} className="flex h-full min-h-0 flex-col">
+        <DocHeader tab={tab} doc={doc} canSave={loaded} />
+        {doc.missing && (
+          <p
+            role="alert"
+            className="flex shrink-0 items-center gap-2 border-b px-4 py-1.5 text-xs text-muted-foreground"
+          >
+            <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-status-client" />
+            This was deleted outside the app. Your edits are kept here so you can copy them; it can&apos;t be
+            saved.
+          </p>
+        )}
+        {body}
+      </section>
+    </VarScopeContext.Provider>
   );
 }
 

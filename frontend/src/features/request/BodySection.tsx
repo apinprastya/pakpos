@@ -3,6 +3,7 @@ import { WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CodeEditor } from "@/components/editor/CodeEditor";
+import { useVarScope } from "@/components/editor/varScopeContext";
 import type { BodyType, RawLanguage, Request } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { FilePicker } from "./FilePicker";
@@ -37,6 +38,7 @@ export function BodySection({ tabKey, request, onChange }: Props) {
   const setBody = (patch: Partial<Request["body"]>) =>
     onChange((r) => ({ ...r, body: { ...r.body, ...patch } }));
   const canBeautify = body.language === "json" || body.language === "xml";
+  const variables = useVarScope();
 
   const beautify = () => {
     const out = body.language === "json" ? formatJSON(body.raw) : formatXML(body.raw);
@@ -102,6 +104,7 @@ export function BodySection({ tabKey, request, onChange }: Props) {
             value={body.raw}
             language={body.language}
             onChange={(raw) => setBody({ raw })}
+            variables={variables}
           />
         </div>
       )}

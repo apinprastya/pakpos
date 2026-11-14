@@ -29,6 +29,7 @@ import {
   normalizeEnvironment,
   normalizeGlobals,
   normalizePreview,
+  normalizeVisible,
   normalizeSecretsStatus,
   normalizeVariables,
   normalizeCollection,
@@ -40,6 +41,7 @@ import {
   type Environment,
   type Globals,
   type ResolvePreview,
+  type VisibleVariables,
   type ScopeRef,
   type SecretRename,
   type SecretStatus,
@@ -299,6 +301,10 @@ export const api = {
   },
   async resolvePreview(req: Request, parentId: string): Promise<ResolvePreview> {
     return normalizePreview(await EnvService.ResolvePreview(toBinding(req), parentId));
+  },
+  /** Variables visible from a collection or folder ("" for none); environmentId "" means the selected one. */
+  async visibleVariables(parentId: string, environmentId: string): Promise<VisibleVariables> {
+    return normalizeVisible(await EnvService.VisibleVariables(parentId, environmentId));
   },
   async secretsStatus(): Promise<SecretsStatus> {
     return normalizeSecretsStatus(await EnvService.SecretsStatus());

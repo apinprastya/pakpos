@@ -1,13 +1,19 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VarInput } from "@/components/editor/VarInput";
 import type { APIKeyLocation, Auth, AuthType } from "@/lib/model";
-import { AUTH_LABELS, isLiteralSecret, type SecretField } from "./auth";
+import { cn } from "@/lib/utils";
+import { AUTH_LABELS, isLiteralSecret, isReferenceOnly, type SecretField } from "./auth";
 
 const ORDER: AuthType[] = ["none", "inherit", "basic", "bearer", "apikey"];
+
+/** Plain auth fields look like inputs, with {{variable}} support. */
+const fieldClass =
+  "h-8 w-full min-w-0 rounded-lg border border-input px-2.5 text-[12.5px] hover:bg-transparent focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30";
 
 export interface AuthEditorProps {
   auth: Auth;
@@ -60,17 +66,18 @@ export function AuthEditor({
       {auth.type === "basic" && (
         <>
           <Field id="auth-username" label="Username">
-            <Input
+            <VarInput
               id="auth-username"
-              className="font-mono"
+              ariaLabel="Username"
+              className={fieldClass}
               value={auth.username}
-              spellCheck={false}
-              onChange={(e) => set({ username: e.target.value })}
+              onChange={(username) => set({ username })}
             />
           </Field>
           <Field id="auth-password" label="Password" hint={hint("password")}>
             <SecretInput
               id="auth-password"
+              label="Password"
               value={auth.password}
               onChange={(password) => set({ password })}
             />
@@ -80,16 +87,21 @@ export function AuthEditor({
       {auth.type === "bearer" && (
         <>
           <Field id="auth-token" label="Token" hint={hint("token")}>
-            <SecretInput id="auth-token" value={auth.token} onChange={(token) => set({ token })} />
+            <SecretInput
+              id="auth-token"
+              label="Token"
+              value={auth.token}
+              onChange={(token) => set({ token })}
+            />
           </Field>
           <Field id="auth-prefix" label="Prefix">
-            <Input
+            <VarInput
               id="auth-prefix"
-              className="w-40 font-mono"
+              ariaLabel="Prefix"
+              className={cn(fieldClass, "w-40")}
               placeholder="Bearer"
               value={auth.prefix}
-              spellCheck={false}
-              onChange={(e) => set({ prefix: e.target.value })}
+              onChange={(prefix) => set({ prefix })}
             />
           </Field>
         </>
@@ -97,17 +109,22 @@ export function AuthEditor({
       {auth.type === "apikey" && (
         <>
           <Field id="auth-key" label="Key">
-            <Input
+            <VarInput
               id="auth-key"
-              className="font-mono"
+              ariaLabel="Key"
+              className={fieldClass}
               placeholder="X-API-Key"
               value={auth.apiKey}
-              spellCheck={false}
-              onChange={(e) => set({ apiKey: e.target.value })}
+              onChange={(apiKey) => set({ apiKey })}
             />
           </Field>
           <Field id="auth-value" label="Value" hint={hint("apiValue")}>
-            <SecretInput id="auth-value" value={auth.apiValue} onChange={(apiValue) => set({ apiValue })} />
+            <SecretInput
+              id="auth-value"
+              label="Value"
+              value={auth.apiValue}
+              onChange={(apiValue) => set({ apiValue })}
+            />
           </Field>
           <Field id="auth-in" label="Send in">
             <Select value={auth.apiIn} onValueChange={(v) => set({ apiIn: v as APIKeyLocation })}>
@@ -155,7 +172,15 @@ function Field({
 }) {
   return (
     <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
-      <Label htmlFor={id} className="text-xs text-muted-foreground">
+      <Label
+        htmlFor={id}
+        className="text-xs text-muted-foreground"
+        // A variable field isn't a labelable element, so focus it by hand.
+        onClick={() => {
+          const el = document.getElementById(id);
+          if (el?.dataset.slot === "var-input") el.focus();
+        }}
+      >
         {label}
       </Label>
       {children}
@@ -164,7 +189,46 @@ function Field({
   );
 }
 
-function SecretInput({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+/**
+ * A field that usually holds a secret. A literal is masked (with show/hide);
+ * a value that is only `{{references}}` (or is being typed as one) is a
+ * variable field with highlighting, hover and autocomplete. When typing
+ * switches between the two, focus moves to the new field, caret at the end.
+ */
+function SecretInput({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const reference = isReferenceOnly(value);
+  // Set when the user's own typing switches the mode, so focus follows.
+  const refocus = useRef(false);
+  const change = (next: string) => {
+    if (isReferenceOnly(next) !== reference) refocus.current = true;
+    onChange(next);
+  };
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    const el = document.getElementById(id);
+    el?.focus();
+    if (el instanceof HTMLInputElement) el.setSelectionRange(el.value.length, el.value.length);
+  }, [reference, id]);
+
+  return reference ? (
+    <VarInput id={id} ariaLabel={label} className={fieldClass} value={value} onChange={change} />
+  ) : (
+    <MaskedInput id={id} value={value} onChange={change} />
+  );
+}
+
+function MaskedInput({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   const [shown, setShown] = useState(false);
   return (
     <div className="relative">

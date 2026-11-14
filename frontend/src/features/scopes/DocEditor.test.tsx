@@ -10,6 +10,7 @@ import { useSecretsStore } from "@/stores/secrets";
 import { useTabsStore, type DocKind } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { DocEditor } from "./DocEditor";
+import { fieldText, typeInField } from "@/test/editor";
 
 const ws = { id: "w1", name: "Shop", path: "/shop" };
 const tabs = () => useTabsStore.getState();
@@ -61,11 +62,11 @@ describe("environment editor", () => {
   it("loads, edits and saves with the Save button", async () => {
     const user = openDoc("environment", "e1", "Dev");
     expect(screen.getByRole("status")).toHaveTextContent("Loading Dev…");
-    const value = await screen.findByLabelText("Value 1");
+    expect(await screen.findByLabelText("Value 1")).toHaveTextContent("https://dev");
     expect(screen.getByRole("heading", { name: "Dev" })).toBeInTheDocument();
     const save = screen.getByRole("button", { name: "Save" });
     expect(save).toBeDisabled();
-    await user.type(value, "/v2");
+    typeInField("Value 1", "/v2");
     expect(screen.getByText("· Unsaved changes")).toBeInTheDocument();
     await user.click(save);
     await waitFor(() =>
@@ -178,14 +179,14 @@ describe("collection and folder settings", () => {
     await user.click(await screen.findByRole("combobox", { name: "Type" }));
     expect(screen.queryByRole("option", { name: "Inherit from parent" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "Basic auth" }));
-    await user.type(screen.getByLabelText("Username"), "ada");
+    typeInField("Username", "ada");
 
     await user.click(screen.getByRole("tab", { name: "Headers" }));
-    await user.type(screen.getByLabelText("Value 1"), "+x");
+    typeInField("Value 1", "+x");
 
     await user.click(screen.getByRole("tab", { name: "Variables" }));
     expect(screen.getByRole("table", { name: "Users variables" })).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Value 1"), "0");
+    typeInField("Value 1", "0");
 
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -217,7 +218,7 @@ describe("collection and folder settings", () => {
     await waitFor(() =>
       expect(api.setSecret).toHaveBeenCalledWith({ kind: "collection", id: "c1" }, "token", "literal-token"),
     );
-    await waitFor(() => expect(screen.getByLabelText("Token")).toHaveValue("{{token}}"));
+    await waitFor(() => expect(fieldText("Token")).toBe("{{token}}"));
   });
 
   it("offers inherit on a folder and shows what it resolves to", async () => {

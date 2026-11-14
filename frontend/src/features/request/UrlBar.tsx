@@ -2,6 +2,7 @@ import { SendHorizontal, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { CodeEditor } from "@/components/editor/CodeEditor";
+import { useVarScope } from "@/components/editor/varScopeContext";
 import { HTTP_METHODS, methodTextClass } from "@/lib/http";
 import type { Request } from "@/lib/model";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ interface Props {
 
 export function UrlBar({ tabKey, request, sending, onChange, onSend, onCancel }: Props) {
   const canSend = request.url.trim() !== "";
+  const variables = useVarScope();
   return (
     <div className="flex shrink-0 items-center gap-2 p-3">
       <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border bg-card shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/30">
@@ -49,6 +51,7 @@ export function UrlBar({ tabKey, request, sending, onChange, onSend, onCancel }:
           value={request.url}
           onChange={(url) => onChange((r) => setUrl(r, url))}
           onSubmit={onSend}
+          variables={variables}
         />
       </div>
       {sending ? (
