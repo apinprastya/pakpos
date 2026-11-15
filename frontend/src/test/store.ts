@@ -54,6 +54,7 @@ export function resetTabs(request: Partial<Request> = {}, tab: Partial<Tab> = {}
     workspaceId: "",
     sendId: null,
     result: null,
+    sections: {},
     ...tab,
     doc: tab.doc ?? null,
   };

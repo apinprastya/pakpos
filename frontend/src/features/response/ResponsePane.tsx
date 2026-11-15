@@ -6,7 +6,7 @@ import { modKeyLabel } from "@/lib/platform";
 import type { SendError, SendResult } from "@/lib/model";
 import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore } from "@/stores/settings";
-import { useActiveTab } from "@/stores/tabs";
+import { useActiveTab, useTabSection } from "@/stores/tabs";
 import { useExamplesStore } from "@/stores/examples";
 import { ExampleView } from "@/features/examples/ExampleView";
 import { SaveExampleButton } from "@/features/examples/SaveExampleButton";
@@ -16,8 +16,11 @@ import { ResponseBody } from "./ResponseBody";
 import { ResponseMeta } from "./ResponseMeta";
 import { CookiesTable, HeadersTable } from "./ResponseTables";
 
+const SECTIONS = ["body", "headers", "cookies"] as const;
+
 export function ResponsePane() {
   const tab = useActiveTab();
+  const [section, setSection] = useTabSection(tab, "response", SECTIONS, "body");
   const result = tab.result;
   const response = result?.response ?? null;
   const sending = tab.sendId !== null;
@@ -41,7 +44,12 @@ export function ResponsePane() {
     content = <ErrorState error={result.error} />;
   } else if (response) {
     content = (
-      <Tabs key={tab.id} defaultValue="body" className="flex h-full min-h-0 flex-col gap-0">
+      <Tabs
+        key={tab.id}
+        value={section}
+        onValueChange={setSection}
+        className="flex h-full min-h-0 flex-col gap-0"
+      >
         <div className="flex h-9 shrink-0 items-center gap-2 border-b pr-3 pl-3">
           <TabsList variant="line" className="h-9 justify-start rounded-none p-0">
             <TabsTrigger value="body" className="flex-none px-2">

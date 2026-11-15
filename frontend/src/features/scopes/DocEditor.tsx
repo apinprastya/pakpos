@@ -20,7 +20,15 @@ import { modKeyLabel } from "@/lib/platform";
 import { collectionIdOf, positionOf } from "@/lib/tree";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useSecretsStore } from "@/stores/secrets";
-import { isDirty, tabTitle, useTabsStore, type DocKind, type DocState, type Tab } from "@/stores/tabs";
+import {
+  isDirty,
+  tabTitle,
+  useTabSection,
+  useTabsStore,
+  type DocKind,
+  type DocState,
+  type Tab,
+} from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { docScope, loadDocTab, saveDocTab } from "./docActions";
 import { MoveToSecretDialog } from "./MoveToSecretDialog";
@@ -269,6 +277,9 @@ function VariablesBody({ tab, doc }: { tab: Tab; doc: DocState }) {
   );
 }
 
+const COLLECTION_SECTIONS = ["auth", "headers", "variables"] as const;
+const FOLDER_SECTIONS = ["auth", "headers"] as const;
+
 function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
   const tabs = useTabsStore.getState;
   const collections = useWorkspaceStore((s) => s.collections);
@@ -284,9 +295,15 @@ function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
   );
   const preview = usePreview(probe, isFolder ? parentId : "");
   const noun = isFolder ? "folder" : "collection";
+  const [section, setSection] = useTabSection(
+    tab,
+    "settings",
+    isFolder ? FOLDER_SECTIONS : COLLECTION_SECTIONS,
+    "auth",
+  );
 
   return (
-    <Tabs defaultValue="auth" className="flex min-h-0 flex-1 flex-col gap-0">
+    <Tabs value={section} onValueChange={setSection} className="flex min-h-0 flex-1 flex-col gap-0">
       <TabsList variant="line" className="h-9 w-full shrink-0 justify-start rounded-none border-b px-3">
         <TabsTrigger value="auth" className="flex-none px-2">
           Auth

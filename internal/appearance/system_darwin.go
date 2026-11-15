@@ -1,0 +1,17 @@
+package appearance
+
+import (
+	"context"
+	"os/exec"
+	"strings"
+	"time"
+)
+
+// SystemDark reports whether macOS is in dark mode. AppleInterfaceStyle is
+// "Dark" then, and unset (the command fails) in light mode.
+func SystemDark() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "defaults", "read", "-g", "AppleInterfaceStyle").Output()
+	return err == nil && strings.EqualFold(strings.TrimSpace(string(out)), "dark")
+}

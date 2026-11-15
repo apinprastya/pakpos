@@ -339,6 +339,18 @@ describe("sidebar: collections tree", () => {
     expect(await screen.findByRole("menuitem", { name: "Duplicate" })).toBeInTheDocument();
   });
 
+  it("keeps an expanded collection open when New request is picked from its More menu", async () => {
+    const user = userEvent.setup();
+    ready();
+    const newRequest = vi.spyOn(useWorkspaceStore.getState(), "newRequest").mockResolvedValue();
+    renderSidebar();
+    expect(item("Users")).toHaveAttribute("aria-expanded", "true");
+    await user.click(screen.getByRole("button", { name: "More actions for Users" }));
+    await user.click(await screen.findByRole("menuitem", { name: "New request" }));
+    expect(newRequest).toHaveBeenCalledWith("c1");
+    expect(item("Users")).toHaveAttribute("aria-expanded", "true");
+  });
+
   it("shows the current collection as a disabled destination", async () => {
     const user = userEvent.setup();
     ready([collections()[0]]);

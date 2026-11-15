@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
@@ -200,6 +200,16 @@ describe("collection and folder settings", () => {
         [],
       ),
     );
+  });
+
+  it("remembers the open section when coming back to the tab", async () => {
+    const user = openDoc("collection", "c1", "Users");
+    await user.click(await screen.findByRole("tab", { name: "Variables" }));
+    const docId = tabs().activeId;
+    act(() => tabs().activate("t1"));
+    expect(screen.getByText("request tab")).toBeInTheDocument();
+    act(() => tabs().activate(docId));
+    expect(await screen.findByRole("tab", { name: "Variables" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("moves a literal token to a secret variable", async () => {
