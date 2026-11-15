@@ -78,6 +78,25 @@ export interface Tab {
    * for request tabs (whose request fields are then unused).
    */
   doc: DocState | null;
+  /** Section open in each pane (e.g. the request's Body), so it survives switching tabs. */
+  sections: TabSections;
+}
+
+/** Panes whose section tabs are remembered per tab. */
+export type TabPane = "request" | "response" | "settings";
+export type TabSections = Partial<Record<TabPane, string>>;
+
+const TAB_PANES: TabPane[] = ["request", "response", "settings"];
+
+/** Keeps only string sections of known panes (persisted data may be anything). */
+export function restoreSections(raw: unknown): TabSections {
+  const out: TabSections = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const pane of TAB_PANES) {
+    const v = (raw as Record<string, unknown>)[pane];
+    if (typeof v === "string" && v) out[pane] = v;
+  }
+  return out;
 }
 
 interface TabsState {
@@ -128,6 +147,8 @@ interface TabsState {
   /** Replaces only the saved copy (after an immediate change on disk, e.g. making a secret plain). */
   setDocSaved: (id: string, saved: DocDraft) => void;
   patchDoc: (id: string, patch: Partial<Pick<DocState, "name" | "missing">>) => void;
+  /** Remembers which section of a pane is open in a tab. */
+  setSection: (id: string, pane: TabPane, section: string) => void;
 }
 
 let counter = 0;
@@ -146,6 +167,7 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
     sendId: null,
     result: null,
     doc: null,
+    sections: {},
     ...partial,
   };
 }
@@ -385,6 +407,15 @@ export const useTabsStore = create<TabsState>()(
       setDocSaved: (id, saved) => set((s) => ({ tabs: mapDoc(s.tabs, id, (d) => ({ ...d, saved })) })),
 
       patchDoc: (id, patch) => set((s) => ({ tabs: mapDoc(s.tabs, id, (d) => ({ ...d, ...patch })) })),
+
+      setSection: (id, pane, section) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === id && t.sections[pane] !== section
+              ? { ...t, sections: { ...t.sections, [pane]: section } }
+              : t,
+          ),
+        })),
     }),
     {
       name: "pakpos-tabs",
@@ -398,7 +429,8 @@ export const useTabsStore = create<TabsState>()(
       merge: (persisted, current) => {
         // Tabs saved before nested folders have `collectionId` instead of `parentId`;
         // tabs saved before M4 have no `doc` (they're all request tabs).
-        type StoredTab = Omit<Tab, "parentId" | "doc"> & {
+        type StoredTab = Omit<Tab, "parentId" | "doc" | "sections"> & {
+          sections?: unknown;
           parentId?: string;
           collectionId?: string;
           doc?: Partial<DocState> | null;
@@ -414,6 +446,7 @@ export const useTabsStore = create<TabsState>()(
             sendId: null,
             result: null,
             doc: restoreDoc(t.doc),
+            sections: restoreSections(t.sections),
           }),
         );
         const activeIdx = p.tabs.findIndex((t) => t.id === p.activeId);
@@ -422,6 +455,22 @@ export const useTabsStore = create<TabsState>()(
     },
   ),
 );
+
+/**
+ * The open section of a tab's pane, and a setter that remembers it. Falls back
+ * to `fallback` when nothing (or a section the pane doesn't have) is stored.
+ */
+export function useTabSection<T extends string>(
+  tab: Tab,
+  pane: TabPane,
+  sections: readonly T[],
+  fallback: T,
+): [T, (section: string) => void] {
+  const stored = tab.sections[pane];
+  const value = sections.find((s) => s === stored) ?? fallback;
+  const setSection = useTabsStore((s) => s.setSection);
+  return [value, (section) => setSection(tab.id, pane, section)];
+}
 
 export function useActiveTab(): Tab {
   return useTabsStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0]);

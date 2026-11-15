@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,6 +23,31 @@ const section = (name: string) => screen.getByRole("tab", { name: new RegExp(`^$
 
 describe("RequestPane", () => {
   beforeEach(() => resetTabs());
+
+  it("remembers the open section per tab across switching tabs", async () => {
+    const user = userEvent.setup();
+    const first = renderPane();
+    expect(section("Params")).toHaveAttribute("aria-selected", "true");
+    await user.click(section("Body"));
+    // Switching to another tab (e.g. an environment) unmounts the pane.
+    first.unmount();
+    renderPane();
+    expect(section("Body")).toHaveAttribute("aria-selected", "true");
+    expect(activeTab().sections.request).toBe("body");
+
+    // Another request tab has its own section.
+    act(() => void useTabsStore.getState().newTab());
+    expect(section("Params")).toHaveAttribute("aria-selected", "true");
+    await user.click(section("Auth"));
+    act(() => useTabsStore.getState().activate("t1"));
+    expect(section("Body")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("falls back to Params for a section the pane doesn't have", () => {
+    resetTabs({}, { sections: { request: "nope" } });
+    renderPane();
+    expect(section("Params")).toHaveAttribute("aria-selected", "true");
+  });
 
   it("syncs the URL into query and path params, and back", async () => {
     const user = userEvent.setup();

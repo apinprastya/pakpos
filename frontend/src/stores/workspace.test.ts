@@ -192,6 +192,7 @@ describe("workspace store: tabs follow the workspace", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
         {
           id: "b",
@@ -202,6 +203,7 @@ describe("workspace store: tabs follow the workspace", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
       ],
       activeId: "a",
@@ -227,6 +229,7 @@ describe("workspace store: tabs follow the workspace", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
         {
           id: "b",
@@ -237,6 +240,7 @@ describe("workspace store: tabs follow the workspace", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
         {
           id: "c",
@@ -247,6 +251,7 @@ describe("workspace store: tabs follow the workspace", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
       ],
       activeId: "a",
@@ -303,6 +308,7 @@ describe("workspace store: tabs follow the workspace", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
       ],
       activeId: "a",
@@ -365,6 +371,7 @@ describe("workspace store: collections and requests", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
         {
           id: "b",
@@ -375,6 +382,7 @@ describe("workspace store: collections and requests", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
       ],
       activeId: "a",
@@ -514,6 +522,7 @@ describe("workspace store: folders", () => {
           sendId: null,
           result: null,
           doc: null,
+          sections: {},
         },
       ],
     }));

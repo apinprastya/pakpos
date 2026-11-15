@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VarScopeContext } from "@/components/editor/varScopeContext";
 import { useVariableScope } from "@/features/variables/useVariableScope";
 import type { Request } from "@/lib/model";
-import { useActiveTab, useTabsStore } from "@/stores/tabs";
+import { useActiveTab, useTabSection, useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { cancelTab, sendTab } from "./actions";
 import { AuthSection } from "./AuthSection";
@@ -17,6 +17,8 @@ import { looksLikeCurl } from "@/features/code/summary";
 import { usePreview } from "./usePreview";
 import { ExamplesSection } from "@/features/examples/ExamplesSection";
 import { useRequestExamples } from "@/stores/examples";
+
+const SECTIONS = ["params", "headers", "body", "auth", "examples"] as const;
 
 function Count({ n }: { n: number }) {
   if (n === 0) return null;
@@ -41,6 +43,7 @@ export function RequestPane() {
   const paramCount = req.query.filter((q) => q.enabled && q.key).length + req.pathParams.length;
   const headerCount = req.headers.filter((h) => h.enabled && h.key).length;
   const exampleCount = useRequestExamples(tab.saved?.id ?? "").length;
+  const [section, setSection] = useTabSection(tab, "request", SECTIONS, "params");
 
   return (
     <VarScopeContext.Provider value={varScope}>
@@ -61,7 +64,7 @@ export function RequestPane() {
         >
           <RequestActions tab={tab} />
         </UrlBar>
-        <Tabs defaultValue="params" className="flex min-h-0 flex-1 flex-col gap-0">
+        <Tabs value={section} onValueChange={setSection} className="flex min-h-0 flex-1 flex-col gap-0">
           <TabsList variant="line" className="h-9 w-full shrink-0 justify-start rounded-none border-b px-3">
             <TabsTrigger value="params" className="flex-none px-2">
               Params <Count n={paramCount} />

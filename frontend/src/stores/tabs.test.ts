@@ -1,6 +1,6 @@
 import { emptyRequest, type SendResult } from "@/lib/model";
 import { activeTab, resetTabs } from "@/test/store";
-import { isDirty, tabTitle, useTabsStore } from "./tabs";
+import { isDirty, restoreSections, tabTitle, useTabsStore } from "./tabs";
 import { makeResult } from "@/test/fixtures";
 
 const s = () => useTabsStore.getState();
@@ -138,6 +138,27 @@ describe("tabs store", () => {
     expect(s().tabs.map((t) => t.parentId)).toEqual(["c7", "f1", ""]);
     expect(s().tabs[0]).not.toHaveProperty("collectionId");
     expect(s().activeId).toBe("new");
+  });
+
+  it("remembers each pane's section per tab and restores only valid ones", async () => {
+    s().setSection("t1", "request", "body");
+    s().setSection("t1", "response", "headers");
+    const before = s().tabs[0];
+    s().setSection("t1", "request", "body");
+    expect(s().tabs[0]).toBe(before);
+    expect(s().tabs[0].sections).toEqual({ request: "body", response: "headers" });
+
+    const stored = localStorage.getItem("pakpos-tabs")!;
+    resetTabs({}, { id: "other" });
+    localStorage.setItem("pakpos-tabs", stored);
+    await useTabsStore.persist.rehydrate();
+    expect(s().tabs[0].sections).toEqual({ request: "body", response: "headers" });
+
+    expect(restoreSections({ request: "auth", response: 3, settings: "", bogus: "x" })).toEqual({
+      request: "auth",
+    });
+    expect(restoreSections(null)).toEqual({});
+    expect(restoreSections("body")).toEqual({});
   });
 
   it("keeps the current state when nothing is persisted", async () => {

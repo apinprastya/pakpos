@@ -20,6 +20,7 @@ const tab = (id: string, patch: Partial<Tab> = {}): Tab => ({
   sendId: null,
   result: null,
   doc: null,
+  sections: {},
   ...patch,
 });
 

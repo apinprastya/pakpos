@@ -170,6 +170,19 @@ describe("ResponsePane", () => {
     expect(screen.queryByRole("button", { name: "Save it to a file" })).not.toBeInTheDocument();
   });
 
+  it("remembers the open section when the pane comes back", async () => {
+    const user = userEvent.setup();
+    const first = show(ok());
+    await user.click(screen.getByRole("tab", { name: /^Headers/ }));
+    first.unmount();
+    render(
+      <TooltipProvider>
+        <ResponsePane />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole("tab", { name: /^Headers/ })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("lists headers and cookies", async () => {
     const user = userEvent.setup();
     show(
