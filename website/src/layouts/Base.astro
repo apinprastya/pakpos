@@ -1,0 +1,77 @@
+---
+import "../styles/global.css";
+import { url, REPO_URL } from "../lib/paths";
+
+interface Props {
+  title: string;
+  description: string;
+  /** Which nav link is the current page. */
+  current?: "home" | "download";
+}
+
+const { title, description, current = "home" } = Astro.props;
+const logo = url("logo.svg");
+const home = url();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    {Astro.site && <meta property="og:image" content={new URL(logo, Astro.site).href} />}
+    {Astro.site && <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site).href} />}
+    <link rel="icon" href={logo} type="image/svg+xml" />
+  </head>
+  <body>
+    <a class="skip" href="#main">
+      Skip to content
+    </a>
+
+    <header class="site-header">
+      <div class="wrap">
+        <a class="brand" href={home}>
+          <img src={logo} alt="" />
+          Pakpos
+        </a>
+        <nav class="site-nav" aria-label="Main">
+          <a class="hide-sm" href={`${home}#features`}>
+            Features
+          </a>
+          <a class="hide-sm" href={`${home}#files`}>
+            Workspaces
+          </a>
+          <a href={url("download/")} aria-current={current === "download" ? "page" : undefined}>
+            Download
+          </a>
+          <a href={REPO_URL}>GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <slot />
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <span>
+          Pakpos · Apache 2.0 · <a href={`${REPO_URL}/releases`}>All releases</a>
+        </span>
+        <nav aria-label="Footer">
+          {current === "download" ? <a href={home}>Home</a> : <a href={url("download/")}>Download</a>}
+          <a href={REPO_URL}>Source</a>
+          <a href={`${REPO_URL}/issues`}>Report a bug</a>
+        </nav>
+      </div>
+    </footer>
+
+    <script>
+      import { init } from "../scripts/site.js";
+      init(document, navigator);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,48 @@
+name: Website
+
+# Checks website/ (Astro: the marketing and download pages): tests, Prettier
+# and a build. Deployment is manual: `npm run build` in website/, then upload
+# dist/ to the host.
+# Third-party code: none. GitHub's own actions are pinned to commit SHAs.
+
+on:
+  push:
+    branches: [main]
+    paths: [website/**, .github/workflows/website.yml]
+  pull_request:
+    paths: [website/**, .github/workflows/website.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Test and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci
+
+      - name: Tests with coverage (>= 80%)
+        run: npm run coverage
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: Build
+        run: npm run build

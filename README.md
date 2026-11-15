@@ -51,6 +51,12 @@ App data (history, settings, and `secrets.enc` when there is no keychain) lives 
 - macOS: `~/Library/Application Support/pakpos`
 - Windows: `%AppData%\pakpos`
 
+## Website
+
+`website/` is the marketing and download site, built with [Astro](https://astro.build) into static files served from the domain root. `src/scripts/site.js` points the download buttons at the latest release's files and falls back to the releases page. `.github/workflows/website.yml` tests and builds it on changes; deployment is manual.
+
+From `website/`: `npm install`, then `npm run dev` (preview at `localhost:4321/`), `npm test`, `npm run format`. To deploy, run `SITE_URL=https://<your domain> npm run build` (the URL makes canonical and preview links absolute) and upload `dist/` to your host.
+
 ## Develop
 
 Requirements:

@@ -1,0 +1,19 @@
+---
+import Icon from "./Icon.astro";
+import { LATEST_RELEASE_URL } from "../lib/paths";
+
+interface Props {
+  /** The asset name after "pakpos-<version>", as release.yml names it. */
+  suffix: string;
+  label: string;
+  main?: boolean;
+}
+
+const { suffix, label, main = false } = Astro.props;
+---
+
+<a class:list={["file", { main }]} data-asset={suffix} href={LATEST_RELEASE_URL}>
+  <Icon name="download" />
+  {label}
+  <span class="size" data-size></span>
+</a>

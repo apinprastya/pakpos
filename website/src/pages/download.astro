@@ -1,0 +1,124 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon, { type IconName } from "../components/Icon.astro";
+import FileLink from "../components/FileLink.astro";
+import { LATEST_RELEASE_URL } from "../lib/paths";
+
+// Asset suffixes must match the file names release.yml publishes.
+const platforms: {
+  id: "windows" | "macos" | "linux";
+  name: string;
+  icon: IconName;
+  req: string;
+  files: { suffix: string; label: string }[];
+}[] = [
+  {
+    id: "windows",
+    name: "Windows",
+    icon: "monitor",
+    req: "Windows 10 or 11, 64-bit. Installs WebView2 if it's missing.",
+    files: [
+      { suffix: "-windows-amd64-setup.exe", label: "Installer (.exe)" },
+      { suffix: "-windows-amd64-portable.zip", label: "Portable (.zip)" },
+    ],
+  },
+  {
+    id: "macos",
+    name: "macOS",
+    icon: "laptop",
+    req: "macOS 12 or later. One universal app for Apple silicon and Intel.",
+    files: [{ suffix: "-macos-universal.dmg", label: "Disk image (.dmg)" }],
+  },
+  {
+    id: "linux",
+    name: "Linux",
+    icon: "terminal",
+    req: "64-bit x86. The AppImage runs on most distributions with no install.",
+    files: [
+      { suffix: "-linux-x86_64.AppImage", label: "AppImage" },
+      { suffix: "-linux-amd64.deb", label: "Debian, Ubuntu (.deb)" },
+      { suffix: "-linux-x86_64.rpm", label: "Fedora, RHEL (.rpm)" },
+    ],
+  },
+];
+---
+
+<Base
+  title="Download Pakpos"
+  description="Download Pakpos, the free REST API client, for Linux (AppImage, .deb, .rpm), macOS (universal .dmg) and Windows (installer or portable)."
+  current="download"
+>
+  <main id="main" class="wrap">
+    <div class="page-head">
+      <h1>Download Pakpos</h1>
+      <p>Free for everyone, for any use. Pick your system below; no account or sign-up needed.</p>
+      <a class="version" data-version href={LATEST_RELEASE_URL}>
+        Latest release
+      </a>
+    </div>
+
+    <div class="platforms">
+      {platforms.map((p) => (
+        <article class="platform" data-platform={p.id}>
+          <h2>
+            <Icon name={p.icon} />
+            {p.name}
+            <span class="tag">Your system</span>
+          </h2>
+          <p class="req">{p.req}</p>
+          <div class="files">
+            {p.files.map((f, i) => (
+              <FileLink suffix={f.suffix} label={f.label} main={i === 0} />
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+
+    <div class="notes">
+      <div class="card">
+        <h3>Installing</h3>
+        <ul>
+          <li>
+            <strong>AppImage:</strong> make it executable (<code>chmod +x pakpos-*.AppImage</code>) and run
+            it.
+          </li>
+          <li>
+            <strong>.deb:</strong> <code>sudo apt install ./pakpos-*.deb</code>. Needs GTK 4 and WebKitGTK
+            6.0.
+          </li>
+          <li>
+            <strong>.rpm:</strong> <code>sudo dnf install ./pakpos-*.rpm</code>
+          </li>
+          <li>
+            <strong>macOS:</strong> if the app isn't notarized yet, right-click it and choose Open the first
+            time, or allow it in System Settings → Privacy &amp; Security.
+          </li>
+          <li>
+            <strong>Windows:</strong> the installer is per-user, so it needs no admin rights.
+          </li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Updates and checksums</h3>
+        <ul>
+          <li>
+            The AppImage, macOS app and Windows builds update themselves when you click Download and install.
+            You can turn the daily check off in Settings → About.
+          </li>
+          <li>Every update is checked against Pakpos's release signature before it's installed.</li>
+          <li>
+            <code>.deb</code> and <code>.rpm</code> packages update through your package manager.
+          </li>
+          <li>
+            Verify a download yourself against the release's{" "}
+            <a data-sums href={LATEST_RELEASE_URL}>
+              SHA256SUMS
+            </a>
+            .
+          </li>
+        </ul>
+      </div>
+    </div>
+  </main>
+</Base>
