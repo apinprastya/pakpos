@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"pakpos/internal/appearance"
 	"pakpos/internal/secrets"
 	"pakpos/internal/service"
 	"pakpos/internal/update"
@@ -90,15 +91,18 @@ func main() {
 	})
 	dialogs.app, events.app, control.app = app, app, app
 
+	// The window starts in the saved theme's background colour, so a dark UI
+	// doesn't flash light before the page paints.
+	bg := appearance.Background(service.NewSettingsService(core).Get().Theme, appearance.SystemDark)
+
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:      "Pakpos",
-		Width:      savedWindow.Width,
-		Height:     savedWindow.Height,
-		MinWidth:   windowLimits.MinWidth,
-		MinHeight:  windowLimits.MinHeight,
-		StartState: startState(savedWindow),
-		// Matches the light theme background to avoid a flash before the UI paints.
-		BackgroundColour: application.NewRGB(247, 248, 250),
+		Title:            "Pakpos",
+		Width:            savedWindow.Width,
+		Height:           savedWindow.Height,
+		MinWidth:         windowLimits.MinWidth,
+		MinHeight:        windowLimits.MinHeight,
+		StartState:       startState(savedWindow),
+		BackgroundColour: application.NewRGB(bg.R, bg.G, bg.B),
 		URL:              "/",
 	})
 	trackWindow(app, window, windowTracker, savedWindow)

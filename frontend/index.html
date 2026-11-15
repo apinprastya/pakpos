@@ -4,6 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Pakpos</title>
+    <!--
+      First paint in the right theme. React applies the theme only after the
+      UI state has loaded, so until then the page would show the light
+      background. This reads the same localStorage cache as stores/theme.ts.
+      The colours are --background in src/index.css; keep them in step.
+    -->
+    <style>
+      html {
+        background: #f7f8fa;
+      }
+      html.dark {
+        background: #151a23;
+      }
+    </style>
+    <script>
+      (function () {
+        var mode = "system";
+        try {
+          var saved = JSON.parse(localStorage.getItem("pakpos-theme") || "null");
+          if (saved && saved.state && saved.state.mode) mode = saved.state.mode;
+        } catch (e) {
+          /* no storage: follow the OS */
+        }
+        var dark =
+          mode === "dark" || (mode === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
