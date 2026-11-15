@@ -11,6 +11,7 @@ import { HeadersSection } from "./HeadersSection";
 import { ParamsSection } from "./ParamsSection";
 import { UrlBar } from "./UrlBar";
 import { RequestActions } from "./RequestActions";
+import { RequestTitle } from "./RequestTitle";
 import { importCurlIntoTab } from "@/features/code/actions";
 import { looksLikeCurl } from "@/features/code/summary";
 import { usePreview } from "./usePreview";
@@ -44,6 +45,7 @@ export function RequestPane() {
   return (
     <VarScopeContext.Provider value={varScope}>
       <section aria-label="Request" className="flex h-full min-h-0 flex-col">
+        <RequestTitle key={tab.id} tab={tab} />
         <UrlBar
           tabKey={tab.id}
           request={req}

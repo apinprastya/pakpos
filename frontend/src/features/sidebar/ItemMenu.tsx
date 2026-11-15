@@ -65,7 +65,15 @@ const parts = {
 export function ItemMenuContent({ kind, entries }: { kind: "context" | "dropdown"; entries: MenuEntry[] }) {
   const P = parts[kind];
   return (
-    <P.Content className="w-52" onCloseAutoFocus={(e) => e.preventDefault()}>
+    <P.Content
+      className="w-52"
+      onCloseAutoFocus={(e) => e.preventDefault()}
+      // The menu is portalled, but React still bubbles its events to the
+      // component that renders it (e.g. a tree row, whose click would toggle
+      // or open it right after the chosen action ran).
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
       {entries.map((entry, i) => {
         if (entry === "separator") return <P.Separator key={`sep-${i}`} />;
         const Icon = entry.icon;
