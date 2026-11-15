@@ -1,0 +1,225 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon, { type IconName } from "../components/Icon.astro";
+import DownloadButton from "../components/DownloadButton.astro";
+import { REPO_URL } from "../lib/paths";
+
+const features: { icon: IconName; title: string; body: string }[] = [
+  {
+    icon: "send",
+    title: "Every kind of request",
+    body: "All common methods; query and path parameters synced with the URL; JSON, XML, form-data with files, urlencoded and binary bodies; Basic, Bearer and API key auth.",
+  },
+  {
+    icon: "chart",
+    title: "Readable responses",
+    body: "Status, size and a timing breakdown; pretty, raw and preview views; headers and cookies; search, copy and save. gzip, deflate and brotli are decoded for you.",
+  },
+  {
+    icon: "folder",
+    title: "Collections and folders",
+    body: "Nest folders and reorder with drag and drop. Set auth and headers once on a collection or folder and every request inside inherits them.",
+  },
+  {
+    icon: "braces",
+    title: "Environments and variables",
+    body: "Switch between Dev, Staging and Prod in one click. Use <code>{{variables}}</code> anywhere, with highlighting, hover and autocomplete, plus dynamic ones like <code>{{$guid}}</code>.",
+  },
+  {
+    icon: "lock",
+    title: "Secrets stay secret",
+    body: "Secret values go into your OS keychain, or a file encrypted with a master password. Workspace files only name them, so they're safe to commit.",
+  },
+  {
+    icon: "code",
+    title: "cURL and code",
+    body: "Paste a <code>curl</code> command straight into the URL bar. Copy any request as cURL, or generate code for JavaScript, Python, Go, Java and PHP.",
+  },
+  {
+    icon: "command",
+    title: "Command palette",
+    body: "Press <code>Ctrl+K</code> (<code>⌘K</code> on macOS) to jump to any request, folder, environment or action without touching the mouse.",
+  },
+  {
+    icon: "history",
+    title: "History and examples",
+    body: "Every send is kept per workspace, with the environment it used. Save responses as examples; Pakpos checks them for leaked secrets first.",
+  },
+  {
+    icon: "shield",
+    title: "No CORS, signed updates",
+    body: "Requests go out from a native HTTP client, never a browser, so CORS never gets in the way. Updates install only when their signature checks out.",
+  },
+];
+
+const tree = [
+  { method: "get", label: "GET", name: "List invoices", active: true },
+  { method: "post", label: "POST", name: "Create invoice" },
+  { method: "patch", label: "PATCH", name: "Update invoice" },
+  { method: "delete", label: "DEL", name: "Void invoice" },
+];
+
+// Syntax-coloured samples, as HTML (their {{braces}} would otherwise be Astro expressions).
+const k = (s: string) => `<span class="k">${s}</span>`;
+const s = (v: string) => `<span class="s">${v}</span>`;
+const n = (v: string) => `<span class="n">${v}</span>`;
+const v = (name: string) => `<span class="var">{{${name}}}</span>`;
+
+const responseBody = `{
+  ${k('"data"')}: [
+    { ${k('"id"')}: ${s('"inv_01J9X4"')}, ${k('"amount"')}: ${n("1250")}, ${k('"status"')}: ${s('"open"')} },
+    { ${k('"id"')}: ${s('"inv_01J9X7"')}, ${k('"amount"')}: ${n("480")}, ${k('"status"')}: ${s('"open"')} }
+  ],
+  ${k('"has_more"')}: ${n("true")}
+}`;
+
+const requestFile = `<span class="c"># billing-api/invoices/list-invoices.yaml</span>
+${k("id")}: ${s("01J9X2B7Q8N5M3K1H0G6F4D2C0")}
+${k("name")}: ${s("List invoices")}
+${k("seq")}: ${n("1")}
+${k("method")}: ${s("GET")}
+${k("url")}: ${s(`${v("baseUrl")}/v1/invoices?status=open`)}
+${k("query")}:
+  - ${k("key")}: ${s("status")}
+    ${k("value")}: ${s("open")}
+    ${k("enabled")}: ${n("true")}
+${k("headers")}:
+  - ${k("key")}: ${s("Accept")}
+    ${k("value")}: ${s("application/json")}
+    ${k("enabled")}: ${n("true")}
+${k("body")}:
+  ${k("type")}: ${s("none")}
+${k("auth")}:
+  ${k("type")}: ${s("inherit")}`;
+---
+
+<Base
+  title="Pakpos: a free desktop REST API client"
+  description="Pakpos is a free, open-source REST API client for Linux, macOS and Windows. Your requests live in your own folder as plain YAML, ready for git. No account needed."
+>
+  <main id="main">
+    <div class="hero">
+      <div class="wrap">
+        <p class="eyebrow">Free and open source · Linux, macOS, Windows</p>
+        <h1>A fast, quiet REST client that keeps your requests in your own files</h1>
+        <p class="lede">
+          Pakpos builds, sends and saves HTTP requests. Each request is a small YAML file in a folder you
+          choose, so your API collection lives next to your code and goes through git like everything else.
+        </p>
+        <div class="actions">
+          <DownloadButton />
+          <a class="btn" href={REPO_URL}>
+            View source on GitHub
+          </a>
+        </div>
+        <p class="fineprint">Free forever. No account, no sign-in, no paid tier.</p>
+
+        <div
+          class="mock"
+          role="img"
+          aria-label="The Pakpos window: a collection tree on the left, a GET request with a variable in the URL, and a formatted JSON response."
+        >
+          <div class="mock-bar">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+          <div class="mock-body">
+            <div class="mock-side">
+              <div class="label">Collections</div>
+              <div class="mock-row">▾ Billing API</div>
+              {tree.map((r) => (
+                <div class:list={["mock-row indent", { active: r.active }]}>
+                  <span class={`m m-${r.method}`}>{r.label}</span>
+                  {r.name}
+                </div>
+              ))}
+              <div class="mock-row">▸ Auth</div>
+              <div class="mock-row">▸ Webhooks</div>
+            </div>
+            <div class="mock-main">
+              <div class="mock-url">
+                <div class="field">
+                  <span class="m m-get">GET</span>
+                  <span set:html={`${v("baseUrl")}/v1/invoices?status=open&amp;limit=2`} />
+                </div>
+                <span class="send">Send</span>
+              </div>
+              <div class="mock-tabs">
+                <span class="on">Body</span>
+                <span>Headers 9</span>
+                <span>Cookies</span>
+                <span>Timing</span>
+              </div>
+              <div class="mock-status">
+                <span class="ok">200 OK</span>
+                <span>84 ms</span>
+                <span>412 B</span>
+              </div>
+              <pre set:html={responseBody} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section id="features">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Everything you need for REST, nothing you don't</h2>
+          <p>A dense, keyboard-friendly tool that starts fast and stays out of your way.</p>
+        </div>
+        <div class="grid">
+          {features.map((f) => (
+            <div class="card">
+              <span class="icon">
+                <Icon name={f.icon} />
+              </span>
+              <h3>{f.title}</h3>
+              <p set:html={f.body} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section id="files">
+      <div class="wrap split">
+        <div class="section-head">
+          <h2>Your workspace is just a folder</h2>
+          <p>No cloud sync and no lock-in. Pakpos reads and writes plain files you can open in any editor.</p>
+          <ul class="checks">
+            <li>
+              <strong>One request per file,</strong> so pull-request diffs stay small and readable.
+            </li>
+            <li>
+              <strong>Commit it with your code</strong> and the whole team gets the same collection.
+            </li>
+            <li>
+              <strong>Edit outside the app;</strong> Pakpos notices the change and reloads.
+            </li>
+            <li>
+              <strong>History and settings stay local,</strong> on your machine only.
+            </li>
+          </ul>
+        </div>
+        <pre class="code" aria-label="Example request file" set:html={requestFile} />
+      </div>
+    </section>
+
+    <section class="free">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Free. Really.</h2>
+          <p>
+            Pakpos is open source under the Apache 2.0 license. Every feature is free for personal and
+            commercial use, with no account, no trial and no paid plan.
+          </p>
+        </div>
+        <div class="actions">
+          <DownloadButton />
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>

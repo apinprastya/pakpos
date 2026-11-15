@@ -160,6 +160,13 @@ tasks:
       - task: test:go
       - task: test:fe
       - task: test:tools
+      - task: test:web
+
+  test:web:
+    summary: Tests the website's download-link script (website/, node:test; needs no npm install)
+    dir: website
+    cmds:
+      - npm test --silent
 
   test:tools:
     summary: Tests the build helpers in tools/ (calver, stamp; a separate Go module)
@@ -183,6 +190,7 @@ tasks:
     cmds:
       - sh ./scripts/go-coverage.sh
       - go -C tools test -cover ./...
+      - cd website && npm run coverage --silent
       - cd frontend && npm run coverage --silent
 
   lint:

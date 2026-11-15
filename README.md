@@ -51,6 +51,12 @@ App data (history, settings, and `secrets.enc` when there is no keychain) lives 
 - macOS: `~/Library/Application Support/pakpos`
 - Windows: `%AppData%\pakpos`
 
+## Website
+
+`website/` is the marketing and download site, built with [Astro](https://astro.build) into static files. `.github/workflows/pages.yml` checks it on pull requests and publishes it to GitHub Pages from `main` (turn on Settings → Pages → Source: GitHub Actions once). The site is served from the domain root, so Pages needs a custom domain (Settings → Pages → Custom domain); set the repository variable `SITE_URL` to that URL for canonical and preview links. `src/scripts/site.js` points the download buttons at the latest release's files and falls back to the releases page.
+
+From `website/`: `npm install`, then `npm run dev` (preview at `localhost:4321/`), `npm run build` (to `dist/`), `npm test`, `npm run format`.
+
 ## Develop
 
 Requirements:

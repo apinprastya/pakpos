@@ -71,6 +71,7 @@ tools/                   build helpers, a SEPARATE Go module (pakpos/tools): cal
 .github/workflows/       ci.yml (lint, coverage, 3-OS build), release.yml (CalVer tags v* → signed-if-secrets draft release)
 .golangci.yml            golangci-lint v2 config
 docs/                    architecture and plans
+website/                 Astro marketing + download site, a SEPARATE npm project (GitHub Pages via .github/workflows/pages.yml, served from the domain root; `SITE_URL` sets the absolute site URL; build internal links with `url()` from src/lib/paths.ts). src/scripts/site.js fills download links from the latest release (tested with `node --test`); asset suffixes in download.astro must match release.yml
 ```
 
 ## Architecture rules
