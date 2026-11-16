@@ -129,7 +129,7 @@ func TestMaskExample(t *testing.T) {
 }
 
 func TestEncodedForms(t *testing.T) {
-	got := EncodedForms([]SecretValue{{"k", "a+b/c?d=e f"}, {"s", "plain"}})
+	got := EncodedForms([]SecretValue{{"k", "a+b/c?d=e f"}, {"s", "plain"}, {"q", `say "hi"`}})
 	has := func(name, val string) bool {
 		for _, sv := range got {
 			if sv.Name == name && sv.Value == val {
@@ -141,8 +141,10 @@ func TestEncodedForms(t *testing.T) {
 	for _, want := range []SecretValue{
 		{"k", base64.StdEncoding.EncodeToString([]byte("a+b/c?d=e f"))},
 		{"k", base64.RawURLEncoding.EncodeToString([]byte("a+b/c?d=e f"))},
-		{"k", "a%2Bb%2Fc%3Fd%3De+f"}, // query escaping
-		{"k", "a+b%2Fc%3Fd=e%20f"},   // path escaping
+		{"k", "a%2Bb%2Fc%3Fd%3De+f"},   // query escaping
+		{"k", "a+b%2Fc%3Fd=e%20f"},     // path escaping
+		{"k", "a%2Bb%2Fc%3Fd%3De%20f"}, // strict query escaping (httpexec)
+		{"q", `say \"hi\"`},            // JSON string escaping
 		{"s", "cGxhaW4="},
 		{"s", "cGxhaW4"},
 	} {

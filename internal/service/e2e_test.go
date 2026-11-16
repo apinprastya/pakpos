@@ -708,6 +708,72 @@ func TestEndToEndUnsetSecretShadowsGlobals(t *testing.T) {
 	}
 }
 
+// A variable whose value holds quotes and backslashes is JSON-escaped where
+// it lands inside a string in a raw JSON body, inserted as is outside one,
+// and URL-encoded in a query param. The Debug tab still masks a secret in
+// its JSON-escaped form.
+func TestEndToEndVariablesEncodedWhereUsed(t *testing.T) {
+	type seen struct{ body, query, rawQuery string }
+	var got atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got.Store(seen{string(b), r.URL.Query().Get("q"), r.URL.RawQuery})
+	}))
+	t.Cleanup(srv.Close)
+	h := newHarness(t)
+	h.openWorkspace(t)
+	dev, err := h.env.Create("Dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}
+	if _, err := h.env.SaveVariables(ref, []model.Variable{
+		{Key: "name", Value: `Ann "the admin" C:\home`, Enabled: true},
+		{Key: "count", Value: "3", Enabled: true},
+		{Key: "pw", Enabled: true, Secret: true},
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(ref, "pw", `p"w\d-123`); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.Select(dev.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	req := model.Request{
+		Method: "POST", URL: srv.URL + "?q={{name}}",
+		Query: []model.KeyValue{{Key: "q", Value: "{{name}}", Enabled: true}},
+		Body: model.Body{Type: model.BodyRaw, Language: model.LangJSON,
+			Raw: `{"name": "{{name}}", "count": {{count}}, "pw": "{{pw}}"}`},
+	}
+	res, err := h.req.Send(context.Background(), "s", req, "")
+	if err != nil || res.Error != nil {
+		t.Fatalf("send: %+v %v", res, err)
+	}
+	s := got.Load().(seen)
+	var doc struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+		PW    string `json:"pw"`
+	}
+	if err := json.Unmarshal([]byte(s.body), &doc); err != nil {
+		t.Fatalf("body is not valid JSON: %s: %v", s.body, err)
+	}
+	if doc.Name != `Ann "the admin" C:\home` || doc.Count != 3 || doc.PW != `p"w\d-123` {
+		t.Errorf("decoded body = %+v", doc)
+	}
+	if s.query != `Ann "the admin" C:\home` || strings.ContainsAny(s.rawQuery, `" \`) {
+		t.Errorf("query = %q (raw %q)", s.query, s.rawQuery)
+	}
+	if len(res.Hops) == 0 {
+		t.Fatal("no hops")
+	}
+	if body := res.Hops[0].RequestBody; strings.Contains(body, `p\"w`) || !strings.Contains(body, `"pw": "[secret:pw]"`) {
+		t.Errorf("hop body not masked: %s", body)
+	}
+}
+
 // Renaming a secret environment variable keeps its value: the request still
 // sends it under the new name, and the old key is gone from the store.
 func TestEndToEndRenamedSecretKeepsValue(t *testing.T) {

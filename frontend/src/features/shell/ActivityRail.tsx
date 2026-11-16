@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useLayoutStore, type SidebarView } from "@/stores/layout";
 import { ThemeMenu } from "./ThemeMenu";
 import { TitleBarSpace } from "./TitleBarSpace";
+import { AppLogo } from "./AppLogo";
 
 const VIEWS: { id: SidebarView; label: string; icon: LucideIcon }[] = [
   { id: "collections", label: "Collections", icon: FolderTree },
@@ -25,7 +26,7 @@ export function ActivityRail() {
       className="flex w-12 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-2 mac:pt-0"
     >
       <TitleBarSpace className="-mr-px mb-1 w-[calc(100%+1px)] self-start" />
-      <Logo />
+      <AppLogo className="mb-2" />
       {VIEWS.map(({ id, label, icon: Icon }) => (
         <Tooltip key={id}>
           <TooltipTrigger asChild>
@@ -52,18 +53,6 @@ export function ActivityRail() {
         <ThemeMenu />
       </div>
     </nav>
-  );
-}
-
-/** A postage-stamp mark: perforated square with a "P". */
-function Logo() {
-  return (
-    <div
-      aria-hidden
-      className="mb-2 flex size-8 items-center justify-center rounded-[3px] bg-primary font-mono text-sm font-bold text-primary-foreground outline-2 outline-offset-2 outline-primary outline-dashed"
-    >
-      P
-    </div>
   );
 }
 

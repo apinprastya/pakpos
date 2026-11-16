@@ -14,7 +14,10 @@ func ResolveRequest(req model.Request, scopes []Scope, opts ...Option) (model.Re
 
 // ResolveRequest returns a copy of req with references resolved in every
 // field that is sent: the URL, path param values, query and header rows,
-// the active body type's fields and the active auth type's fields. Disabled
+// the active body type's fields and the active auth type's fields. In a raw
+// JSON body, values inside string literals are JSON-escaped (see
+// ResolveJSON); query rows and urlencoded fields are left as plain text
+// because httpexec encodes them when it builds the request. Disabled
 // rows and inactive body/auth fields are copied unchanged and their
 // references are not reported. req itself is never modified.
 //
@@ -41,7 +44,11 @@ func (r *Resolver) ResolveRequest(req model.Request) (model.Request, []string, e
 
 	switch out.Body.Type {
 	case model.BodyRaw:
-		rr.field("body", &out.Body.Raw)
+		if out.Body.Language == model.LangJSON {
+			rr.jsonField("body", &out.Body.Raw)
+		} else {
+			rr.field("body", &out.Body.Raw)
+		}
 	case model.BodyURLEncoded:
 		rr.rows("form field", out.Body.URLEncoded)
 	case model.BodyFormData:
@@ -99,6 +106,18 @@ func (rr *requestResolver) field(what string, s *string) {
 		return
 	}
 	v, err := rr.r.expand(*s, nil, rr.unresolved)
+	if err != nil {
+		rr.err = fmt.Errorf("resolve %s: %w", what, err)
+		return
+	}
+	*s = v
+}
+
+func (rr *requestResolver) jsonField(what string, s *string) {
+	if rr.err != nil {
+		return
+	}
+	v, err := rr.r.expandJSON(*s, rr.unresolved)
 	if err != nil {
 		rr.err = fmt.Errorf("resolve %s: %w", what, err)
 		return
