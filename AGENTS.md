@@ -150,6 +150,8 @@ website/                 Astro marketing + download site, a SEPARATE npm project
   - It's created once per mount. Language and read-only changes go through compartments.
   - Value changes from props are tagged with the `External` annotation so they aren't echoed back to `onChange`. Without it, editing the params table would re-parse the URL and reorder rows.
   - Pass `key={tabId}` so each request gets its own undo history.
+  - `readOnly` sets only `EditorState.readOnly`; never `EditorView.editable.of(false)`, which makes the text unselectable and uncopyable. Text is selectable app-wide; controls (buttons, tabs, tree rows, menu items, labels) opt out in `index.css`.
+  - Tooltips (variable info, completions) are mounted in `document.body`, or in the enclosing dialog (`tooltipParent`), never inside the editor: WebKit falls back to absolute positioning there and the surrounding panes clip them. Keep `.cm-line` backgrounds (active line, `{{var}}` marks) translucent: the selection is drawn beneath them.
   - Its colors come from the `--syntax-*` and `--editor-*` tokens in `index.css`.
   - Props worth knowing: `variables` (decided at mount), `autoFocus`/`initialCursor`, `onBlur`, `onPaste(text) → handled` (the URL bar's cURL paste).
   - **Every language except plain text loads lazily** (`languages.ts` `loadLanguage`, cached): the editor shows plain text until the chunk arrives. Never import `@codemirror/lang-*` statically. Rarely opened dialogs (settings, code, import cURL, palette) are `React.lazy` chunks mounted on first open and preloaded when the app is idle (`features/shell/LazyDialogs.tsx`; `schedulePreload` in `dialogChunks.ts`, skipped under Vitest).

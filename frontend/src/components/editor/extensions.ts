@@ -16,3 +16,8 @@ export const singleLineFilter = EditorState.transactionFilter.of((tr) => {
     },
   ];
 });
+
+/** Where an editor's tooltips go: its dialog if it's in one, else the body. */
+export function tooltipParent(el: HTMLElement): HTMLElement {
+  return el.closest<HTMLElement>('[role="dialog"], [role="alertdialog"]') ?? el.ownerDocument.body;
+}

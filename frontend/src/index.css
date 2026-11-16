@@ -112,15 +112,17 @@
   --syntax-punct: #5d6677;
   /* {{variables}}: resolved, unresolved, dynamic */
   --syntax-var-resolved: #0b6e82;
-  --syntax-var-resolved-bg: #e3f3f6;
+  --syntax-var-resolved-bg: color-mix(in oklab, var(--syntax-var-resolved) 11%, transparent);
   --syntax-var-unresolved: #b93a2c;
-  --syntax-var-unresolved-bg: #fbecea;
+  --syntax-var-unresolved-bg: color-mix(in oklab, var(--syntax-var-unresolved) 11%, transparent);
   --syntax-var-dynamic: #7c3fc4;
-  --syntax-var-dynamic-bg: #f1eafb;
+  --syntax-var-dynamic-bg: color-mix(in oklab, var(--syntax-var-dynamic) 11%, transparent);
   --syntax-var-warn: #8a5300;
-  --syntax-var-warn-bg: #fbf0d9;
+  --syntax-var-warn-bg: color-mix(in oklab, var(--syntax-var-warn) 11%, transparent);
   --editor-selection: #cfdafc;
-  --editor-active-line: #f0f2f6;
+  /* Translucent: CodeMirror draws the selection under the lines, so an opaque
+     active line would hide the selection on the cursor's line. */
+  --editor-active-line: color-mix(in oklab, var(--foreground) 5%, transparent);
 }
 
 .dark {
@@ -170,15 +172,15 @@
   --syntax-comment: #7d8697;
   --syntax-punct: #939caf;
   --syntax-var-resolved: #67cfe0;
-  --syntax-var-resolved-bg: #17323a;
+  --syntax-var-resolved-bg: color-mix(in oklab, var(--syntax-var-resolved) 16%, transparent);
   --syntax-var-unresolved: #f2877d;
-  --syntax-var-unresolved-bg: #3a2124;
+  --syntax-var-unresolved-bg: color-mix(in oklab, var(--syntax-var-unresolved) 16%, transparent);
   --syntax-var-dynamic: #c3a6ff;
-  --syntax-var-dynamic-bg: #2c2443;
+  --syntax-var-dynamic-bg: color-mix(in oklab, var(--syntax-var-dynamic) 16%, transparent);
   --syntax-var-warn: #ebc06e;
-  --syntax-var-warn-bg: #362b14;
+  --syntax-var-warn-bg: color-mix(in oklab, var(--syntax-var-warn) 16%, transparent);
   --editor-selection: #2f3f66;
-  --editor-active-line: #1f2633;
+  --editor-active-line: color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
 @layer base {
@@ -208,6 +210,23 @@
   body {
     font-size: 13px;
     -webkit-font-smoothing: antialiased;
+  }
+  /*
+   * Text is selectable by default (response bodies, headers, errors, dialogs,
+   * toasts). Controls opt out so clicks and drags on them don't select labels.
+   */
+  button,
+  label,
+  [role="button"],
+  [role="tab"],
+  [role="treeitem"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="separator"],
+  [role="columnheader"],
+  [data-slot="tooltip-content"] {
     user-select: none;
   }
   input,
@@ -215,6 +234,9 @@
   [contenteditable="true"],
   .selectable {
     user-select: text;
+  }
+  ::selection {
+    background-color: var(--editor-selection);
   }
   @media (prefers-reduced-motion: reduce) {
     *,

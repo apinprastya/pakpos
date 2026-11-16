@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -117,6 +117,55 @@ describe("ResponsePane", () => {
 
     await user.click(screen.getByRole("button", { name: "Save response to file" }));
     expect(api.saveResponseBody).toHaveBeenCalledWith(5);
+  });
+
+  it("copies a JSON field's value, key and path from the body's menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    show(ok());
+    const view = editorView("Response body");
+    const openAt = (needle: string) => {
+      const pos = view.state.doc.toString().indexOf(needle) + 1;
+      act(() => view.dispatch({ selection: { anchor: pos } }));
+      fireEvent.contextMenu(view.contentDOM); // keyboard-style: no pointer position
+    };
+
+    openAt('"Ada"');
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("name")).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Copy selection" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await user.click(within(menu).getByRole("menuitem", { name: "Copy value" }));
+    expect(writeText).toHaveBeenLastCalledWith("Ada");
+    expect(toast.success).toHaveBeenCalledWith("Value copied");
+
+    openAt("42");
+    await user.click(await screen.findByRole("menuitem", { name: "Copy key" }));
+    expect(writeText).toHaveBeenLastCalledWith("id");
+    openAt("42");
+    await user.click(await screen.findByRole("menuitem", { name: "Copy path" }));
+    expect(writeText).toHaveBeenLastCalledWith("id");
+
+    // The root has no key or path; select all, then copy the selection.
+    openAt("{");
+    expect(await screen.findByRole("menuitem", { name: "Copy value" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy key" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Select all" }));
+    fireEvent.contextMenu(view.contentDOM, { clientX: 5, clientY: 5 });
+    writeText.mockRejectedValue(new Error("denied"));
+    await user.click(await screen.findByRole("menuitem", { name: "Copy selection" }));
+    expect(writeText).toHaveBeenLastCalledWith(view.state.doc.toString());
+    expect(toast.error).toHaveBeenCalledWith("Couldn't copy", expect.anything());
+  });
+
+  it("offers only copy and select all for non-JSON bodies", async () => {
+    show(ok({ kind: "text", contentType: "text/plain", body: "hello" }));
+    fireEvent.contextMenu(editorView("Response body").contentDOM);
+    expect(await screen.findByRole("menuitem", { name: "Select all" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy value" })).not.toBeInTheDocument();
   });
 
   it("notes invalid JSON and disables save when not recorded", () => {

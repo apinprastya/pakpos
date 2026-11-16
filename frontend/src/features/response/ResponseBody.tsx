@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CodeEditor } from "@/components/editor/CodeEditor";
 import { saveResponseBody } from "@/features/request/actions";
+import { BodyContextMenu } from "./BodyContextMenu";
 import type { Response } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { bodyText, editorLanguage, formatBytes, prettyBody } from "./format";
@@ -114,14 +115,16 @@ export function ResponseBody({ response, historyId }: Props) {
         ) : effective === "preview" ? (
           <Preview response={response} text={raw} />
         ) : (
-          <CodeEditor
-            ariaLabel="Response body"
-            readOnly
-            className="h-full"
-            value={text}
-            language={effective === "pretty" ? editorLanguage(response.kind) : "text"}
-            onView={(v) => (view.current = v)}
-          />
+          <BodyContextMenu view={view} json={response.kind === "json"}>
+            <CodeEditor
+              ariaLabel="Response body"
+              readOnly
+              className="h-full"
+              value={text}
+              language={effective === "pretty" ? editorLanguage(response.kind) : "text"}
+              onView={(v) => (view.current = v)}
+            />
+          </BodyContextMenu>
         )}
       </div>
     </div>

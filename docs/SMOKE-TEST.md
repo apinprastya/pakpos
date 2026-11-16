@@ -39,6 +39,7 @@ Copy the checklist per OS and tick as you go: `[ ]` → `[x]`.
 ## Response viewer
 
 - [ ] JSON is pretty-printed with folding. Raw shows the response as received.
+- [ ] Text in the response body selects and copies (Ctrl+C). Right-click a JSON field: Copy value, Copy key and Copy path copy that field; the path reads like `data.items[0].id`.
 - [ ] Search in the body works. Copy works. Save to file writes the full body.
 - [ ] HTML preview renders without running scripts (`https://httpbin.org/html`). Image preview works (`https://httpbin.org/image/png`).
 - [ ] The Headers and Cookies tabs show counts (`https://httpbin.org/cookies/set?x=1`).
