@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"pakpos/internal/core/model"
+	"pakpos/internal/core/vars"
 	"pakpos/internal/store/fsstore"
 )
 
@@ -90,7 +91,8 @@ func (s *Session) SendSecrets(req model.Request, parentID, envID string) (values
 
 // EncodedForms returns the forms of each value that commonly show up when a
 // server echoes it: base64 (standard and URL alphabets, padded and not) and
-// URL encoding (query and path escaping), where they differ from the value.
+// URL encoding (query, strict query and path escaping) and JSON string
+// escaping (as a raw JSON body sends it), where they differ from the value.
 // A base64 form only matches the value encoded on its own; inside a longer
 // encoded string (such as Basic credentials) the alignment differs, which is
 // why ExampleSecrets adds those separately.
@@ -104,7 +106,9 @@ func EncodedForms(values []SecretValue) []SecretValue {
 			base64.URLEncoding.EncodeToString(b),
 			base64.RawURLEncoding.EncodeToString(b),
 			url.QueryEscape(sv.Value),
+			strings.ReplaceAll(url.QueryEscape(sv.Value), "+", "%20"), // as httpexec sends query rows
 			url.PathEscape(sv.Value),
+			vars.JSONEscape(sv.Value), // inside a string in a raw JSON body
 		} {
 			if form != sv.Value && len(form) >= MinSecretLength {
 				out = append(out, SecretValue{Name: sv.Name, Value: form})

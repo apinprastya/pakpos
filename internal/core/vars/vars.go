@@ -14,6 +14,10 @@
 //     the braces is ignored ({{ name }}).
 //   - A value may reference other variables, up to MaxDepth levels. A cycle
 //     is an error (ErrCycle), as is nesting deeper than MaxDepth (ErrTooDeep).
+//   - In a raw JSON body (ResolveRequest), a value that lands inside a
+//     string literal is JSON-escaped, so a value holding " or \ keeps the
+//     document valid; a reference outside quotes is inserted as is, so
+//     {{count}} or {{object}} can supply a number or a whole JSON value.
 //   - Dynamic variables get a fresh value at every occurrence and are never
 //     resolved further. An unknown $name is looked up in the scopes like any
 //     other name.
@@ -185,6 +189,13 @@ func (r *Resolver) Resolve(s string) (string, []string, error) {
 // expand resolves the references in s. stack holds the names being expanded
 // (outermost first) for cycle detection and depth limiting.
 func (r *Resolver) expand(s string, stack []string, unresolved map[string]struct{}) (string, error) {
+	return r.expandEscaped(s, nil, stack, unresolved)
+}
+
+// expandEscaped is expand with escape (when non-nil) applied to each value
+// substituted into s. Values are fully resolved first and escaped once:
+// nested references inside a value are not escaped again.
+func (r *Resolver) expandEscaped(s string, escape func(string) string, stack []string, unresolved map[string]struct{}) (string, error) {
 	if !strings.Contains(s, "{{") {
 		return s, nil
 	}
@@ -225,6 +236,9 @@ func (r *Resolver) expand(s string, stack []string, unresolved map[string]struct
 			unresolved[name] = struct{}{}
 			b.WriteString(ref)
 			continue
+		}
+		if escape != nil {
+			val = escape(val)
 		}
 		b.WriteString(val)
 	}
