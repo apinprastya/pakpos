@@ -17,7 +17,8 @@ interface Props {
 /**
  * The Debug tab: the request as it went over the wire (every header,
  * including the ones the app and Go add, and each redirect followed) and the
- * status line and headers that came back. Secret values are masked.
+ * status line and headers that came back. Secret values are masked as
+ * [secret:name], so they can't be mistaken for unresolved {{name}}s.
  */
 export function DebugView({ hops }: Props) {
   const view = useRef<EditorView | null>(null);
@@ -47,7 +48,9 @@ export function DebugView({ hops }: Props) {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-1 px-3 py-1.5">
         <p className="text-xs text-muted-foreground">
-          {debugSummary(hops)}. Secret values show as <span className="font-mono">{"{{name}}"}</span>.
+          {debugSummary(hops)}. Secrets were sent with their values and show here as{" "}
+          <span className="font-mono">[secret:name]</span>; <span className="font-mono">{"{{name}}"}</span> is
+          a variable that had no value and was sent as written.
         </p>
         <div className="ml-auto flex items-center gap-0.5">
           <IconButton

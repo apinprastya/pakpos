@@ -177,7 +177,9 @@ describe("ResponsePane", () => {
     show(makeResult({ response: makeResponse(), historyId: 5, hops }));
 
     await user.click(screen.getByRole("tab", { name: "Debug" }));
-    expect(screen.getByText(/2 requests, 1 redirect/)).toBeInTheDocument();
+    expect(screen.getByText(/2 requests, 1 redirect/)).toHaveTextContent(
+      "Secrets were sent with their values and show here as [secret:name]; {{name}} is a variable that had no value",
+    );
     expect(editorText("Debug details")).toBe(debugText(hops));
 
     await user.click(screen.getByRole("button", { name: "Search in debug details" }));

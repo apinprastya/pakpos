@@ -7,7 +7,7 @@ describe("debugText", () => {
       method: "POST",
       requestHeaders: [
         { key: "Host", value: "api.example", enabled: true },
-        { key: "Authorization", value: "Bearer {{token}}", enabled: true },
+        { key: "Authorization", value: "Bearer [secret:token]", enabled: true },
       ],
       requestBody: '{"a":1}',
       requestBodySize: 7,
@@ -17,7 +17,7 @@ describe("debugText", () => {
         "### Request · 10.0.0.1:443, TLS 1.3, new connection",
         "POST https://api.example/users HTTP/1.1",
         "Host: api.example",
-        "Authorization: Bearer {{token}}",
+        "Authorization: Bearer [secret:token]",
         "",
         '{"a":1}',
         "",

@@ -8,11 +8,16 @@ import (
 )
 
 // BinarySecretNote replaces a binary request body that held a secret, which
-// can't be shown with {{name}} in its place.
+// can't be shown with SecretMark in its place.
 const BinarySecretNote = "Not shown: this binary body contains a secret value."
 
+// SecretMark is what a secret's value becomes in hops: "[secret:name]". It
+// differs from {{name}} on purpose, which in a hop means a variable that had
+// no value and was sent as written.
+func SecretMark(name string) string { return "[secret:" + name + "]" }
+
 // MaskHops returns copies of hops with every secret value (see SendSecrets)
-// replaced by {{name}}: in URLs, header names and values, errors and text
+// replaced by SecretMark(name): in URLs, header names and values, errors and text
 // bodies. A truncated body that ends partway into a secret has that part
 // masked too. A binary body holding a secret is dropped, with
 // BinarySecretNote saying why.
@@ -38,7 +43,7 @@ func MaskHops(hops []model.Hop, values []SecretValue) []model.Hop {
 
 func maskText(s string, values []SecretValue) string {
 	for _, sv := range values {
-		s = strings.ReplaceAll(s, sv.Value, "{{"+sv.Name+"}}")
+		s = strings.ReplaceAll(s, sv.Value, SecretMark(sv.Name))
 	}
 	return s
 }
@@ -78,7 +83,7 @@ func maskCutOff(body string, values []SecretValue) string {
 	for _, sv := range values {
 		for n := len(sv.Value) - 1; n >= MinSecretLength; n-- {
 			if strings.HasSuffix(body, sv.Value[:n]) {
-				return body[:len(body)-n] + "{{" + sv.Name + "}}"
+				return body[:len(body)-n] + SecretMark(sv.Name)
 			}
 		}
 	}

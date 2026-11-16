@@ -549,6 +549,10 @@ func TestEndToEndSendPipeline(t *testing.T) {
 		res.Environment == nil || res.Environment.Name != "Dev" {
 		t.Fatalf("dev: %+v %+v", got, res)
 	}
+	// In the hops an unresolved variable stays {{name}}, unlike a masked secret.
+	if !slices.ContainsFunc(res.Hops[0].RequestHeaders, func(kv model.KeyValue) bool { return kv.Key == "X-Key" && kv.Value == "{{apiKey}}" }) {
+		t.Fatalf("dev hop: %+v", res.Hops[0].RequestHeaders)
+	}
 
 	// Prod: another server, and its secret resolves.
 	must(h.env.Select(prod.ID))
@@ -568,7 +572,7 @@ func TestEndToEndSendPipeline(t *testing.T) {
 		wire[kv.Key] = kv.Value
 	}
 	if hop.Method != "GET" || !strings.HasPrefix(hop.URL, srvB.URL+"/prod/me?id=") || hop.StatusCode != http.StatusNoContent ||
-		wire["Authorization"] != "Bearer {{token}}" || wire["X-Key"] != "{{apiKey}}" || wire["Host"] == "" || wire["X-Team"] != "admin" {
+		wire["Authorization"] != "Bearer [secret:token]" || wire["X-Key"] != "[secret:apiKey]" || wire["Host"] == "" || wire["X-Team"] != "admin" {
 		t.Fatalf("prod hop: %+v", hop)
 	}
 	if raw, _ := json.Marshal(res.Hops); strings.Contains(string(raw), secretValue) || strings.Contains(string(raw), "prod-key-77") {

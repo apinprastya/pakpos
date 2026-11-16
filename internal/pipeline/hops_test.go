@@ -68,15 +68,15 @@ func TestMaskHops(t *testing.T) {
 	got := MaskHops(hops, values)
 
 	h := got[0]
-	if h.URL != "https://x/?api={{key}}" || h.RequestHeaders[0].Value != "Bearer {{token}}" || h.RequestHeaders[1].Key != "{{key}}" ||
-		h.RequestBody != `{"token":"{{token}}"}` || h.ResponseHeaders[0].Value != "{{key}}" {
+	if h.URL != "https://x/?api=[secret:key]" || h.RequestHeaders[0].Value != "Bearer [secret:token]" || h.RequestHeaders[1].Key != "[secret:key]" ||
+		h.RequestBody != `{"token":"[secret:token]"}` || h.ResponseHeaders[0].Value != "[secret:key]" {
 		t.Errorf("hop 0 = %+v", h)
 	}
 	if hops[0].RequestHeaders[0].Value != before {
 		t.Error("MaskHops changed its input")
 	}
 	// A body cut off partway into a secret has that part masked.
-	if got[1].RequestBody != "start {{token}}" || got[1].Error != "refused for {{token}}" {
+	if got[1].RequestBody != "start [secret:token]" || got[1].Error != "refused for [secret:token]" {
 		t.Errorf("hop 1 = %+v", got[1])
 	}
 	// Binary with a secret is dropped; without one it stays.
@@ -99,8 +99,8 @@ func TestMaskHops(t *testing.T) {
 func TestMaskCutOff(t *testing.T) {
 	values := []SecretValue{{"t", "abcdefgh"}}
 	for in, want := range map[string]string{
-		"x abcdefg": "x {{t}}",
-		"x abcd":    "x {{t}}",
+		"x abcdefg": "x [secret:t]",
+		"x abcd":    "x [secret:t]",
 		"x abc":     "x abc", // shorter than MinSecretLength: too common to mask
 		"x":         "x",
 	} {
@@ -108,7 +108,10 @@ func TestMaskCutOff(t *testing.T) {
 			t.Errorf("maskCutOff(%q) = %q, want %q", in, got, want)
 		}
 	}
-	if got := maskCutOff("é-abc\xc3", []SecretValue{{"u", "abc\xc3\xa9zz"}}); !strings.HasSuffix(got, "{{u}}") {
+	if SecretMark("pw") != "[secret:pw]" {
+		t.Errorf("SecretMark = %q", SecretMark("pw"))
+	}
+	if got := maskCutOff("é-abc\xc3", []SecretValue{{"u", "abc\xc3\xa9zz"}}); !strings.HasSuffix(got, "[secret:u]") {
 		t.Errorf("multi-byte cut = %q", got)
 	}
 }

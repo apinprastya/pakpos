@@ -41,7 +41,7 @@ Copy the checklist per OS and tick as you go: `[ ]` → `[x]`.
 - [ ] JSON is pretty-printed with folding. Raw shows the response as received.
 - [ ] Text in the response body selects and copies (Ctrl+C). Right-click a JSON field: Copy value, Copy key and Copy path copy that field; the path reads like `data.items[0].id`.
 - [ ] Search in the body works. Copy works. Save to file writes the full body.
-- [ ] Debug tab: send a request with a secret `{{token}}` in a header and a body; it shows the request line, every header (incl. Host, User-Agent, Content-Length), the body, and the response status and headers, with the secret as `{{token}}`. A redirecting URL shows one section per hop. A failed send (e.g. a closed port) offers "Show what was sent". A request opened from History says debug details aren't kept.
+- [ ] Debug tab: send a request with a secret `{{token}}` in a header and a body; it shows the request line, every header (incl. Host, User-Agent, Content-Length), the body, and the response status and headers, with the secret as `[secret:token]` (an unresolved variable stays `{{name}}`). A redirecting URL shows one section per hop. A failed send (e.g. a closed port) offers "Show what was sent". A request opened from History says debug details aren't kept.
 - [ ] HTML preview renders without running scripts (`https://httpbin.org/html`). Image preview works (`https://httpbin.org/image/png`).
 - [ ] The Headers and Cookies tabs show counts (`https://httpbin.org/cookies/set?x=1`).
 - [ ] Hovering the time shows the DNS, connect, TLS and TTFB breakdown.
