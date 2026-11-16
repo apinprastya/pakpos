@@ -25,7 +25,7 @@ export function TabBar() {
   const [overId, setOverId] = useState<string | null>(null);
 
   return (
-    <div className="flex h-10 shrink-0 items-end border-b bg-sidebar">
+    <div className="window-drag flex h-10 shrink-0 items-end border-b bg-sidebar">
       <div
         role="tablist"
         aria-label="Open tabs"

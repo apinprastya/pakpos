@@ -75,7 +75,8 @@ func New(s Settings) *Executor {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: s.InsecureSkipVerify} //nolint:gosec // user-controlled setting
 	client := &http.Client{
-		Transport: transport,
+		// Records hops for sends that ask for it (WithRecorder).
+		Transport: recordingTransport{base: transport},
 		Jar:       s.Jar,
 		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
 			if !s.FollowRedirects {

@@ -1,11 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
 import type { Response, SendResult } from "@/lib/model";
 import { editorText, editorView } from "@/test/editor";
-import { makeResponse, makeResult } from "@/test/fixtures";
+import { makeHop, makeResponse, makeResult } from "@/test/fixtures";
+import { debugText } from "./debugText";
 import { resetTabs } from "@/test/store";
 import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
@@ -117,6 +118,100 @@ describe("ResponsePane", () => {
 
     await user.click(screen.getByRole("button", { name: "Save response to file" }));
     expect(api.saveResponseBody).toHaveBeenCalledWith(5);
+  });
+
+  it("copies a JSON field's value, key and path from the body's menu", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    show(ok());
+    const view = editorView("Response body");
+    const openAt = (needle: string) => {
+      const pos = view.state.doc.toString().indexOf(needle) + 1;
+      act(() => view.dispatch({ selection: { anchor: pos } }));
+      fireEvent.contextMenu(view.contentDOM); // keyboard-style: no pointer position
+    };
+
+    openAt('"Ada"');
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("name")).toBeInTheDocument();
+    expect(within(menu).getByRole("menuitem", { name: "Copy selection" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await user.click(within(menu).getByRole("menuitem", { name: "Copy value" }));
+    expect(writeText).toHaveBeenLastCalledWith("Ada");
+    expect(toast.success).toHaveBeenCalledWith("Value copied");
+
+    openAt("42");
+    await user.click(await screen.findByRole("menuitem", { name: "Copy key" }));
+    expect(writeText).toHaveBeenLastCalledWith("id");
+    openAt("42");
+    await user.click(await screen.findByRole("menuitem", { name: "Copy path" }));
+    expect(writeText).toHaveBeenLastCalledWith("id");
+
+    // The root has no key or path; select all, then copy the selection.
+    openAt("{");
+    expect(await screen.findByRole("menuitem", { name: "Copy value" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy key" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("menuitem", { name: "Select all" }));
+    fireEvent.contextMenu(view.contentDOM, { clientX: 5, clientY: 5 });
+    writeText.mockRejectedValue(new Error("denied"));
+    await user.click(await screen.findByRole("menuitem", { name: "Copy selection" }));
+    expect(writeText).toHaveBeenLastCalledWith(view.state.doc.toString());
+    expect(toast.error).toHaveBeenCalledWith("Couldn't copy", expect.anything());
+  });
+
+  it("offers only copy and select all for non-JSON bodies", async () => {
+    show(ok({ kind: "text", contentType: "text/plain", body: "hello" }));
+    fireEvent.contextMenu(editorView("Response body").contentDOM);
+    expect(await screen.findByRole("menuitem", { name: "Select all" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Copy value" })).not.toBeInTheDocument();
+  });
+
+  it("shows what went over the wire in the Debug tab", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const hops = [makeHop({ statusCode: 302, statusText: "Found" }), makeHop({ reusedConn: true })];
+    show(makeResult({ response: makeResponse(), historyId: 5, hops }));
+
+    await user.click(screen.getByRole("tab", { name: "Debug" }));
+    expect(screen.getByText(/2 requests, 1 redirect/)).toHaveTextContent(
+      "Secrets were sent with their values and show here as [secret:name]; {{name}} is a variable that had no value",
+    );
+    expect(editorText("Debug details")).toBe(debugText(hops));
+
+    await user.click(screen.getByRole("button", { name: "Search in debug details" }));
+    expect(editorView("Debug details").dom.querySelector(".cm-search")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Copy debug details" }));
+    expect(writeText).toHaveBeenCalledWith(debugText(hops));
+    expect(toast.success).toHaveBeenCalledWith("Debug details copied");
+    writeText.mockRejectedValue(new Error("denied"));
+    await user.click(screen.getByRole("button", { name: "Copy debug details" }));
+    expect(toast.error).toHaveBeenCalledWith("Couldn't copy the debug details", expect.anything());
+  });
+
+  it("explains that history doesn't keep debug details", async () => {
+    const user = userEvent.setup();
+    show(ok());
+    await user.click(screen.getByRole("tab", { name: "Debug" }));
+    expect(screen.getByText(/History doesn't keep debug details/)).toBeInTheDocument();
+  });
+
+  it("shows what was sent from a failed send, and goes back", async () => {
+    const user = userEvent.setup();
+    const hops = [makeHop({ proto: "", statusCode: 0, error: "Connection refused" })];
+    show(makeResult({ error: { kind: "connection_refused", message: "refused" }, hops }));
+    await user.click(screen.getByRole("button", { name: "Show what was sent" }));
+    expect(editorText("Debug details")).toContain("[Failed: Connection refused]");
+    await user.click(screen.getByRole("button", { name: "Back to the error" }));
+    expect(screen.queryByLabelText("Debug details")).not.toBeInTheDocument();
+
+    // Nothing sent (a variable loop): no link, and the Debug view says so.
+    show(makeResult({ error: { kind: "variables", message: "loop" } }));
+    expect(screen.queryByRole("button", { name: "Show what was sent" })).not.toBeInTheDocument();
   });
 
   it("notes invalid JSON and disables save when not recorded", () => {

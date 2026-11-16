@@ -104,6 +104,7 @@ describe("history store", () => {
       unresolved: [],
       secretsLocked: false,
       environment: null,
+      hops: [],
     });
     vi.mocked(api.historyGet).mockRejectedValue(new Error("gone"));
     await s().open(5);

@@ -49,7 +49,20 @@ describe("model", () => {
       unresolved: [],
       secretsLocked: false,
       environment: null,
+      hops: [],
     });
+    const hops = normalizeSendResult({
+      hops: [{ method: "GET", requestHeaders: null, responseHeaders: [{ key: "A" }] }, null],
+    }).hops;
+    expect(hops[0]).toMatchObject({
+      method: "GET",
+      url: "",
+      requestHeaders: [],
+      responseHeaders: [{ key: "A", value: "", enabled: false }],
+      requestBodyEncoding: "utf8",
+      statusCode: 0,
+    });
+    expect(hops[1]).toMatchObject({ method: "", error: "", reusedConn: false });
     expect(
       normalizeSendResult({ unresolved: ["a"], secretsLocked: true, environment: { id: "e", name: "Dev" } }),
     ).toMatchObject({ unresolved: ["a"], secretsLocked: true, environment: { id: "e", name: "Dev" } });
@@ -156,6 +169,7 @@ describe("sidebar model helpers", () => {
       unresolved: [],
       secretsLocked: false,
       environment: null,
+      hops: [],
     });
     expect(empty.environmentName).toBe("");
     const withEnv = normalizeHistoryEntry({ id: 9, environmentName: "Prod" });

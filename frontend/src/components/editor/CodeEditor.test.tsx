@@ -5,6 +5,8 @@ import { makePreviewVar } from "@/test/fixtures";
 import { useState } from "react";
 import { editorText, editorView, setEditorText } from "@/test/editor";
 import { CodeEditor } from "./CodeEditor";
+import { tooltipParent } from "./extensions";
+import { showVariableInfo } from "./variables";
 import { language as languageFacet } from "@codemirror/language";
 import { needsLoading, preloadLanguages } from "./languages";
 
@@ -25,6 +27,13 @@ describe("CodeEditor", () => {
     expect(editorView("Ed").state.readOnly).toBe(true);
     rerender(<CodeEditor ariaLabel="Ed" value="x" readOnly={false} />);
     expect(editorView("Ed").state.readOnly).toBe(false);
+  });
+
+  it("keeps read-only text selectable and focusable", () => {
+    render(<CodeEditor ariaLabel="Ed" value="copy me" readOnly />);
+    const content = editorView("Ed").contentDOM;
+    expect(content).toHaveAttribute("contenteditable", "true");
+    expect(content).toHaveAttribute("aria-readonly", "true");
   });
 
   it("single-line mode strips newlines and submits on Enter", () => {
@@ -141,5 +150,28 @@ describe("CodeEditor", () => {
       );
     });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows tooltips outside the editor, so surrounding panes can't clip them", async () => {
+    const scope = makeScope([makePreviewVar("host", "dev.example")], null, true);
+    render(
+      <div style={{ overflow: "hidden" }} data-testid="pane">
+        <CodeEditor ariaLabel="Ed" value="{{host}}" variables={scope} initialCursor={3} />
+      </div>,
+    );
+    const view = editorView("Ed");
+    act(() => void showVariableInfo(view));
+    await waitFor(() => expect(document.querySelector(".cm-tooltip.var-info")).not.toBeNull());
+    const tip = document.querySelector(".cm-tooltip.var-info")!;
+    expect(screen.getByTestId("pane")).not.toContainElement(tip as HTMLElement);
+    // The container carries the editor's theme classes, so the tooltip keeps its styling.
+    expect(tip.parentElement).toHaveClass(...view.themeClasses.split(" "));
+  });
+
+  it("keeps tooltips inside the dialog an editor sits in", () => {
+    document.body.innerHTML = '<div role="dialog"><p id="in"></p></div><p id="out"></p>';
+    expect(tooltipParent(document.getElementById("in")!)).toBe(document.querySelector('[role="dialog"]'));
+    expect(tooltipParent(document.getElementById("out")!)).toBe(document.body);
+    document.body.innerHTML = "";
   });
 });

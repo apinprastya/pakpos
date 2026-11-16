@@ -39,7 +39,9 @@ Copy the checklist per OS and tick as you go: `[ ]` → `[x]`.
 ## Response viewer
 
 - [ ] JSON is pretty-printed with folding. Raw shows the response as received.
+- [ ] Text in the response body selects and copies (Ctrl+C). Right-click a JSON field: Copy value, Copy key and Copy path copy that field; the path reads like `data.items[0].id`.
 - [ ] Search in the body works. Copy works. Save to file writes the full body.
+- [ ] Debug tab: send a request with a secret `{{token}}` in a header and a body; it shows the request line, every header (incl. Host, User-Agent, Content-Length), the body, and the response status and headers, with the secret as `[secret:token]` (an unresolved variable stays `{{name}}`). A redirecting URL shows one section per hop. A failed send (e.g. a closed port) offers "Show what was sent". A request opened from History says debug details aren't kept.
 - [ ] HTML preview renders without running scripts (`https://httpbin.org/html`). Image preview works (`https://httpbin.org/image/png`).
 - [ ] The Headers and Cookies tabs show counts (`https://httpbin.org/cookies/set?x=1`).
 - [ ] Hovering the time shows the DNS, connect, TLS and TTFB breakdown.
@@ -153,4 +155,5 @@ Needs an older published release installed and a newer one published (stable, wi
 
 - [ ] **Linux:** the app appears under Development in the application menu (.desktop categories), and WebKitGTK renders fonts and editors correctly.
 - [ ] **macOS:** the app opens from the zip after you allow it in Privacy & Security (it's unsigned). ⌘ shortcuts work. Quitting with the last window closed works.
+- [ ] **macOS:** there's no title bar. The close, minimise and zoom buttons sit in the empty top-left header cell, clear of the logo and the workspace switcher. Dragging that cell or the empty part of the tab bar moves the window; a double click there zooms it; tabs and buttons in the tab bar still click and reorder. Check both themes.
 - [ ] **Windows:** the installer creates a Start menu entry and installs WebView2 if it's missing. Ctrl shortcuts work, and the uninstaller removes the app.

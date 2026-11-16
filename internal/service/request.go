@@ -33,6 +33,10 @@ type SendResult struct {
 	SecretsLocked bool `json:"secretsLocked"`
 	// Environment is the environment the request was sent with, or nil.
 	Environment *pipeline.EnvRef `json:"environment"`
+	// Hops is what went over the wire (the request, then each redirect
+	// followed), with secret values masked as {{name}}. Empty when nothing
+	// was sent. Never stored in history. Never nil.
+	Hops []model.Hop `json:"hops"`
 }
 
 // RequestService saves requests in the workspace and sends them.
@@ -144,17 +148,23 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 
 	// Record against the workspace open when the send started, even if the
 	// user switches workspace while it runs.
-	wsID := ""
+	wsID, envID := "", ""
 	started := s.now()
 	var prepared pipeline.Prepared
 	var perr error
+	var sess *pipeline.Session
 	if ws, err := s.c.workspace(); err == nil {
 		wsID = ws.Manifest().ID
-		prepared, perr = s.c.session(ws).Prepare(req, parentID, s.c.selectedEnvironment(wsID))
+		envID = s.c.selectedEnvironment(wsID)
+		sess = s.c.session(ws)
+		prepared, perr = sess.Prepare(req, parentID, envID)
 	} else {
 		prepared, perr = pipeline.PrepareWithoutWorkspace(req)
 	}
-	result := SendResult{Unresolved: prepared.Unresolved, SecretsLocked: prepared.SecretsLocked, Environment: prepared.Environment}
+	result := SendResult{
+		Unresolved: prepared.Unresolved, SecretsLocked: prepared.SecretsLocked,
+		Environment: prepared.Environment, Hops: []model.Hop{},
+	}
 	if result.Unresolved == nil {
 		result.Unresolved = []string{}
 	}
@@ -168,9 +178,16 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 		return result, nil
 	}
 
-	resp, err := s.c.executor().Execute(ctx, "", prepared.Request)
+	rec := httpexec.NewRecorder()
+	resp, err := s.c.executor().Execute(httpexec.WithRecorder(ctx, rec), "", prepared.Request)
 	sendErr := httpexec.Classify(err)
 	result.Response, result.Error = resp, sendErr
+	result.Hops = rec.Hops()
+	if sess != nil {
+		// Only the UI sees hops, and never a secret's value.
+		values, _ := sess.SendSecrets(req, parentID, envID)
+		result.Hops = pipeline.MaskHops(result.Hops, values)
+	}
 	if sendErr != nil && sendErr.Kind == httpexec.KindCanceled {
 		return result, nil
 	}

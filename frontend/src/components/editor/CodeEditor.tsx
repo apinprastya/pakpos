@@ -12,10 +12,11 @@ import {
   keymap,
   lineNumbers,
   placeholder as placeholderExt,
+  tooltips,
 } from "@codemirror/view";
 import { cn } from "@/lib/utils";
 import type { VarScope } from "@/lib/variables";
-import { External, singleLineFilter } from "./extensions";
+import { External, singleLineFilter, tooltipParent } from "./extensions";
 import { languageExtension, loadLanguage, needsLoading, type EditorLanguage } from "./languages";
 import { pakposHighlight, pakposTheme } from "./theme";
 import { setVarScope, variables as variablesExt } from "./variables";
@@ -83,6 +84,10 @@ export function CodeEditor({
 
   useEffect(() => {
     const exts: Extension[] = [
+      // Tooltips (variable info, completions) live outside the editor so the
+      // panes, rows and scroll areas around it can't clip or cover them. In a
+      // dialog they stay inside it: Radix makes the rest of the page inert.
+      tooltips({ parent: tooltipParent(host.current!) }),
       pakposTheme,
       pakposHighlight,
       history(),
@@ -90,7 +95,8 @@ export function CodeEditor({
       search({ top: true }),
       highlightSelectionMatches(),
       langComp.current.of(languageExtension(language)),
-      roComp.current.of([EditorState.readOnly.of(readOnly), EditorView.editable.of(!readOnly)]),
+      // Read-only stays contenteditable so its text can be selected, searched and copied.
+      roComp.current.of(EditorState.readOnly.of(readOnly)),
       EditorView.contentAttributes.of({ "aria-label": ariaLabel, spellcheck: "false" }),
       EditorView.domEventHandlers({
         paste: (e) => {
@@ -183,10 +189,7 @@ export function CodeEditor({
 
   useEffect(() => {
     view.current?.dispatch({
-      effects: roComp.current.reconfigure([
-        EditorState.readOnly.of(readOnly),
-        EditorView.editable.of(!readOnly),
-      ]),
+      effects: roComp.current.reconfigure(EditorState.readOnly.of(readOnly)),
     });
   }, [readOnly]);
 

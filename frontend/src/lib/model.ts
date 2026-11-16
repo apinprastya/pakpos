@@ -118,6 +118,34 @@ export type SendErrorKind =
   /** {{variables}} couldn't be resolved (a loop, or nested too deeply). */
   | "variables";
 
+/**
+ * One HTTP exchange of a send as it went over the wire: the request, then one
+ * per redirect followed. Secret values are masked as `{{name}}`.
+ */
+export interface Hop {
+  method: string;
+  url: string;
+  /** Header fields in the order they were written, including Host, Content-Length and cookies. */
+  requestHeaders: KeyValue[];
+  /** The start of the body sent: text, or base64 when `requestBodyEncoding` says so. */
+  requestBody: string;
+  requestBodyEncoding: BodyEncoding;
+  requestBodySize: number;
+  requestBodyTruncated: boolean;
+  /** Why the body isn't shown, if it isn't. */
+  requestBodyNote: string;
+  remoteAddr: string;
+  reusedConn: boolean;
+  /** e.g. "TLS 1.3"; empty for plain HTTP. */
+  tls: string;
+  proto: string;
+  /** 0 when the hop failed. */
+  statusCode: number;
+  statusText: string;
+  responseHeaders: KeyValue[];
+  error: string;
+}
+
 export interface SendError {
   kind: SendErrorKind;
   message: string;
@@ -140,6 +168,8 @@ export interface SendResult {
   secretsLocked: boolean;
   /** Environment the request was sent with, or null for none. */
   environment: EnvRef | null;
+  /** What went over the wire. Empty when nothing was sent or for history entries (never stored). */
+  hops: Hop[];
 }
 
 /** A saved request in the sidebar tree. */
@@ -364,6 +394,29 @@ export function normalizeSendResult(input: unknown): SendResult {
     unresolved: r.unresolved ?? [],
     secretsLocked: r.secretsLocked ?? false,
     environment: normalizeEnvRef(r.environment),
+    hops: (r.hops ?? []).map(normalizeHop),
+  };
+}
+
+export function normalizeHop(input: unknown): Hop {
+  const h = (input ?? {}) as Loose<Hop>;
+  return {
+    method: h.method ?? "",
+    url: h.url ?? "",
+    requestHeaders: kvList(h.requestHeaders),
+    requestBody: h.requestBody ?? "",
+    requestBodyEncoding: h.requestBodyEncoding ?? "utf8",
+    requestBodySize: h.requestBodySize ?? 0,
+    requestBodyTruncated: h.requestBodyTruncated ?? false,
+    requestBodyNote: h.requestBodyNote ?? "",
+    remoteAddr: h.remoteAddr ?? "",
+    reusedConn: h.reusedConn ?? false,
+    tls: h.tls ?? "",
+    proto: h.proto ?? "",
+    statusCode: h.statusCode ?? 0,
+    statusText: h.statusText ?? "",
+    responseHeaders: kvList(h.responseHeaders),
+    error: h.error ?? "",
   };
 }
 
@@ -413,6 +466,7 @@ export function historyToResult(entry: HistoryEntry): SendResult {
     unresolved: [],
     secretsLocked: false,
     environment: entry.environmentName ? { id: "", name: entry.environmentName } : null,
+    hops: [],
   };
 }
 

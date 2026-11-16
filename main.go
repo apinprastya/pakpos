@@ -104,6 +104,9 @@ func main() {
 		StartState:       startState(savedWindow),
 		BackgroundColour: application.NewRGB(bg.R, bg.G, bg.B),
 		URL:              "/",
+		// No title bar on macOS: the page runs to the top edge and keeps the
+		// window buttons; the frontend leaves room for them (data-platform="mac").
+		Mac: application.MacWindow{TitleBar: application.MacTitleBarHidden},
 	})
 	trackWindow(app, window, windowTracker, savedWindow)
 
