@@ -5,6 +5,8 @@
 @import "@fontsource-variable/jetbrains-mono";
 
 @custom-variant dark (&:is(.dark *));
+/* macOS, where the window has no title bar (see markPlatform). */
+@custom-variant mac (&:where([data-platform="mac"] *));
 
 @theme inline {
   --font-heading: var(--font-sans);
@@ -234,6 +236,17 @@
   [contenteditable="true"],
   .selectable {
     user-select: text;
+  }
+  /*
+   * macOS has no title bar, so empty header space moves the window (and a
+   * double click zooms it). Only the area itself: anything inside it, like
+   * tabs and buttons, stays clickable.
+   */
+  [data-platform="mac"] .window-drag {
+    --wails-draggable: drag;
+  }
+  [data-platform="mac"] .window-drag * {
+    --wails-draggable: no-drag;
   }
   ::selection {
     background-color: var(--editor-selection);

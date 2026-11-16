@@ -154,4 +154,5 @@ Needs an older published release installed and a newer one published (stable, wi
 
 - [ ] **Linux:** the app appears under Development in the application menu (.desktop categories), and WebKitGTK renders fonts and editors correctly.
 - [ ] **macOS:** the app opens from the zip after you allow it in Privacy & Security (it's unsigned). ⌘ shortcuts work. Quitting with the last window closed works.
+- [ ] **macOS:** there's no title bar. The close, minimise and zoom buttons sit in the empty top-left header cell, clear of the logo and the workspace switcher. Dragging that cell or the empty part of the tab bar moves the window; a double click there zooms it; tabs and buttons in the tab bar still click and reorder. Check both themes.
 - [ ] **Windows:** the installer creates a Start menu entry and installs WebView2 if it's missing. Ctrl shortcuts work, and the uninstaller removes the app.

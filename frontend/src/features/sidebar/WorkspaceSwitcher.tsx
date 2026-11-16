@@ -24,7 +24,7 @@ export function WorkspaceSwitcher() {
       <DropdownMenuTrigger
         aria-label={`Workspace: ${label}. Switch workspace`}
         title={workspace?.path}
-        className="flex h-10 w-full shrink-0 items-center gap-2 border-b px-3 text-left hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none data-[state=open]:bg-sidebar-accent"
+        className="flex h-10 w-full min-w-0 items-center gap-2 border-b px-3 text-left hover:bg-sidebar-accent focus-visible:bg-sidebar-accent focus-visible:outline-none data-[state=open]:bg-sidebar-accent"
       >
         <span className={cn("min-w-0 flex-1 truncate font-semibold", !workspace && "text-muted-foreground")}>
           {label}

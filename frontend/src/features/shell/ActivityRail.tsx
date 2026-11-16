@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLayoutStore, type SidebarView } from "@/stores/layout";
 import { ThemeMenu } from "./ThemeMenu";
+import { TitleBarSpace } from "./TitleBarSpace";
 
 const VIEWS: { id: SidebarView; label: string; icon: LucideIcon }[] = [
   { id: "collections", label: "Collections", icon: FolderTree },
@@ -21,8 +22,9 @@ export function ActivityRail() {
   return (
     <nav
       aria-label="Sidebar views"
-      className="flex w-12 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-2"
+      className="flex w-12 shrink-0 flex-col items-center gap-1 border-r bg-sidebar py-2 mac:pt-0"
     >
+      <TitleBarSpace className="-mr-px mb-1 w-[calc(100%+1px)] self-start" />
       <Logo />
       {VIEWS.map(({ id, label, icon: Icon }) => (
         <Tooltip key={id}>
