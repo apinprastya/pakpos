@@ -35,7 +35,13 @@ var ErrBinarySecret = errors.New("a secret value is in a binary response body")
 // couldn't be read because the secret store is locked; the list is then
 // incomplete.
 func (s *Session) SecretValues(requestID, envID string) (values []SecretValue, locked bool) {
-	chain := s.Chain(model.Request{ID: requestID}, "")
+	return s.secretValues(model.Request{ID: requestID}, "", envID)
+}
+
+// secretValues is SecretValues for req sent from parentID (see Chain), so a
+// draft's collection secrets count too.
+func (s *Session) secretValues(req model.Request, parentID, envID string) (values []SecretValue, locked bool) {
+	chain := s.Chain(req, parentID)
 	scopes := s.BuildScopes(collectionOf(chain), s.Environment(envID))
 	for _, sc := range scopes.List {
 		for _, v := range sc.Variables {
@@ -57,11 +63,18 @@ func (s *Session) SecretValues(requestID, envID string) (values []SecretValue, l
 // resolved like Send resolves it. Every form keeps its secret's name, so the
 // UI names the secret and masking writes {{name}} in its place. Longest first.
 func (s *Session) ExampleSecrets(requestID, envID string, sent model.Request) (values []SecretValue, locked bool) {
-	plain, locked := s.SecretValues(requestID, envID)
+	sent.ID = requestID
+	return s.SendSecrets(sent, "", envID)
+}
+
+// SendSecrets is ExampleSecrets for a send of req from parentID (a draft's
+// collection or folder, see Chain): every form in which a secret could have
+// gone over the wire or come back. Longest first.
+func (s *Session) SendSecrets(req model.Request, parentID, envID string) (values []SecretValue, locked bool) {
+	plain, locked := s.secretValues(req, parentID, envID)
 	values = append(values, plain...)
 	values = append(values, EncodedForms(plain)...)
-	sent.ID = requestID
-	if p, err := s.Prepare(sent, "", envID); err == nil && p.Request.Auth.Type == model.AuthBasic {
+	if p, err := s.Prepare(req, parentID, envID); err == nil && p.Request.Auth.Type == model.AuthBasic {
 		a := p.Request.Auth
 		if name := secretIn(plain, a.Password, a.Username); name != "" {
 			creds := []byte(a.Username + ":" + a.Password)

@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { CircleAlert, Loader2, LockOpen, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cancelTab } from "@/features/request/actions";
 import { modKeyLabel } from "@/lib/platform";
-import type { SendError, SendResult } from "@/lib/model";
+import type { Hop, SendError, SendResult } from "@/lib/model";
 import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore } from "@/stores/settings";
 import { useActiveTab, useTabSection } from "@/stores/tabs";
@@ -12,11 +13,12 @@ import { ExampleView } from "@/features/examples/ExampleView";
 import { SaveExampleButton } from "@/features/examples/SaveExampleButton";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { errorCopy } from "./format";
+import { DebugView } from "./DebugView";
 import { ResponseBody } from "./ResponseBody";
 import { ResponseMeta } from "./ResponseMeta";
 import { CookiesTable, HeadersTable } from "./ResponseTables";
 
-const SECTIONS = ["body", "headers", "cookies"] as const;
+const SECTIONS = ["body", "headers", "cookies", "debug"] as const;
 
 export function ResponsePane() {
   const tab = useActiveTab();
@@ -41,7 +43,7 @@ export function ResponsePane() {
       </Centered>
     );
   } else if (result?.error) {
-    content = <ErrorState error={result.error} />;
+    content = <ErrorState key={`${tab.id}:${result.historyId}`} error={result.error} hops={result.hops} />;
   } else if (response) {
     content = (
       <Tabs
@@ -61,6 +63,9 @@ export function ResponsePane() {
             <TabsTrigger value="cookies" className="flex-none px-2">
               Cookies <Count n={response.cookies.length} />
             </TabsTrigger>
+            <TabsTrigger value="debug" className="flex-none px-2">
+              Debug
+            </TabsTrigger>
           </TabsList>
           <div className="ml-auto flex items-center gap-2">
             <ResponseMeta response={response} />
@@ -75,6 +80,9 @@ export function ResponsePane() {
         </TabsContent>
         <TabsContent value="cookies" className="min-h-0 flex-1 overflow-auto">
           <CookiesTable cookies={response.cookies} />
+        </TabsContent>
+        <TabsContent value="debug" className="min-h-0 flex-1">
+          <DebugView hops={result?.hops ?? []} />
         </TabsContent>
       </Tabs>
     );
@@ -154,9 +162,24 @@ function EmptyResponse() {
   );
 }
 
-function ErrorState({ error }: { error: SendError }) {
+function ErrorState({ error, hops }: { error: SendError; hops: Hop[] }) {
   const copy = errorCopy(error.kind);
   const cancelled = error.kind === "canceled";
+  const [debug, setDebug] = useState(false);
+  if (debug) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex shrink-0 items-center border-b px-3 py-1.5">
+          <Button variant="ghost" size="xs" onClick={() => setDebug(false)}>
+            Back to the error
+          </Button>
+        </div>
+        <div className="min-h-0 flex-1">
+          <DebugView hops={hops} />
+        </div>
+      </div>
+    );
+  }
   return (
     <Centered>
       {!cancelled && <CircleAlert aria-hidden className="size-5 text-destructive" />}
@@ -174,6 +197,11 @@ function ErrorState({ error }: { error: SendError }) {
           onClick={() => useSettingsStore.getState().openDialog(copy.settings)}
         >
           Open settings
+        </Button>
+      )}
+      {hops.length > 0 && (
+        <Button variant="link" size="sm" onClick={() => setDebug(true)}>
+          Show what was sent
         </Button>
       )}
     </Centered>

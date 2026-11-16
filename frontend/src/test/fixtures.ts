@@ -15,6 +15,7 @@ import type {
   RequestSummary,
   Response,
   SendResult,
+  Hop,
   TreeChild,
 } from "@/lib/model";
 
@@ -27,6 +28,7 @@ export function makeResult(patch: Partial<SendResult> = {}): SendResult {
     unresolved: [],
     secretsLocked: false,
     environment: null,
+    hops: [],
     ...patch,
   };
 }
@@ -203,5 +205,28 @@ export function makeUpdateInfo(over: Partial<UpdateInfo> = {}): UpdateInfo {
     canInstall: true,
     reason: "",
     ...over,
+  };
+}
+
+/** One wire exchange (a 200 over TLS); patch what the test needs. */
+export function makeHop(patch: Partial<Hop> = {}): Hop {
+  return {
+    method: "GET",
+    url: "https://api.example/users",
+    requestHeaders: [{ key: "Host", value: "api.example", enabled: true }],
+    requestBody: "",
+    requestBodyEncoding: "utf8",
+    requestBodySize: 0,
+    requestBodyTruncated: false,
+    requestBodyNote: "",
+    remoteAddr: "10.0.0.1:443",
+    reusedConn: false,
+    tls: "TLS 1.3",
+    proto: "HTTP/1.1",
+    statusCode: 200,
+    statusText: "OK",
+    responseHeaders: [{ key: "Content-Type", value: "application/json", enabled: true }],
+    error: "",
+    ...patch,
   };
 }
