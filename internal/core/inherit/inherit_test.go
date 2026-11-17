@@ -63,6 +63,8 @@ func TestEffectiveHeaders(t *testing.T) {
 		req         []model.KeyValue
 		wantHeaders []model.KeyValue
 		wantApplied []Header
+		// wantOver is nil when nothing is overridden.
+		wantOver []Header
 	}{
 		{
 			name:        "nothing anywhere",
@@ -82,6 +84,23 @@ func TestEffectiveHeaders(t *testing.T) {
 			req:         []model.KeyValue{h("accept", "r")},
 			wantHeaders: []model.KeyValue{h("X-Keep", "k"), h("accept", "r")},
 			wantApplied: []Header{{"X-Keep", "k", srcC}},
+			wantOver:    []Header{{"Accept", "c", srcC}},
+		},
+		{
+			name:        "overridden lists only the rows that would apply",
+			chain:       []Level{col(model.Auth{}, h("Accept", "c"), h("X-A", "c")), folder("F1", model.Auth{}, h("accept", "f1"), h("X-A", "f1a"), h("X-A", "f1b")), folder("F2", model.Auth{}, off("X-A", "off"))},
+			req:         []model.KeyValue{h("ACCEPT", "r"), h("x-a", "r")},
+			wantHeaders: []model.KeyValue{h("ACCEPT", "r"), h("x-a", "r")},
+			wantApplied: []Header{},
+			wantOver:    []Header{{"accept", "f1", srcF1}, {"X-A", "f1a", srcF1}, {"X-A", "f1b", srcF1}},
+		},
+		{
+			name:        "overridden keeps collection before folder order",
+			chain:       []Level{col(model.Auth{}, h("A", "c")), folder("F1", model.Auth{}, h("B", "f1"))},
+			req:         []model.KeyValue{h("b", "r"), h("a", "r")},
+			wantHeaders: []model.KeyValue{h("b", "r"), h("a", "r")},
+			wantApplied: []Header{},
+			wantOver:    []Header{{"A", "c", srcC}, {"B", "f1", srcF1}},
 		},
 		{
 			name:        "deeper folder replaces collection",
@@ -125,6 +144,13 @@ func TestEffectiveHeaders(t *testing.T) {
 			}
 			if !reflect.DeepEqual(res.Headers, tt.wantApplied) {
 				t.Errorf("applied = %+v\nwant %+v", res.Headers, tt.wantApplied)
+			}
+			wantOver := tt.wantOver
+			if wantOver == nil {
+				wantOver = []Header{}
+			}
+			if !reflect.DeepEqual(res.Overridden, wantOver) {
+				t.Errorf("overridden = %+v\nwant %+v", res.Overridden, wantOver)
 			}
 		})
 	}

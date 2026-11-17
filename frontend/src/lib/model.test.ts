@@ -6,6 +6,7 @@ import {
   normalizeEnvironment,
   normalizeGlobals,
   normalizePreview,
+  normalizeVisible,
   normalizeRequest,
   normalizeSecretsStatus,
   normalizeSendResult,
@@ -240,10 +241,27 @@ describe("environment model", () => {
     });
   });
 
+  it("normalizes visible variables and never keeps a secret value", () => {
+    expect(normalizeVisible(null)).toEqual({ variables: [], shadowed: [], environment: null });
+    const row = { secret: true, scope: "global", scopeId: "g", scopeName: "Globals", set: true };
+    const v = normalizeVisible({
+      variables: [{ key: "a", value: "leak", ...row }],
+      shadowed: [
+        { key: "a", value: "leak", ...row },
+        { key: "b", value: "plain", ...row, secret: false },
+      ],
+      environment: { id: "e", name: "Dev" },
+    });
+    expect(v.variables[0].value).toBe("");
+    expect(v.shadowed.map((x) => x.value)).toEqual(["", "plain"]);
+    expect(v.environment).toEqual({ id: "e", name: "Dev" });
+  });
+
   it("normalizes a resolve preview and never keeps a secret value", () => {
     const empty = normalizePreview(null);
     expect(empty).toEqual({
       headers: [],
+      overridden: [],
       auth: emptyAuth(),
       authSource: null,
       variables: [],
@@ -255,6 +273,7 @@ describe("environment model", () => {
     const src = { kind: "folder", id: "f", name: "Admin" };
     const p = normalizePreview({
       headers: [{ key: "X", value: "1", source: src }],
+      overridden: [{ key: "Y", value: "2", source: src }],
       auth: { type: "bearer", token: "{{token}}" },
       authSource: src,
       variables: [
@@ -283,6 +302,7 @@ describe("environment model", () => {
       error: "loop",
     });
     expect(p.headers[0].source).toEqual(src);
+    expect(p.overridden).toEqual([{ key: "Y", value: "2", source: src }]);
     expect(p.auth).toMatchObject({ type: "bearer", token: "{{token}}", apiIn: "header" });
     expect(p.authSource).toEqual(src);
     expect(p.variables.map((v) => v.value)).toEqual(["", "h"]);

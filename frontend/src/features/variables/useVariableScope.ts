@@ -45,6 +45,7 @@ function sourceOf(tab: Tab): Source | null {
 interface Answer {
   key: string;
   variables: PreviewVariable[];
+  shadowed: PreviewVariable[];
   environment: EnvRef | null;
 }
 
@@ -65,9 +66,11 @@ function useVisible(source: Source | null): Answer | null {
     let live = true;
     const timer = setTimeout(() => {
       api.visibleVariables(source.parentId, source.environmentId).then(
-        (v) => live && setAnswer({ key, variables: v.variables, environment: v.environment }),
+        (v) =>
+          live &&
+          setAnswer({ key, variables: v.variables, shadowed: v.shadowed, environment: v.environment }),
         // Without an answer, names stay unjudged rather than all marked unresolved.
-        () => live && setAnswer({ key, variables: [], environment: null }),
+        () => live && setAnswer({ key, variables: [], shadowed: [], environment: null }),
       );
     }, VISIBLE_DEBOUNCE_MS);
     return () => {
@@ -104,7 +107,7 @@ export function useVariableScope(tab: Tab, preview?: PreviewState): VarScope {
       ready = true;
     }
     if (source.target && draftRows) {
-      variables = overlayDraft(variables, source.target, draftRows);
+      variables = overlayDraft(variables, source.target, draftRows, visible?.shadowed);
     }
   } else if (preview?.preview) {
     variables = preview.preview.variables;

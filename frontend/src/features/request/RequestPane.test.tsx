@@ -126,10 +126,9 @@ describe("RequestPane", () => {
     expect(section("Headers")).toHaveTextContent("1");
 
     await user.click(screen.getByRole("button", { name: "Edit as text" }));
-    const text = screen.getByRole("textbox", { name: "Headers as text" });
-    expect(text).toHaveValue("Authorization: ");
-    await user.clear(text);
-    await user.type(text, "A: 1{Enter}//B: 2");
+    expect(editorText("Headers as text")).toBe("Authorization: ");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Headers as text" })).toHaveFocus());
+    setEditorText("Headers as text", "A: 1\n//B: 2");
     expect(activeTab().request.headers).toEqual([
       { key: "A", value: "1", enabled: true },
       { key: "B", value: "2", enabled: false },

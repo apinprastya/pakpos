@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { CodeEditor } from "@/components/editor/CodeEditor";
+import { useVarScope } from "@/components/editor/varScopeContext";
 import { api } from "@/lib/api";
 import { bulkToRows, rowsToBulk } from "@/lib/pairs";
 import type { Request } from "@/lib/model";
@@ -42,6 +43,7 @@ export function HeadersSection({ request, onChange, preview }: Props) {
   const [bulk, setBulk] = useState(false);
   const [bulkText, setBulkText] = useState("");
   const userAgent = useUserAgent();
+  const variables = useVarScope();
   const auto = autoHeaders(request, userAgent);
 
   const toggleBulk = () => {
@@ -61,18 +63,21 @@ export function HeadersSection({ request, onChange, preview }: Props) {
           </Button>
         </div>
         {bulk ? (
-          <Textarea
-            aria-label="Headers as text"
-            className="min-h-40 font-mono text-[12.5px]"
-            spellCheck={false}
-            placeholder={"Accept: application/json\n//Disabled-Header: value"}
-            value={bulkText}
-            onChange={(e) => {
-              setBulkText(e.target.value);
-              const rows = bulkToRows(e.target.value);
-              onChange((r) => ({ ...r, headers: rows }));
-            }}
-          />
+          <div className="h-40 overflow-hidden rounded-md border bg-card">
+            <CodeEditor
+              ariaLabel="Headers as text"
+              className="h-full"
+              placeholder={"Accept: application/json\n//Disabled-Header: value"}
+              value={bulkText}
+              variables={variables}
+              autoFocus
+              onChange={(text) => {
+                setBulkText(text);
+                const rows = bulkToRows(text);
+                onChange((r) => ({ ...r, headers: rows }));
+              }}
+            />
+          </div>
         ) : (
           <KeyValueTable
             label="Headers"

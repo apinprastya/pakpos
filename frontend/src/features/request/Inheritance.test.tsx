@@ -63,6 +63,20 @@ describe("inherited headers", () => {
     expect(activeTab().doc).toMatchObject({ kind: "folder", targetId: "f1", name: "Admin" });
   });
 
+  it("strikes through inherited headers the request overrides", async () => {
+    vi.mocked(api.resolvePreview).mockResolvedValue(
+      makePreview({ overridden: [{ key: "Accept", value: "text/plain", source: users }] }),
+    );
+    const user = setup();
+    await user.click(tab("Headers"));
+    const list = await screen.findByRole("list", { name: "Inherited headers" });
+    const row = within(list).getByRole("listitem");
+    expect(row).toHaveAttribute("title", "Overridden by this request");
+    expect(row).toHaveTextContent("Accept (overridden by this request)text/plainfromUsers");
+    expect(within(row).getByText("text/plain")).toHaveClass("line-through");
+    expect(within(row).getByRole("button", { name: "Open Users settings" })).toBeInTheDocument();
+  });
+
   it("says when nothing is inherited, and shows errors", async () => {
     // Hold the first preview until the test answers it: the preview starts on a
     // real 300 ms debounce at mount, so under load it could otherwise land before

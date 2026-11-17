@@ -194,7 +194,7 @@ func (w *Workspace) writeExamplesLocked(path string, f examplesFile) error {
 		delete(w.examples, f.RequestID)
 		return nil
 	}
-	if err := w.upgradeManifestLocked(); err != nil {
+	if err := w.upgradeManifestLocked(VersionV2); err != nil {
 		return err
 	}
 	if err := w.writeYAML(path, f); err != nil {

@@ -202,6 +202,41 @@ describe("collection and folder settings", () => {
     );
   });
 
+  it("renames a collection from its settings tab", async () => {
+    const user = openDoc("collection", "c1", "Users");
+    await user.click(await screen.findByRole("button", { name: "Rename collection" }));
+    const input = await screen.findByRole("textbox", { name: "Collection name" });
+    await waitFor(() => expect(input).toHaveFocus());
+    await user.clear(input);
+    await user.type(input, "Accounts{Enter}");
+    await waitFor(() => expect(api.renameCollection).toHaveBeenCalledWith("c1", "Accounts"));
+    expect(screen.getByRole("heading", { name: "Users" })).toBeInTheDocument();
+  });
+
+  it("renames a folder with a double click; Escape cancels", async () => {
+    const user = openDoc("folder", "f1", "Admin");
+    await user.dblClick(await screen.findByRole("heading", { name: "Admin" }));
+    let input = await screen.findByRole("textbox", { name: "Folder name" });
+    await waitFor(() => expect(input).toHaveFocus());
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Folder name" })).not.toBeInTheDocument();
+    expect(api.renameFolder).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Rename folder" }));
+    input = await screen.findByRole("textbox", { name: "Folder name" });
+    await waitFor(() => expect(input).toHaveFocus());
+    await user.clear(input);
+    await user.type(input, "Admins{Enter}");
+    await waitFor(() => expect(api.renameFolder).toHaveBeenCalledWith("f1", "Admins"));
+  });
+
+  it("can't rename a settings tab whose target was deleted", async () => {
+    openDoc("collection", "c1", "Users");
+    await screen.findByRole("button", { name: "Rename collection" });
+    act(() => tabs().patchDoc(tabs().activeId, { missing: true }));
+    expect(screen.queryByRole("button", { name: "Rename collection" })).not.toBeInTheDocument();
+  });
+
   it("remembers the open section when coming back to the tab", async () => {
     const user = openDoc("collection", "c1", "Users");
     await user.click(await screen.findByRole("tab", { name: "Variables" }));

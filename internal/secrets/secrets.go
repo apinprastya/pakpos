@@ -50,6 +50,17 @@ func Key(workspaceID, scopeID, key string) string {
 	return strings.Join([]string{KeyPrefix, workspaceID, scopeID, key}, "/")
 }
 
+// SplitKey is the reverse of Key: it returns the workspace id, scope id and
+// variable key of a key Pakpos wrote, or ok=false for any other string. The
+// variable key may itself contain "/".
+func SplitKey(full string) (workspaceID, scopeID, key string, ok bool) {
+	parts := strings.SplitN(full, "/", 4)
+	if len(parts) != 4 || parts[0] != KeyPrefix || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+		return "", "", "", false
+	}
+	return parts[1], parts[2], parts[3], true
+}
+
 // Select returns primary when it is available (for the keychain, Available
 // runs a probe), otherwise fallback.
 func Select(primary, fallback Store) Store {

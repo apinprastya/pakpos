@@ -22,6 +22,7 @@ import {
   type ChildKind,
 } from "@/lib/tree";
 import { isDirty, tabTitle, useTabsStore } from "@/stores/tabs";
+import { useUpdateStore } from "@/stores/update";
 
 export type WorkspaceStatus = "loading" | "none" | "ready";
 
@@ -76,9 +77,19 @@ interface WorkspaceState {
 
 const NOT_WORKSPACE = "not a pakpos workspace";
 const ALREADY_EXISTS = "a workspace already exists here";
+/** Go's `service.MsgNewerWorkspace`: the manifest version is newer than this build reads. */
+const NEWER_VERSION = "newer version of Pakpos";
 
 function fail(title: string, e: unknown) {
-  toast.error(title, { description: errorMessage(e) });
+  const description = errorMessage(e);
+  if (description.includes(NEWER_VERSION)) {
+    toast.error("This workspace needs a newer Pakpos", {
+      description,
+      action: { label: "Check for updates", onClick: () => void useUpdateStore.getState().check() },
+    });
+    return;
+  }
+  toast.error(title, { description });
 }
 
 /**

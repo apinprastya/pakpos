@@ -35,6 +35,20 @@ import { MoveToSecretDialog } from "./MoveToSecretDialog";
 import { DocKindIcon } from "./DocKindIcon";
 import { VariablesTable } from "./VariablesTable";
 
+/** The thing a doc tab renames (globals can't be renamed). */
+const RENAME_NOUNS: Partial<Record<DocKind, string>> = {
+  environment: "Environment",
+  collection: "Collection",
+  folder: "Folder",
+};
+
+/** Renames an environment, collection or folder through its store, so the tree and tabs follow. */
+function renameDocTarget(doc: DocState, name: string) {
+  if (doc.kind === "environment") void useEnvironmentsStore.getState().rename(doc.targetId, name);
+  else if (doc.kind === "collection") void useWorkspaceStore.getState().renameCollection(doc.targetId, name);
+  else if (doc.kind === "folder") void useWorkspaceStore.getState().renameFolder(doc.targetId, name);
+}
+
 const KIND_LABELS: Record<DocKind, string> = {
   environment: "Environment",
   globals: "Global variables",
@@ -127,6 +141,8 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
   const isEnv = doc.kind === "environment";
   const selected = isEnv && selectedId === doc.targetId;
   const title = tabTitle(tab);
+  const renameNoun = doc.missing ? undefined : RENAME_NOUNS[doc.kind];
+  const isContainer = doc.kind === "collection" || doc.kind === "folder";
 
   const menu: MenuEntry[] = [
     { label: "Rename", icon: Pencil, onSelect: () => setRenaming(true) },
@@ -162,10 +178,10 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
           <div className="flex max-w-72 flex-1">
             <InlineRename
               initial={doc.name}
-              label="Environment name"
+              label={`${renameNoun ?? "Environment"} name`}
               onCommit={(name) => {
                 setRenaming(false);
-                void envs().rename(doc.targetId, name);
+                renameDocTarget(doc, name);
               }}
               onCancel={() => setRenaming(false)}
             />
@@ -173,10 +189,26 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
         ) : (
           <h1
             className="truncate text-sm font-semibold"
-            onDoubleClick={isEnv ? () => setRenaming(true) : undefined}
+            onDoubleClick={renameNoun ? () => setRenaming(true) : undefined}
           >
             {doc.kind === "environment" || doc.kind === "globals" ? title : doc.name}
           </h1>
+        )}
+        {isContainer && renameNoun && !renaming && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                className="shrink-0 self-center text-muted-foreground"
+                aria-label={`Rename ${renameNoun.toLowerCase()}`}
+                onClick={() => setRenaming(true)}
+              >
+                <Pencil />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Rename {renameNoun.toLowerCase()}</TooltipContent>
+          </Tooltip>
         )}
         <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
         {dirty && <span className="shrink-0 text-xs text-muted-foreground">· Unsaved changes</span>}

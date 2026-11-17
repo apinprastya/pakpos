@@ -35,7 +35,16 @@ const (
 	// LocalDir holds machine-local state and is git-ignored.
 	LocalDir = ".pakpos"
 	// FormatVersion is the newest workspace format this build understands
-	// and the version new workspaces are created with.
+	// and the version new workspaces are created with. Open refuses a
+	// manifest with a higher version (ErrUnsupported), so an older build
+	// never drops fields it doesn't know when it saves.
+	//
+	// v3 (Tier 3) is reserved for scripts, the new auth types and
+	// per-request settings. Like v2 it is additive: a v1 or v2 manifest is
+	// rewritten to v3 only by the first v3-only write
+	// (upgradeManifestLocked(FormatVersion)); no such write exists yet.
+	FormatVersion = 3
+	// VersionV2 is the format of Tier 2 workspaces.
 	//
 	// v2 adds environments/, globals, secret variables, nested folders and
 	// examples sidecars; every change is additive, so a v1 workspace opens
@@ -43,7 +52,7 @@ const (
 	// something v2-specific (an environment, the globals, a folder,
 	// collection settings with a secret variable, or an example), so merely
 	// opening a Tier 1 workspace never changes it.
-	FormatVersion = 2
+	VersionV2 = 2
 )
 
 // Errors returned by the store. Wrap-checked with errors.Is.
@@ -51,7 +60,7 @@ var (
 	ErrNotWorkspace  = errors.New("not a pakpos workspace")
 	ErrAlreadyExists = errors.New("a workspace already exists here")
 	ErrNotFound      = errors.New("not found")
-	ErrUnsupported   = errors.New("workspace format is newer than this app")
+	ErrUnsupported   = errors.New("workspace was made with a newer version of pakpos")
 	// ErrInvalidMove is returned when a folder would be moved into itself
 	// or one of its own subfolders.
 	ErrInvalidMove = errors.New("a folder can't be moved into itself or one of its subfolders")
@@ -193,7 +202,7 @@ func Open(root string) (*Workspace, error) {
 		return nil, fmt.Errorf("%w: %s has no id", ErrNotWorkspace, ManifestFile)
 	}
 	if m.Version > FormatVersion {
-		return nil, fmt.Errorf("%w: version %d, supported up to %d", ErrUnsupported, m.Version, FormatVersion)
+		return nil, fmt.Errorf("%w: format version %d, this build reads up to %d", ErrUnsupported, m.Version, FormatVersion)
 	}
 	if m.Name == "" {
 		m.Name = filepath.Base(root)
@@ -227,17 +236,19 @@ func (w *Workspace) Manifest() Manifest {
 	return w.manifest
 }
 
-// upgradeManifestLocked rewrites a v1 manifest as v2. It runs before the
-// first v2-specific write, so a Tier 1 build refuses the workspace instead of
-// silently ignoring the new data. Callers hold w.mu.
-func (w *Workspace) upgradeManifestLocked() error {
-	if w.manifest.Version >= FormatVersion {
+// upgradeManifestLocked rewrites an older manifest as version `to` (VersionV2
+// or FormatVersion). It runs before the first write that needs that format,
+// so an older build refuses the workspace instead of silently ignoring the
+// new data. A manifest already at `to` or above is left alone. Callers hold
+// w.mu.
+func (w *Workspace) upgradeManifestLocked(to int) error {
+	if w.manifest.Version >= to {
 		return nil
 	}
 	m := w.manifest
-	m.Version = FormatVersion
+	m.Version = to
 	if err := w.writeYAML(filepath.Join(w.root, ManifestFile), m); err != nil {
-		return fmt.Errorf("upgrade %s to version %d: %w", ManifestFile, FormatVersion, err)
+		return fmt.Errorf("upgrade %s to version %d: %w", ManifestFile, to, err)
 	}
 	w.manifest = m
 	return nil
@@ -521,7 +532,7 @@ func (w *Workspace) SaveCollection(id string, s CollectionSettings) (Collection,
 	meta.Variables = normalizeVars(s.Variables)
 	for _, v := range meta.Variables {
 		if v.Secret {
-			if err := w.upgradeManifestLocked(); err != nil {
+			if err := w.upgradeManifestLocked(VersionV2); err != nil {
 				return Collection{}, err
 			}
 			break

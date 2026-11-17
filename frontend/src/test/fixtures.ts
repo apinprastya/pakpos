@@ -107,6 +107,7 @@ export function makeEnv(id: string, name = id, variables: Variable[] = []): Envi
 export function makePreview(patch: Partial<ResolvePreview> = {}): ResolvePreview {
   return {
     headers: [],
+    overridden: [],
     auth: emptyAuth(),
     authSource: null,
     variables: [],

@@ -11,6 +11,10 @@
 //     with the same name (case-insensitive). Disabled rows never hide
 //     anything, and disabled inherited rows are not applied. Rows with the
 //     same name at one level are all kept (multi-value headers).
+//   - Overridden: inherited headers that would apply but for an enabled
+//     request header of the same name are listed in Result.Overridden, so
+//     the UI can show them struck through. Rows hidden by a deeper folder
+//     are not listed (the folder's row is the one that would apply).
 //
 // The package has no Wails dependency.
 package inherit
@@ -61,6 +65,10 @@ type Result struct {
 	Request model.Request
 	// Headers are the inherited headers that are applied, in send order.
 	Headers []Header
+	// Overridden are the inherited headers the request's own enabled
+	// headers replace (same name, case-insensitive), outermost first.
+	// They are never sent.
+	Overridden []Header
 	// AuthSource is where the auth came from when the request inherits it,
 	// or nil when the request has its own auth or nothing was inherited.
 	AuthSource *Source
@@ -71,7 +79,7 @@ type Result struct {
 // its other slices are shared with req.
 func Effective(chain []Level, req model.Request) Result {
 	out := req
-	res := Result{Headers: []Header{}}
+	res := Result{Headers: []Header{}, Overridden: []Header{}}
 
 	if req.Auth.Type == model.AuthInherit {
 		out.Auth = model.Auth{Type: model.AuthNone}
@@ -86,13 +94,14 @@ func Effective(chain []Level, req model.Request) Result {
 		}
 	}
 
-	// Walk innermost first; deeper holds the names set (enabled) below the
-	// current level, the request being the deepest.
-	deeper := enabledNames(req.Headers)
-	var applied [][]Header
+	// Walk innermost first; deeper holds the names set (enabled) by the
+	// levels below the current one, own those the request sets.
+	own := enabledNames(req.Headers)
+	deeper := map[string]struct{}{}
+	var applied, overridden [][]Header
 	for i := len(chain) - 1; i >= 0; i-- {
 		l := chain[i]
-		var rows []Header
+		var rows, over []Header
 		for _, h := range l.Headers {
 			name := strings.ToLower(strings.TrimSpace(h.Key))
 			if !h.Enabled || name == "" {
@@ -101,16 +110,23 @@ func Effective(chain []Level, req model.Request) Result {
 			if _, hidden := deeper[name]; hidden {
 				continue
 			}
-			rows = append(rows, Header{Key: h.Key, Value: h.Value, Source: Source{Kind: l.Kind, ID: l.ID, Name: l.Name}})
+			row := Header{Key: h.Key, Value: h.Value, Source: Source{Kind: l.Kind, ID: l.ID, Name: l.Name}}
+			if _, mine := own[name]; mine {
+				over = append(over, row)
+				continue
+			}
+			rows = append(rows, row)
 		}
 		applied = append(applied, rows)
+		overridden = append(overridden, over)
 		for n := range enabledNames(l.Headers) {
 			deeper[n] = struct{}{}
 		}
 	}
-	// applied was built innermost first; send outermost first.
+	// Both were built innermost first; send (and list) outermost first.
 	for i := len(applied) - 1; i >= 0; i-- {
 		res.Headers = append(res.Headers, applied[i]...)
+		res.Overridden = append(res.Overridden, overridden[i]...)
 	}
 
 	headers := make([]model.KeyValue, 0, len(res.Headers)+len(req.Headers))

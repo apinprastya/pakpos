@@ -3,6 +3,7 @@ package pipeline
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -268,6 +269,16 @@ func TestPreview(t *testing.T) {
 	if got := strings.Join(hs, ","); got != "X-Keep=k@collection,X-Col=folder@folder,X-Folder=f@folder" {
 		t.Fatalf("headers = %s", got)
 	}
+	if len(pv.Overridden) != 0 {
+		t.Fatalf("overridden = %+v", pv.Overridden)
+	}
+
+	// The request's own x-col overrides the folder's (not the collection's,
+	// which the folder already hides).
+	own := model.Request{Headers: []model.KeyValue{hdr("x-col", "mine")}}
+	if over := f.sess.Preview(own, f.folder.ID, "").Overridden; len(over) != 1 || over[0].Value != "folder" || over[0].Source.ID != f.folder.ID {
+		t.Fatalf("overridden = %+v", over)
+	}
 	if !reflect.DeepEqual(pv.Unresolved, []string{"apiKey", "missing"}) || pv.SecretsLocked || pv.Error != "" {
 		t.Fatalf("unresolved = %v locked=%v err=%q", pv.Unresolved, pv.SecretsLocked, pv.Error)
 	}
@@ -312,6 +323,27 @@ func TestPreview(t *testing.T) {
 	}
 }
 
+func TestShadowed(t *testing.T) {
+	scopes := Scopes{List: []vars.Scope{
+		{Kind: vars.ScopeGlobal, ID: "g", Name: GlobalsName, Variables: []model.Variable{v("a", "g1"), v("a", "g2"), v("b", "gb"), {Key: "c", Value: "off"}, v("", "blank")}},
+		{Kind: vars.ScopeCollection, ID: "c", Name: "Col", Variables: []model.Variable{v("a", "c1"), {Key: "s", Value: "leak", Enabled: true, Secret: true}}, Unset: []string{"b", ""}},
+		{Kind: vars.ScopeEnvironment, ID: "e", Name: "Dev", Variables: []model.Variable{v("a", "e1"), v("s", "e")}},
+	}}
+	var got []string
+	for _, x := range shadowed(scopes) {
+		got = append(got, fmt.Sprintf("%s=%s@%s/set=%v", x.Key, x.Value, x.ScopeID, x.Set))
+	}
+	want := []string{"a=c1@c/set=true", "a=g2@g/set=true", "a=g1@g/set=true", "b=gb@g/set=true", "s=@c/set=true"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("shadowed = %v\nwant %v", got, want)
+	}
+	// An unset secret of a scope beats that scope's own row.
+	one := Scopes{List: []vars.Scope{{Kind: vars.ScopeGlobal, ID: "g", Variables: []model.Variable{v("t", "x")}, Unset: []string{"t"}}}}
+	if sh := shadowed(one); len(sh) != 1 || sh[0].Value != "x" {
+		t.Fatalf("shadowed = %+v", sh)
+	}
+}
+
 func TestVisibleVariables(t *testing.T) {
 	keysOf := func(vs []PreviewVariable) string {
 		var ks []string
@@ -322,17 +354,20 @@ func TestVisibleVariables(t *testing.T) {
 	}
 	f := newFixture(t)
 	for _, tc := range []struct {
-		name, parent, env, want, envName string
+		name, parent, env, want, envName, shadowed string
 	}{
-		{"folder with env", f.folder.ID, f.dev.ID, "apiKey@environment,colOnly@collection,gOnly@global,host@environment,token@collection", "Dev"},
-		{"collection, no env", f.col.ID, "", "colOnly@collection,gOnly@global,host@collection,token@collection", ""},
-		{"no parent", "", f.prod.ID, "gOnly@global,host@global", "Prod"},
-		{"unknown parent and env", "nope", "gone", "gOnly@global,host@global", ""},
+		{"folder with env", f.folder.ID, f.dev.ID, "apiKey@environment,colOnly@collection,gOnly@global,host@environment,token@collection", "Dev", "host@collection,host@global"},
+		{"collection, no env", f.col.ID, "", "colOnly@collection,gOnly@global,host@collection,token@collection", "", "host@global"},
+		{"no parent", "", f.prod.ID, "gOnly@global,host@global", "Prod", ""},
+		{"unknown parent and env", "nope", "gone", "gOnly@global,host@global", "", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got := f.sess.VisibleVariables(tc.parent, tc.env)
 			if k := keysOf(got.Variables); k != tc.want {
 				t.Fatalf("keys = %s", k)
+			}
+			if k := keysOf(got.Shadowed); k != tc.shadowed || got.Shadowed == nil {
+				t.Fatalf("shadowed = %s", k)
 			}
 			name := ""
 			if got.Environment != nil {
@@ -347,6 +382,9 @@ func TestVisibleVariables(t *testing.T) {
 				}
 			}
 		})
+	}
+	if sh := f.sess.VisibleVariables(f.col.ID, "").Shadowed; sh[0].Value != "global.example" || sh[0].ScopeID != f.globalID {
+		t.Fatalf("shadowed host = %+v", sh[0])
 	}
 	// An empty workspace still returns a non-nil list.
 	empty := New(must(fsstore.Create(t.TempDir(), "E")), secrets.NewFake(), nil)

@@ -84,6 +84,9 @@ type Core struct {
 	log      *slog.Logger
 	tempDir  string
 	debounce time.Duration
+	// started is when this Core was created: secret keys written since are
+	// never pruned (they may belong to an unsaved secret row).
+	started time.Time
 
 	mu       sync.RWMutex
 	ws       *fsstore.Workspace
@@ -127,6 +130,7 @@ func NewCore(cfg Config) (*Core, error) {
 		log:      cfg.Logger,
 		tempDir:  filepath.Join(cfg.DataDir, tempDirName),
 		debounce: cfg.WatchDebounce,
+		started:  time.Now(),
 		sends:    map[string]func(){},
 	}
 	if c.log == nil {
@@ -201,9 +205,30 @@ func (c *Core) workspace() (*fsstore.Workspace, error) {
 	return c.ws, nil
 }
 
-// session returns the send pipeline for ws.
+// session returns the send pipeline for ws. It records the secret keys it
+// writes in the database's secret index.
 func (c *Core) session(ws *fsstore.Workspace) *pipeline.Session {
-	return pipeline.New(ws, c.secrets, c.log)
+	return pipeline.New(ws, c.secrets, c.log).WithSecretIndex(c.db)
+}
+
+// pruneSecrets deletes stored secret values the open workspace no longer
+// refers to (see pipeline.PruneSecrets). It runs when a workspace opens and
+// when the file store is unlocked; failures are logged, never returned.
+func (c *Core) pruneSecrets() {
+	ws, p, err := c.openSession()
+	if err != nil {
+		return
+	}
+	n, err := p.PruneSecrets(c.started)
+	switch {
+	case errors.Is(err, secrets.ErrLocked), errors.Is(err, secrets.ErrNoPassword):
+		// Runs again on unlock.
+	case err != nil:
+		c.log.Warn("prune secret values", "workspace", ws.Manifest().ID, "err", err)
+	}
+	if n > 0 {
+		c.log.Info("pruned unused secret values", "workspace", ws.Manifest().ID, "count", n)
+	}
 }
 
 // openSession returns the open workspace and its pipeline, or ErrNoWorkspace.

@@ -25,7 +25,7 @@ func TestOpenMigratesOnceAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.SchemaVersion(); err != nil || v != 3 {
+	if v, err := s.SchemaVersion(); err != nil || v != 4 {
 		t.Fatalf("version = %d, %v", v, err)
 	}
 	if s.DataDir() != dir {
@@ -74,7 +74,7 @@ func TestMigrations(t *testing.T) {
 	if err := s.migrate(good); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := s.SchemaVersion(); v != 3 {
+	if v, _ := s.SchemaVersion(); v != 4 {
 		t.Fatalf("version = %d", v)
 	}
 	if err := s.migrate(good); err != nil { // idempotent
@@ -84,7 +84,7 @@ func TestMigrations(t *testing.T) {
 	cases := map[string]fstest.MapFS{
 		"bad name": {"migrations/abc.sql": {Data: []byte("SELECT 1")}},
 		"zero":     {"migrations/0000_x.sql": {Data: []byte("SELECT 1")}},
-		"bad sql":  {"migrations/0004_bad.sql": {Data: []byte("CREATE TABLE")}},
+		"bad sql":  {"migrations/0009_bad.sql": {Data: []byte("CREATE TABLE")}},
 		"no dir":   {},
 	}
 	for name, fsys := range cases {
@@ -94,7 +94,7 @@ func TestMigrations(t *testing.T) {
 			}
 		})
 	}
-	if v, _ := s.SchemaVersion(); v != 3 {
+	if v, _ := s.SchemaVersion(); v != 4 {
 		t.Fatalf("failed migration must not bump version, got %d", v)
 	}
 }
