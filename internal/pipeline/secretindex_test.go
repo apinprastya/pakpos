@@ -255,12 +255,16 @@ func TestPruneSecretsStops(t *testing.T) {
 		}
 		return f, db
 	}
-	later := time.Now().Add(2 * time.Second)
+	// Index times are whole Unix seconds, so "the next start" must be at
+	// least a second past the last write. Take it after each subtest's
+	// writes: a time fixed at the top runs out on slow runners (Windows),
+	// and then the keys count as written in the running session.
+	later := func() time.Time { return time.Now().Add(2 * time.Second) }
 
 	t.Run("locked store", func(t *testing.T) {
 		f, db := setup(t)
 		f.sec.Err = secrets.ErrLocked
-		if n, err := f.sess.PruneSecrets(later); n != 0 || !errors.Is(err, secrets.ErrLocked) {
+		if n, err := f.sess.PruneSecrets(later()); n != 0 || !errors.Is(err, secrets.ErrLocked) {
 			t.Fatalf("prune = %d %v", n, err)
 		}
 		if got := indexed(t, db, f.ws.Manifest().ID); len(got) < 2 {
@@ -278,7 +282,7 @@ func TestPruneSecretsStops(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		n, err := f.sess.PruneSecrets(later)
+		n, err := f.sess.PruneSecrets(later())
 		if n != 1 || err == nil || !strings.Contains(err.Error(), "dbus gone") {
 			t.Fatalf("prune = %d %v", n, err)
 		}
@@ -297,7 +301,7 @@ func TestPruneSecretsStops(t *testing.T) {
 			t.Fatal(err)
 		}
 		f.ws.Reload()
-		if n, err := f.sess.PruneSecrets(later); n != 0 || err != nil {
+		if n, err := f.sess.PruneSecrets(later()); n != 0 || err != nil {
 			t.Fatalf("prune = %d %v", n, err)
 		}
 		if len(f.sec.Keys()) != 3 {
