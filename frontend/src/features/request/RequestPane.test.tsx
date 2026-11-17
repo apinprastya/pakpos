@@ -43,6 +43,17 @@ describe("RequestPane", () => {
     expect(section("Body")).toHaveAttribute("aria-selected", "true");
   });
 
+  it("has a Settings tab that counts the request's overrides and edits the tab's request", async () => {
+    const user = userEvent.setup();
+    resetTabs({ settings: { verifyTls: false, timeoutMs: 0 } });
+    renderPane();
+    expect(section("Settings")).toHaveTextContent("Settings 2");
+    await user.click(section("Settings"));
+    await user.click(screen.getByRole("button", { name: "Use app settings for all" }));
+    expect(activeTab().request.settings).toEqual({});
+    expect(section("Settings")).toHaveTextContent(/^Settings\s*$/);
+  });
+
   it("falls back to Params for a section the pane doesn't have", () => {
     resetTabs({}, { sections: { request: "nope" } });
     renderPane();

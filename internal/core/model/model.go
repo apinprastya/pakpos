@@ -82,6 +82,25 @@ type Request struct {
 	Headers    []KeyValue `json:"headers" yaml:"headers,omitempty"`
 	Body       Body       `json:"body" yaml:"body"`
 	Auth       Auth       `json:"auth" yaml:"auth"`
+	// Settings override the app's network settings for this request only.
+	// Unset fields use the app setting; the block is omitted from YAML when
+	// nothing is set (a v3-only field: writing it upgrades the manifest).
+	Settings RequestSettings `json:"settings" yaml:"settings,omitempty"`
+}
+
+// RequestSettings are per-request overrides of the app's network settings.
+// A nil field means "use the app setting".
+type RequestSettings struct {
+	// TimeoutMs for the whole exchange; 0 means no timeout.
+	TimeoutMs       *int  `json:"timeoutMs,omitempty" yaml:"timeoutMs,omitempty"`
+	FollowRedirects *bool `json:"followRedirects,omitempty" yaml:"followRedirects,omitempty"`
+	MaxRedirects    *int  `json:"maxRedirects,omitempty" yaml:"maxRedirects,omitempty"`
+	VerifyTLS       *bool `json:"verifyTls,omitempty" yaml:"verifyTls,omitempty"`
+}
+
+// IsZero reports whether no setting is overridden (yaml omitempty uses it).
+func (s RequestSettings) IsZero() bool {
+	return s.TimeoutMs == nil && s.FollowRedirects == nil && s.MaxRedirects == nil && s.VerifyTLS == nil
 }
 
 // BodyType selects how the request body is encoded.

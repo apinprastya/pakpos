@@ -141,6 +141,20 @@ Copy the checklist per OS and tick as you go: `[ ]` → `[x]`.
 - [ ] History shows only the open workspace's sends, each with its environment name. Clear history names the workspace and leaves other workspaces' history alone. With no workspace open, only sends made without one are listed.
 - [ ] History entries keep `{{variables}}` as written (open one: the URL still says `{{baseUrl}}`).
 
+## Tier 3: network
+
+Use `XDG_CONFIG_HOME` pointing at a temp dir. Tools: any local proxy (e.g. `mitmproxy`, `tinyproxy` or Squid with basic auth), and a test CA with server and client certificates (e.g. made with `openssl` or `mkcert`).
+
+- [ ] Request Settings tab: a 1 s timeout on one request makes `/delay/3` time out while other requests still use the app timeout. Follow redirects Off on one request returns 302 for `/redirect/3`. Verify TLS Off on one request loads `https://self-signed.badssl.com` while the app setting stays on (another request to it still fails). The tab shows the number of overrides; "Use app settings for all" clears them. Saving a request with settings upgrades `pakpos.yaml` to `version: 3`.
+- [ ] Import `curl -k -L --max-redirs 3 -m 2.5 https://example.com`: the Settings tab shows Verify TLS Off, Follow redirects On, 3 redirects, 2.5 s, with no warnings for those flags. Copy as cURL writes them back.
+- [ ] Proxy: Custom `http://127.0.0.1:<port>` with a user name and password. Sends to http:// and https:// URLs go through the proxy (check its log); the password is not in `pakpos.db` (`grep -a` it). A wrong password gives "The proxy failed" with an Open settings action that lands on Network. A host in "Connect directly to" (e.g. `*.example.com`) bypasses the proxy.
+- [ ] Proxy: System uses `HTTPS_PROXY`/`NO_PROXY` from the environment the app was started with; No proxy connects directly. A SOCKS5 proxy (`socks5://`) works.
+- [ ] With the file secret store locked, a send through a proxy that needs a password asks to unlock (or says the store is locked); saving a proxy password from Settings asks for the master password first.
+- [ ] CA certificates: a server signed by a private CA fails with "The secure connection failed" until the CA PEM is chosen in Network; a non-PEM file or a missing path is refused on save with a message naming the file.
+- [ ] Client certificates (mTLS): a server that requires a client certificate fails with a message pointing to Network until a PEM certificate + key for its host is added; then it answers. Repeat with a PKCS#12 file: without the passphrase the error names the passphrase; after setting it, the send works. Removing the certificate deletes its passphrase from the keychain/secret file.
+- [ ] Cookies: a response that sets a persistent cookie (`/cookies/set?x=1` on httpbin sets a session cookie; use a server sending `Max-Age`) shows it in Manage cookies (from the palette and from the response Cookies tab, which opens on that domain). After quitting and restarting, the persistent cookie is still sent and listed; a session cookie is gone.
+- [ ] Cookie manager: add, edit (value, expiry, Include subdomains, SameSite), delete one, delete a domain and Delete all (with confirmation). An invalid name shows the error inline. Cookies are per workspace: another workspace starts without them, and nothing about cookies appears in the workspace files.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

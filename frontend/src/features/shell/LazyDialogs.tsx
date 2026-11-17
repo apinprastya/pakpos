@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { useCookiesStore } from "@/stores/cookies";
 import { usePaletteStore } from "@/stores/palette";
 import { useSettingsStore } from "@/stores/settings";
 import { useUpdateStore } from "@/stores/update";
 import {
   loadCode,
+  loadCookies,
   loadImportCurl,
   loadPalette,
   loadSettings,
@@ -20,6 +22,7 @@ const ImportCurlDialog = lazy(() => loadImportCurl().then((m) => ({ default: m.I
 const CodeDialog = lazy(() => loadCode().then((m) => ({ default: m.CodeDialog })));
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
 const UpdateDialog = lazy(() => loadUpdate().then((m) => ({ default: m.UpdateDialog })));
+const CookieManagerDialog = lazy(() => loadCookies().then((m) => ({ default: m.CookieManagerDialog })));
 
 /**
  * Mounts `children` from the first time `open` is true and keeps them mounted
@@ -37,6 +40,7 @@ export function LazyDialogs() {
   const code = useCodeDialogsStore((s) => !!s.codeTabId);
   const palette = usePaletteStore((s) => s.open);
   const update = useUpdateStore((s) => s.dialogOpen);
+  const cookies = useCookiesStore((s) => s.open);
   // Not under Vitest: tests mount the shell many times and open dialogs explicitly.
   useEffect(() => (import.meta.env.MODE === "test" ? undefined : schedulePreload()), []);
   return (
@@ -55,6 +59,9 @@ export function LazyDialogs() {
       </MountWhenOpened>
       <MountWhenOpened open={update}>
         <UpdateDialog />
+      </MountWhenOpened>
+      <MountWhenOpened open={cookies}>
+        <CookieManagerDialog />
       </MountWhenOpened>
     </>
   );

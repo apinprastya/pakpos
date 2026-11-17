@@ -1,4 +1,7 @@
+import { Cookie as CookieIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { Cookie, KeyValue } from "@/lib/model";
+import { useCookiesStore } from "@/stores/cookies";
 
 export function HeadersTable({ headers }: { headers: KeyValue[] }) {
   if (headers.length === 0) return <Empty>The response has no headers.</Empty>;
@@ -24,8 +27,46 @@ export function HeadersTable({ headers }: { headers: KeyValue[] }) {
   );
 }
 
-export function CookiesTable({ cookies }: { cookies: Cookie[] }) {
-  if (cookies.length === 0) return <Empty>The response set no cookies.</Empty>;
+/** Host of a URL, or "" when it has none. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^\[|\]$/g, "");
+  } catch {
+    return "";
+  }
+}
+
+/** The cookies a response set, and the way to the cookie manager. */
+export function CookiesTable({ cookies, url = "" }: { cookies: Cookie[]; url?: string }) {
+  const manage = (
+    <div className="flex items-center justify-end border-b px-3 py-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-7"
+        onClick={() => useCookiesStore.getState().openManager(hostOf(url))}
+      >
+        <CookieIcon aria-hidden /> Manage cookies
+      </Button>
+    </div>
+  );
+  if (cookies.length === 0)
+    return (
+      <>
+        {manage}
+        <Empty>The response set no cookies.</Empty>
+      </>
+    );
+  return (
+    <>
+      {manage}
+      <CookieRows cookies={cookies} />
+    </>
+  );
+}
+
+function CookieRows({ cookies }: { cookies: Cookie[] }) {
   return (
     <table aria-label="Response cookies" className="w-full text-left text-[12.5px]">
       <thead className="text-xs text-muted-foreground">

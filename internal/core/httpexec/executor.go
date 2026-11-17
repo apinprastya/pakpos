@@ -4,7 +4,7 @@ package httpexec
 
 import (
 	"context"
-	"crypto/tls"
+	"fmt"
 	"net/http"
 	"net/http/httptrace"
 	"os"
@@ -17,6 +17,12 @@ import (
 
 // DefaultMaxBodyInMemory is how much of a response body is returned inline.
 const DefaultMaxBodyInMemory = 10 << 20 // 10 MB
+
+// Limits for the timeout and redirect settings (app-wide and per request).
+const (
+	MaxTimeoutMs    = 10 * 60 * 1000 // 10 minutes
+	MaxRedirectsCap = 50
+)
 
 // Settings controls how requests are sent.
 type Settings struct {
@@ -33,6 +39,11 @@ type Settings struct {
 	UserAgent string
 	// Jar stores cookies between requests. Nil disables cookie persistence.
 	Jar http.CookieJar
+	// Network is the proxy and certificate configuration.
+	Network Network
+	// Transports caches transports across executors. Nil gives the executor
+	// a cache of its own.
+	Transports *Transports
 }
 
 // DefaultSettings returns the settings used for a fresh install.
@@ -72,23 +83,83 @@ func New(s Settings) *Executor {
 		s.TempDir = os.TempDir()
 	}
 
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: s.InsecureSkipVerify} //nolint:gosec // user-controlled setting
-	client := &http.Client{
-		// Records hops for sends that ask for it (WithRecorder).
-		Transport: recordingTransport{base: transport},
+	if s.Transports == nil {
+		s.Transports = NewTransports()
+	}
+
+	e := &Executor{settings: s, inflight: map[string]context.CancelFunc{}}
+	e.client = &http.Client{
+		// Records hops for sends that ask for it (WithRecorder); each hop
+		// goes through the cached transport for its TLS options and host.
+		Transport: recordingTransport{base: routeTransport{e: e}},
 		Jar:       s.Jar,
-		CheckRedirect: func(_ *http.Request, via []*http.Request) error {
-			if !s.FollowRedirects {
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			o := optionsFrom(req.Context(), e.settings)
+			if !o.followRedirects {
 				return http.ErrUseLastResponse
 			}
-			if len(via) > s.MaxRedirects {
+			if len(via) > o.maxRedirects {
 				return errTooManyRedirects
 			}
 			return nil
 		},
 	}
-	return &Executor{settings: s, client: client, inflight: map[string]context.CancelFunc{}}
+	return e
+}
+
+// sendOptions are the effective timeout, redirect and TLS options of one
+// send: the app settings with the request's overrides applied.
+type sendOptions struct {
+	timeout         time.Duration
+	followRedirects bool
+	maxRedirects    int
+	insecure        bool
+}
+
+type optionsKey struct{}
+
+func optionsFrom(ctx context.Context, s Settings) sendOptions {
+	if o, ok := ctx.Value(optionsKey{}).(sendOptions); ok {
+		return o
+	}
+	return defaultOptions(s)
+}
+
+func defaultOptions(s Settings) sendOptions {
+	return sendOptions{timeout: s.Timeout, followRedirects: s.FollowRedirects, maxRedirects: s.MaxRedirects, insecure: s.InsecureSkipVerify}
+}
+
+// ValidateRequestSettings checks per-request overrides against the same
+// limits as the app settings.
+func ValidateRequestSettings(rs model.RequestSettings) error {
+	if rs.TimeoutMs != nil && (*rs.TimeoutMs < 0 || *rs.TimeoutMs > MaxTimeoutMs) {
+		return fmt.Errorf("the request timeout must be between 0 and %d ms", MaxTimeoutMs)
+	}
+	if rs.MaxRedirects != nil && (*rs.MaxRedirects < 1 || *rs.MaxRedirects > MaxRedirectsCap) {
+		return fmt.Errorf("the request's maximum redirects must be between 1 and %d", MaxRedirectsCap)
+	}
+	return nil
+}
+
+// options applies a request's overrides to the executor settings.
+func (e *Executor) options(rs model.RequestSettings) (sendOptions, error) {
+	if err := ValidateRequestSettings(rs); err != nil {
+		return sendOptions{}, newError(KindInvalidRequest, err, "The request settings aren't valid: %s", err.Error())
+	}
+	o := defaultOptions(e.settings)
+	if rs.TimeoutMs != nil {
+		o.timeout = time.Duration(*rs.TimeoutMs) * time.Millisecond
+	}
+	if rs.FollowRedirects != nil {
+		o.followRedirects = *rs.FollowRedirects
+	}
+	if rs.MaxRedirects != nil {
+		o.maxRedirects = *rs.MaxRedirects
+	}
+	if rs.VerifyTLS != nil {
+		o.insecure = !*rs.VerifyTLS
+	}
+	return o, nil
 }
 
 // Settings returns the effective settings.
@@ -97,11 +168,15 @@ func (e *Executor) Settings() Settings { return e.settings }
 // Execute sends req and reads the response. id identifies the send for
 // Cancel; an empty id disables cancellation by id. Errors are *Error.
 func (e *Executor) Execute(ctx context.Context, id string, req model.Request) (*model.Response, error) {
-	ctx, cancel := context.WithCancel(ctx)
+	opts, err := e.options(req.Settings)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(context.WithValue(ctx, optionsKey{}, opts))
 	defer cancel()
-	if e.settings.Timeout > 0 {
+	if opts.timeout > 0 {
 		var cancelTimeout context.CancelFunc
-		ctx, cancelTimeout = context.WithTimeout(ctx, e.settings.Timeout)
+		ctx, cancelTimeout = context.WithTimeout(ctx, opts.timeout)
 		defer cancelTimeout()
 	}
 	if id != "" {

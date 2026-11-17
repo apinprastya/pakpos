@@ -15,6 +15,7 @@ import (
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/model"
 	"pakpos/internal/pipeline"
+	"pakpos/internal/secrets"
 	"pakpos/internal/store/sqlite"
 )
 
@@ -63,7 +64,18 @@ func (s *RequestService) Save(req model.Request) (model.Request, error) {
 	if err != nil {
 		return model.Request{}, err
 	}
+	if err := checkRequestSettings(req); err != nil {
+		return model.Request{}, err
+	}
 	return ws.SaveRequest(req)
+}
+
+// checkRequestSettings refuses per-request settings outside the app limits.
+func checkRequestSettings(req model.Request) error {
+	if err := httpexec.ValidateRequestSettings(req.Settings); err != nil {
+		return &userError{msg: "Check the request's Settings tab: " + err.Error() + ".", err: err}
+	}
+	return nil
 }
 
 // SaveAs saves req as a new request named name at the end of a collection
@@ -71,6 +83,9 @@ func (s *RequestService) Save(req model.Request) (model.Request, error) {
 func (s *RequestService) SaveAs(parentID, name string, req model.Request) (model.Request, error) {
 	ws, err := s.c.workspace()
 	if err != nil {
+		return model.Request{}, err
+	}
+	if err := checkRequestSettings(req); err != nil {
 		return model.Request{}, err
 	}
 	req.ID = ""
@@ -183,6 +198,10 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 	sendErr := httpexec.Classify(err)
 	result.Response, result.Error = resp, sendErr
 	result.Hops = rec.Hops()
+	if sendErr != nil && errors.Is(sendErr, secrets.ErrLocked) {
+		// The proxy password or a certificate passphrase is locked away.
+		result.SecretsLocked = true
+	}
 	if sess != nil {
 		// Only the UI sees hops, and never a secret's value.
 		values, _ := sess.SendSecrets(req, parentID, envID)

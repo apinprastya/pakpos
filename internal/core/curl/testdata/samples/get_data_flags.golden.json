@@ -36,24 +36,17 @@
       "apiKey": "",
       "apiValue": "",
       "apiIn": ""
+    },
+    "settings": {
+      "timeoutMs": 10000,
+      "followRedirects": true,
+      "verifyTls": false
     }
   },
   "warnings": [
     {
       "option": "",
       "message": "Only the first command was imported; the rest of the text was ignored."
-    },
-    {
-      "option": "-L",
-      "message": "Pakpos follows redirects as set in Settings; this option wasn't imported."
-    },
-    {
-      "option": "-k",
-      "message": "Pakpos verifies TLS certificates unless you turn that off in Settings; this option wasn't imported."
-    },
-    {
-      "option": "--max-time",
-      "message": "Timeouts are set in Settings; this option wasn't imported."
     },
     {
       "option": "--frobnicate",

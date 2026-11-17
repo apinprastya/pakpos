@@ -93,3 +93,42 @@ func TestDefaultContentType(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestSettingsYAML(t *testing.T) {
+	timeout, follow := 1500, false
+	tests := []struct {
+		name     string
+		settings RequestSettings
+		want     string // substring of the YAML; "" means no settings block
+	}{
+		{"unset is omitted", RequestSettings{}, ""},
+		{"timeout", RequestSettings{TimeoutMs: &timeout}, "settings:\n    timeoutMs: 1500\n"},
+		{"false is kept", RequestSettings{FollowRedirects: &follow}, "settings:\n    followRedirects: false\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := sampleRequest()
+			req.Settings = tt.settings
+			out, err := yaml.Marshal(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tt.want == "" {
+				if strings.Contains(string(out), "settings") {
+					t.Fatalf("settings written although unset:\n%s", out)
+				}
+				return
+			}
+			if !strings.Contains(string(out), tt.want) {
+				t.Fatalf("YAML = %s, want %q", out, tt.want)
+			}
+			var back Request
+			if err := yaml.Unmarshal(out, &back); err != nil {
+				t.Fatal(err)
+			}
+			if back.Settings.IsZero() {
+				t.Fatal("settings lost in round trip")
+			}
+		})
+	}
+}

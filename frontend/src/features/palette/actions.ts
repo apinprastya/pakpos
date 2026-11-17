@@ -9,6 +9,7 @@ import type { DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 import type { SecretsStatus, WorkspaceInfo } from "@/lib/model";
 import { modKeyLabel } from "@/lib/platform";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { useCookiesStore } from "@/stores/cookies";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useHistoryStore } from "@/stores/history";
 import { useLayoutStore } from "@/stores/layout";
@@ -55,6 +56,7 @@ const usesFileStore = (ctx: ActionContext) => ctx.secrets?.backend === "file";
 const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Appearance" },
   { id: "requests", label: "Requests" },
+  { id: "network", label: "Network" },
   { id: "history", label: "History" },
   { id: "secrets", label: "Secrets" },
   { id: "about", label: "About" },
@@ -180,6 +182,14 @@ export const ACTIONS: PaletteAction[] = [
     group: "Workspace",
     enabled: (ctx) => !!ctx.workspace,
     run: () => void useWorkspaceStore.getState().close(),
+  },
+  {
+    id: "manage-cookies",
+    label: "Manage cookies",
+    keywords: ["cookie jar", "session", "delete cookies"],
+    group: "Workspace",
+    enabled: () => true,
+    run: () => useCookiesStore.getState().openManager(),
   },
   {
     id: "clear-history",

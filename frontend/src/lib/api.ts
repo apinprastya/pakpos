@@ -6,6 +6,7 @@
 import { Events } from "@wailsio/runtime";
 import {
   AppService,
+  CookieService,
   EnvService,
   ExampleService,
   HistoryService,
@@ -16,6 +17,7 @@ import {
   WorkspaceService,
 } from "../../bindings/pakpos/internal/service";
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
+import type * as bc from "../../bindings/pakpos/internal/core/cookies/models";
 import { UpdateProgress as UpdateProgressEvent, WorkspaceChanged } from "../../bindings/events";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
@@ -23,6 +25,10 @@ import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
+  normalizeStoredCookie,
+  type CookieRef,
+  type NetworkSecretStatus,
+  type StoredCookie,
   type AppSettings,
   type BuildInfo,
   type UpdateInfo,
@@ -131,6 +137,45 @@ export const api = {
   async setSettings(next: AppSettings): Promise<AppSettings> {
     const saved = await SettingsService.Set(next as unknown as bs.Settings);
     return normalizeSettings(saved as Partial<AppSettings>, DEFAULT_SETTINGS);
+  },
+
+  /** Which network passwords are stored (never the values). */
+  async networkSecretStatus(): Promise<NetworkSecretStatus> {
+    const st = await SettingsService.NetworkSecretStatus();
+    return {
+      locked: st?.locked ?? false,
+      proxyPassword: st?.proxyPassword ?? false,
+      certPassphrases: st?.certPassphrases ?? [],
+    };
+  },
+  /** Stores the proxy password in the secret store; "" deletes it. */
+  async setProxyPassword(password: string): Promise<void> {
+    return SettingsService.SetProxyPassword(password);
+  },
+  /** Stores a saved client certificate's PKCS#12 passphrase; "" deletes it. */
+  async setCertPassphrase(id: string, passphrase: string): Promise<void> {
+    return SettingsService.SetCertPassphrase(id, passphrase);
+  },
+
+  /** Cookies of the open workspace, by domain, path and name. */
+  async listCookies(): Promise<StoredCookie[]> {
+    return ((await CookieService.List()) ?? []).map(normalizeStoredCookie);
+  },
+  /** Rejects with a message for the user when the cookie isn't valid. */
+  async addCookie(c: StoredCookie): Promise<StoredCookie> {
+    return normalizeStoredCookie(await CookieService.Add(c as bc.Cookie));
+  },
+  async updateCookie(old: CookieRef, c: StoredCookie): Promise<StoredCookie> {
+    return normalizeStoredCookie(await CookieService.Update(old, c as bc.Cookie));
+  },
+  async deleteCookie(ref: CookieRef): Promise<void> {
+    return CookieService.Delete(ref);
+  },
+  async clearCookieDomain(domain: string): Promise<number> {
+    return CookieService.ClearDomain(domain);
+  },
+  async clearAllCookies(): Promise<void> {
+    return CookieService.ClearAll();
   },
 
   /** App-wide UI state (panel sizes, column widths): JSON strings by key. */

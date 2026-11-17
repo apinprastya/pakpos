@@ -12,6 +12,7 @@ import { useExamplesStore } from "@/stores/examples";
 import { usePaletteStore } from "@/stores/palette";
 import { resetUpdateAnnouncements, useUpdateStore } from "@/stores/update";
 import { resetUiState } from "@/stores/uiState";
+import { cookiesInitial, useCookiesStore } from "@/stores/cookies";
 
 const workspaceInitial = useWorkspaceStore.getState();
 const historyInitial = useHistoryStore.getState();
@@ -34,6 +35,7 @@ export function resetSidebarStores(): void {
   useExamplesStore.setState(examplesInitial, true);
   usePaletteStore.setState(paletteInitial, true);
   useUpdateStore.setState({ ...updateInitial, skipped: "" }, true);
+  useCookiesStore.setState(cookiesInitial);
   resetUpdateAnnouncements();
   resetUiState();
   useSettingsStore.setState({

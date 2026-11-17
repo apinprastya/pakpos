@@ -55,6 +55,11 @@ func TestClassify(t *testing.T) {
 		{"permission is generic", &fs.PathError{Op: "open", Path: "/x", Err: fs.ErrPermission}, KindNetwork},
 		{"net timeout", wrapURL(timeoutErr{}), KindTimeout},
 		{"other", errors.New("boom"), KindNetwork},
+		{"proxy connect", wrapURL(&net.OpError{Op: "proxyconnect", Err: errors.New("refused")}), KindProxy},
+		{"socks", wrapURL(&net.OpError{Op: "socks connect", Err: errors.New("refused")}), KindProxy},
+		{"proxy auth", wrapURL(errors.New("Proxy Authentication Required")), KindProxy},
+		{"client cert required", wrapURL(&net.OpError{Op: "remote error", Err: errors.New("tls: certificate required")}), KindTLS},
+		{"other alert", wrapURL(&net.OpError{Op: "remote error", Err: errors.New("tls: handshake failure")}), KindTLS},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
