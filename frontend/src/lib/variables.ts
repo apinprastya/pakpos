@@ -208,21 +208,30 @@ const RANK: Record<ScopeKind, number> = { global: 0, collection: 1, environment:
  * globals or a collection's variables tab) over the variables Go sees on
  * disk, so references between new rows highlight before saving. A row loses
  * to a higher scope's definition of the same name. Secret rows never carry
- * a value; their `set` flag is kept from disk (false for new ones). Rows
- * removed from the draft disappear, even if a lower scope defines the name.
+ * a value; their `set` flag is kept from disk (false for new ones). When a
+ * saved row is removed (or disabled) in the draft, the best definition from
+ * another scope in `shadowed` (Go's `Visible.shadowed`) takes its place.
  */
 export function overlayDraft(
   visible: readonly PreviewVariable[],
   target: { kind: ScopeKind; id: string; name: string },
   draft: readonly Variable[],
+  shadowed: readonly PreviewVariable[] = [],
 ): PreviewVariable[] {
+  // There is one globals scope; its id may not be known to the editor ("").
+  const isOwn = (v: PreviewVariable) =>
+    v.scope === target.kind && (target.kind === "global" || v.scopeId === target.id);
   const byKey = new Map<string, PreviewVariable>();
   const ownSaved = new Map<string, PreviewVariable>();
   for (const v of visible) {
-    // There is one globals scope; its id may not be known to the editor ("").
-    if (v.scope === target.kind && (target.kind === "global" || v.scopeId === target.id))
-      ownSaved.set(v.key, v);
+    if (isOwn(v)) ownSaved.set(v.key, v);
     else byKey.set(v.key, v);
+  }
+  // The edited scope's saved definitions lose to the draft: what's left
+  // without them is the first shadowed definition from another scope.
+  for (const key of ownSaved.keys()) {
+    const next = shadowed.find((v) => v.key === key && !isOwn(v));
+    if (next) byKey.set(key, next);
   }
   for (const row of draft) {
     const key = row.key.trim();

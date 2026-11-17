@@ -592,6 +592,8 @@ export interface PreviewVariable {
 /** How a request resolves, for the headers tab and variable hover. */
 export interface ResolvePreview {
   headers: InheritedHeader[];
+  /** Inherited headers the request's own enabled headers replace (never sent). */
+  overridden: InheritedHeader[];
   auth: Auth;
   authSource: InheritSource | null;
   variables: PreviewVariable[];
@@ -638,6 +640,7 @@ export function normalizePreview(input: unknown): ResolvePreview {
   const p = (input ?? {}) as Omit<Loose<ResolvePreview>, "auth"> & { auth?: Loose<Auth> | null };
   return {
     headers: (p.headers ?? []).map((h) => ({ key: h.key, value: h.value, source: { ...h.source } })),
+    overridden: (p.overridden ?? []).map((h) => ({ key: h.key, value: h.value, source: { ...h.source } })),
     auth: normalizeRequest({ auth: p.auth }).auth,
     authSource: p.authSource ? { ...p.authSource } : null,
     variables: (p.variables ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
@@ -651,6 +654,11 @@ export function normalizePreview(input: unknown): ResolvePreview {
 /** The variables an editor can reference (no request needed); secret values are always "". */
 export interface VisibleVariables {
   variables: PreviewVariable[];
+  /**
+   * Definitions that lose to a higher scope, by key and then highest
+   * precedence first: what wins once a visible definition goes away.
+   */
+  shadowed: PreviewVariable[];
   environment: EnvRef | null;
 }
 
@@ -658,6 +666,7 @@ export function normalizeVisible(input: unknown): VisibleVariables {
   const p = (input ?? {}) as Loose<VisibleVariables>;
   return {
     variables: (p.variables ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
+    shadowed: (p.shadowed ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
     environment: normalizeEnvRef(p.environment),
   };
 }

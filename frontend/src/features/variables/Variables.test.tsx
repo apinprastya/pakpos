@@ -78,6 +78,28 @@ describe("variables in a request tab", () => {
     expect(vi.mocked(api.resolvePreview).mock.calls.length).toBeLessThanOrEqual(3);
   });
 
+  it("marks references in the headers' text view", async () => {
+    const user = userEvent.setup();
+    resetTabs(
+      { headers: [{ key: "Authorization", value: "Bearer {{token}} {{nope}}", enabled: true }] },
+      { parentId: "c1", workspaceId: "w1" },
+    );
+    render(
+      <TooltipProvider>
+        <RequestPane />
+      </TooltipProvider>,
+    );
+    await user.click(screen.getByRole("tab", { name: /^Headers/ }));
+    await user.click(screen.getByRole("button", { name: "Edit as text" }));
+    const text = editorView("Headers as text");
+    await waitFor(() =>
+      expect(classes(text.contentDOM)).toEqual([
+        "{{token}} var-token var-resolved",
+        "{{nope}} var-token var-unresolved",
+      ]),
+    );
+  });
+
   it("shows the body's variables inside JSON strings", async () => {
     const user = userEvent.setup();
     resetTabs(
@@ -122,6 +144,7 @@ describe("variables in settings tabs", () => {
     vi.mocked(api.getEnvironment).mockResolvedValue(dev);
     vi.mocked(api.visibleVariables).mockResolvedValue({
       variables: [makePreviewVar("host", "g", { scope: "global", scopeName: "Globals" })],
+      shadowed: [],
       environment: { id: "e1", name: "Dev" },
     });
     resetTabs();

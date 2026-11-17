@@ -2,6 +2,7 @@ package fsstore
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,10 +91,11 @@ func TestOpenErrors(t *testing.T) {
 		manifest string
 		want     error
 	}{
-		"missing": {"", ErrNotWorkspace},
-		"invalid": {"id: [", ErrNotWorkspace},
-		"no id":   {"name: x\n", ErrNotWorkspace},
-		"too new": {"id: A\nversion: 99\n", ErrUnsupported},
+		"missing":   {"", ErrNotWorkspace},
+		"invalid":   {"id: [", ErrNotWorkspace},
+		"no id":     {"name: x\n", ErrNotWorkspace},
+		"too new":   {"id: A\nversion: 99\n", ErrUnsupported},
+		"one newer": {fmt.Sprintf("id: A\nversion: %d\n", FormatVersion+1), ErrUnsupported},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -106,6 +108,18 @@ func TestOpenErrors(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("newer version message", func(t *testing.T) {
+		dir := t.TempDir()
+		_ = os.WriteFile(filepath.Join(dir, ManifestFile), []byte("id: A\nversion: 99\n"), 0o644)
+		_, err := Open(dir)
+		// The frontend offers "Create workspace here" for ErrNotWorkspace, so
+		// a newer workspace must never read like one.
+		if err == nil || errors.Is(err, ErrNotWorkspace) || strings.Contains(err.Error(), ErrNotWorkspace.Error()) ||
+			!strings.Contains(err.Error(), "newer version") {
+			t.Fatalf("err = %v", err)
+		}
+	})
 
 	t.Run("name defaults to folder", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "folder")
@@ -124,6 +138,76 @@ func TestOpenErrors(t *testing.T) {
 			t.Fatalf("err = %v", err)
 		}
 	})
+}
+
+func TestManifestVersions(t *testing.T) {
+	read := func(dir string) string {
+		data, err := os.ReadFile(filepath.Join(dir, ManifestFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	open := func(t *testing.T, version int) (*Workspace, string) {
+		t.Helper()
+		dir := t.TempDir()
+		manifest := fmt.Sprintf("id: WS\nname: W\nversion: %d\n", version)
+		if err := os.WriteFile(filepath.Join(dir, ManifestFile), []byte(manifest), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		ws, err := Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ws, dir
+	}
+
+	for _, v := range []int{1, VersionV2, FormatVersion} {
+		t.Run(fmt.Sprintf("v%d opens unchanged", v), func(t *testing.T) {
+			ws, dir := open(t, v)
+			before := read(dir)
+			ws.Reload()
+			if ws.Manifest().Version != v || read(dir) != before {
+				t.Fatalf("version = %d, manifest %q", ws.Manifest().Version, read(dir))
+			}
+		})
+	}
+
+	t.Run("a v2 write leaves v2 alone", func(t *testing.T) {
+		ws, dir := open(t, VersionV2)
+		if _, err := ws.CreateEnvironment("Dev"); err != nil {
+			t.Fatal(err)
+		}
+		if ws.Manifest().Version != VersionV2 || !strings.Contains(read(dir), "version: 2") {
+			t.Fatalf("manifest %q", read(dir))
+		}
+	})
+
+	t.Run("a v2 write never downgrades v3", func(t *testing.T) {
+		ws, dir := open(t, FormatVersion)
+		if _, err := ws.CreateEnvironment("Dev"); err != nil {
+			t.Fatal(err)
+		}
+		if ws.Manifest().Version != FormatVersion || !strings.Contains(read(dir), fmt.Sprintf("version: %d", FormatVersion)) {
+			t.Fatalf("manifest %q", read(dir))
+		}
+	})
+
+	for _, v := range []int{1, VersionV2} {
+		t.Run(fmt.Sprintf("a v3 write upgrades v%d", v), func(t *testing.T) {
+			ws, dir := open(t, v)
+			ws.mu.Lock()
+			err := ws.upgradeManifestLocked(FormatVersion)
+			ws.mu.Unlock()
+			if err != nil {
+				t.Fatal(err)
+			}
+			reopened, err := Open(dir)
+			if err != nil || reopened.Manifest() != (Manifest{ID: "WS", Name: "W", Version: FormatVersion}) {
+				t.Fatalf("reopened %+v, err %v", reopened, err)
+			}
+		})
+	}
 }
 
 func TestCollectionsCRUD(t *testing.T) {

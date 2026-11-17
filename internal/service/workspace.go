@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"strings"
 
 	"pakpos/internal/core/model"
@@ -42,9 +43,17 @@ func (s *WorkspaceService) Current() *WorkspaceInfo {
 	return &i
 }
 
+// MsgNewerWorkspace is shown when a workspace's format is newer than this
+// build reads (fsstore.ErrUnsupported). The frontend matches on "newer
+// version of Pakpos".
+const MsgNewerWorkspace = "This workspace was made with a newer version of Pakpos. Update Pakpos to open it."
+
 // Open opens an existing workspace folder and adds it to the recent list.
 func (s *WorkspaceService) Open(path string) (WorkspaceInfo, error) {
 	ws, err := fsstore.Open(path)
+	if errors.Is(err, fsstore.ErrUnsupported) {
+		return WorkspaceInfo{}, &userError{msg: MsgNewerWorkspace, err: err}
+	}
 	if err != nil {
 		return WorkspaceInfo{}, err
 	}
@@ -62,6 +71,7 @@ func (s *WorkspaceService) Create(path, name string) (WorkspaceInfo, error) {
 
 func (s *WorkspaceService) activate(ws *fsstore.Workspace) (WorkspaceInfo, error) {
 	s.c.setWorkspace(ws)
+	s.c.pruneSecrets()
 	i := info(ws)
 	if err := s.c.db.TouchRecent(i.Path, i.Name); err != nil {
 		s.c.log.Warn("record recent workspace", "err", err)

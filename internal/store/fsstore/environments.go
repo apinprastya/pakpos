@@ -312,7 +312,7 @@ func (w *Workspace) SaveGlobals(vars []model.Variable) (Globals, error) {
 // ensureEnvDirLocked upgrades the manifest to v2 and creates environments/
 // (watched right away, like a new collection folder).
 func (w *Workspace) ensureEnvDirLocked() (string, error) {
-	if err := w.upgradeManifestLocked(); err != nil {
+	if err := w.upgradeManifestLocked(VersionV2); err != nil {
 		return "", err
 	}
 	dir := filepath.Join(w.root, EnvironmentsDir)

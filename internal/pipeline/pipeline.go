@@ -34,6 +34,8 @@ type Session struct {
 	ws  *fsstore.Workspace
 	sec secrets.Store
 	log *slog.Logger
+	// idx records written secret keys (see WithSecretIndex); nil without one.
+	idx SecretIndex
 	// opts are passed to the resolver (tests inject a clock and random source).
 	opts []vars.Option
 }
@@ -232,6 +234,9 @@ type PreviewVariable struct {
 type Preview struct {
 	// Headers are the inherited headers that are applied, with their source.
 	Headers []inherit.Header `json:"headers"`
+	// Overridden are inherited headers the request's own enabled headers
+	// replace (same name); the UI shows them struck through.
+	Overridden []inherit.Header `json:"overridden"`
 	// Auth is the effective auth (unresolved) and AuthSource where it comes
 	// from when inherited.
 	Auth       model.Auth      `json:"auth"`
@@ -250,7 +255,7 @@ func (s *Session) Preview(req model.Request, parentID, envID string) Preview {
 	chain := s.Chain(req, parentID)
 	eff := inherit.Effective(chain, req)
 	pv := Preview{
-		Headers: eff.Headers, Auth: eff.Request.Auth, AuthSource: eff.AuthSource,
+		Headers: eff.Headers, Overridden: eff.Overridden, Auth: eff.Request.Auth, AuthSource: eff.AuthSource,
 		Unresolved: []string{},
 	}
 	env := s.Environment(envID)
@@ -277,7 +282,13 @@ func (s *Session) Preview(req model.Request, parentID, envID string) Preview {
 // {{variables}}: the variables visible from a collection or folder (or none)
 // with an environment, secret values masked.
 type Visible struct {
-	Variables   []PreviewVariable `json:"variables"`
+	Variables []PreviewVariable `json:"variables"`
+	// Shadowed are the definitions that lose to a higher scope (or to a
+	// later row of the same scope), sorted by key and then from the highest
+	// precedence down, so the first one for a name is what would win if the
+	// visible definition went away. Settings tabs use it to show the right
+	// value when an unsaved draft removes a row. Secret values are "".
+	Shadowed    []PreviewVariable `json:"shadowed"`
 	Environment *EnvRef           `json:"environment"`
 }
 
@@ -293,6 +304,54 @@ func (s *Session) VisibleVariables(parentID, envID string) Visible {
 	}
 	scopes := s.BuildScopes(collectionOf(s.Chain(model.Request{}, parentID)), env)
 	out.Variables = visible(vars.New(scopes.List, s.opts...), scopes)
+	out.Shadowed = shadowed(scopes)
+	return out
+}
+
+// shadowed lists every definition in scopes except the winning one per name
+// (see Visible.Shadowed). Within a scope the last enabled row wins, and an
+// unset secret beats the scope's rows, as in vars.New.
+func shadowed(scopes Scopes) []PreviewVariable {
+	defs := map[string][]PreviewVariable{} // per name, lowest precedence first
+	for _, sc := range scopes.List {
+		own := map[string]vars.Match{}
+		var order []string
+		put := func(m vars.Match) {
+			if _, ok := own[m.Name]; !ok {
+				order = append(order, m.Name)
+			} else {
+				// An earlier row of the same scope loses to this one.
+				defs[m.Name] = append(defs[m.Name], previewVar(own[m.Name]))
+			}
+			own[m.Name] = m
+		}
+		for _, v := range sc.Variables {
+			if v.Enabled && v.Key != "" {
+				put(vars.Match{Name: v.Key, Value: v.Value, Secret: v.Secret, Scope: sc.Kind, ScopeID: sc.ID, ScopeName: sc.Name})
+			}
+		}
+		for _, n := range sc.Unset {
+			if n != "" {
+				put(vars.Match{Name: n, Secret: true, Scope: sc.Kind, ScopeID: sc.ID, ScopeName: sc.Name, Unset: true})
+			}
+		}
+		for _, n := range order {
+			defs[n] = append(defs[n], previewVar(own[n]))
+		}
+	}
+	names := make([]string, 0, len(defs))
+	for n := range defs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := []PreviewVariable{}
+	for _, n := range names {
+		d := defs[n]
+		// The last one is the winner; list the rest highest precedence first.
+		for i := len(d) - 2; i >= 0; i-- {
+			out = append(out, d[i])
+		}
+	}
 	return out
 }
 

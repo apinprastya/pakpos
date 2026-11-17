@@ -86,6 +86,13 @@ func TestWorkspaceServiceLifecycle(t *testing.T) {
 	if _, err := h.ws.Open(t.TempDir()); !errors.Is(err, fsstore.ErrNotWorkspace) {
 		t.Fatalf("open non-workspace: %v", err)
 	}
+	newer := t.TempDir()
+	if err := os.WriteFile(filepath.Join(newer, fsstore.ManifestFile), []byte("id: N\nversion: 99\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.ws.Open(newer); !errors.Is(err, fsstore.ErrUnsupported) || err.Error() != MsgNewerWorkspace {
+		t.Fatalf("open newer workspace: %v", err)
+	}
 
 	recent, err := h.ws.Recent()
 	if err != nil || len(recent) != 1 || recent[0].Path != dir || recent[0].Name != "Demo" {

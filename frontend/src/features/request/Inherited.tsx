@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { openContainerSettings } from "@/features/scopes/docActions";
 import type { InheritSource } from "@/lib/model";
+import { cn } from "@/lib/utils";
 import { AUTH_LABELS } from "./auth";
 import type { PreviewState } from "./usePreview";
 
@@ -55,9 +56,18 @@ export function InheritedAuth({
   );
 }
 
-/** Read-only list of the headers the request inherits, with their source. */
+const OVERRIDDEN = "Overridden by this request";
+
+/**
+ * Read-only list of the headers the request inherits, with their source.
+ * Inherited headers that one of the request's own headers replaces follow,
+ * struck through.
+ */
 export function InheritedHeaders({ state }: { state: PreviewState }) {
-  const headers = state.preview?.headers ?? [];
+  const headers = [
+    ...(state.preview?.headers ?? []).map((h) => ({ ...h, overridden: false })),
+    ...(state.preview?.overridden ?? []).map((h) => ({ ...h, overridden: true })),
+  ];
   return (
     <section aria-labelledby="inherited-headers-title">
       <h3 id="inherited-headers-title" className="mb-1 text-xs font-medium text-muted-foreground">
@@ -79,9 +89,15 @@ export function InheritedHeaders({ state }: { state: PreviewState }) {
             <li
               key={`${h.source.id}-${h.key}-${i}`}
               className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,1.5fr)] items-center gap-2 px-3 py-1 text-[12px] text-muted-foreground"
+              title={h.overridden ? OVERRIDDEN : undefined}
             >
-              <span className="truncate font-mono">{h.key}</span>
-              <span className="selectable truncate font-mono">{h.value}</span>
+              <span className={cn("truncate font-mono", h.overridden && "line-through")}>
+                {h.key}
+                {h.overridden && <span className="sr-only"> ({OVERRIDDEN.toLowerCase()})</span>}
+              </span>
+              <span className={cn("selectable truncate font-mono", h.overridden && "line-through")}>
+                {h.value}
+              </span>
               <span className="flex min-w-0 items-center gap-1 text-xs">
                 <span className="shrink-0">from</span>
                 <SourceLink source={h.source} />

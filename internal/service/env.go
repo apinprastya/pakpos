@@ -268,13 +268,18 @@ func (s *EnvService) ChangeMasterPassword(current, next string) error {
 	return secrets.Explain(secrets.ChangePassword(p, current, next))
 }
 
-// Unlock unlocks the encrypted file store for this session.
+// Unlock unlocks the encrypted file store for this session, then prunes
+// stored values the open workspace no longer refers to.
 func (s *EnvService) Unlock(password string) error {
 	p, err := s.passwordStore()
 	if err != nil {
 		return err
 	}
-	return secrets.Explain(p.Unlock(password))
+	if err := p.Unlock(password); err != nil {
+		return secrets.Explain(err)
+	}
+	s.c.pruneSecrets()
+	return nil
 }
 
 // Lock locks the encrypted file store.

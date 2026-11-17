@@ -331,7 +331,7 @@ func (w *Workspace) CreateFolder(parentID, name string) (Folder, error) {
 	if err != nil {
 		return Folder{}, err
 	}
-	if err := w.upgradeManifestLocked(); err != nil {
+	if err := w.upgradeManifestLocked(VersionV2); err != nil {
 		return Folder{}, err
 	}
 	dir := uniqueName(parentDir, slugify(name, "folder"), "")
@@ -401,7 +401,7 @@ func (w *Workspace) SaveFolder(id string, s FolderSettings) (Folder, error) {
 		return Folder{}, err
 	}
 	// A hand-made folder in a v1 workspace: its settings are v2 data.
-	if err := w.upgradeManifestLocked(); err != nil {
+	if err := w.upgradeManifestLocked(VersionV2); err != nil {
 		return Folder{}, err
 	}
 	meta := f.meta

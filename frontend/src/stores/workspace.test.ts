@@ -4,6 +4,7 @@ import { emptyRequest, type CollectionNode, type FolderNode, type Request } from
 import { col as fcol, folder as ffolder, req as freq } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 import { useTabsStore } from "./tabs";
+import { useUpdateStore } from "./update";
 import { useWorkspaceStore } from "./workspace";
 
 vi.mock("sonner", async (orig) => {
@@ -110,6 +111,23 @@ describe("workspace store: opening", () => {
     expect(toast.error).toHaveBeenCalledWith("Couldn't open the workspace", {
       description: "permission denied",
     });
+  });
+
+  it("openPath offers an update for a workspace made by a newer Pakpos", async () => {
+    const msg = "This workspace was made with a newer version of Pakpos. Update Pakpos to open it.";
+    vi.mocked(api.openWorkspace).mockRejectedValue(new Error(msg));
+    const check = vi.spyOn(useUpdateStore.getState(), "check").mockResolvedValue();
+    expect(await s().openPath("/p")).toBe(false);
+    const [title, opts] = vi.mocked(toast.error).mock.calls[0] as unknown as [
+      string,
+      { description: string; action: { label: string; onClick: () => void } },
+    ];
+    expect(title).toBe("This workspace needs a newer Pakpos");
+    expect(opts.description).toBe(msg);
+    expect(opts.action.label).toBe("Check for updates");
+    opts.action.onClick();
+    expect(check).toHaveBeenCalled();
+    expect(api.createWorkspace).not.toHaveBeenCalled();
   });
 
   it("openFolder and createInFolder use the folder picker; cancel does nothing", async () => {

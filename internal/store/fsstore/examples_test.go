@@ -392,11 +392,11 @@ func TestExamplesUpgradeV1Manifest(t *testing.T) {
 	if _, err := ws.AddExample("R1", sampleExample("OK")); err != nil {
 		t.Fatal(err)
 	}
-	if ws.Manifest().Version != FormatVersion {
+	if ws.Manifest().Version != VersionV2 {
 		t.Fatalf("version = %d", ws.Manifest().Version)
 	}
 	reopened, err := Open(dir)
-	if err != nil || reopened.Manifest().Version != FormatVersion {
+	if err != nil || reopened.Manifest().Version != VersionV2 {
 		t.Fatalf("reopened = %+v %v", reopened.Manifest(), err)
 	}
 

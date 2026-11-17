@@ -86,6 +86,15 @@ workspace opens unchanged and its manifest stays at v1 until the first
 v2-only write (a folder, an environment, the globals, an example or a
 collection secret).
 
+This build reads up to **version 3** (`fsstore.FormatVersion`), reserved
+for Tier 3 data (scripts, the new auth types, per-request settings). It is
+additive like v2: a v1 or v2 manifest is rewritten to v3 only by the first
+v3-only write (`upgradeManifestLocked(FormatVersion)`); none exists yet, but
+new workspaces are created at v3. `fsstore.Open` refuses a manifest newer
+than it knows (`ErrUnsupported`; the app says "This workspace was made with
+a newer version of Pakpos. Update Pakpos to open it." and offers an update
+check), so an older build never drops fields it doesn't know on save.
+
 ```
 my-api-workspace/
 ├── pakpos.yaml                  # manifest: id, name, version: 2
@@ -143,7 +152,7 @@ place instead.
 ## 5. SQLite (app data dir)
 
 Driver: `modernc.org/sqlite` (pure Go, no CGO → easy cross-compilation).
-Migrations are numbered files (`0001_init.sql`, `0002_workspace_state.sql`);
+Migrations are numbered files (`0001_init.sql` … `0004_secret_index.sql`);
 an applied one is never edited.
 
 - `history`: id, timestamp, workspace_id, environment_name, the request **as
@@ -157,6 +166,10 @@ an applied one is never edited.
 - `workspace_state`: per-workspace app state that isn't committed (the
   selected environment).
 - `settings`: key/value. `recent_workspaces`: path, last_opened.
+- `ui_state`: app-wide UI state (panel layouts, column splits), JSON values.
+- `secret_index`: `(workspace_id, scope_id, key, written_at)`, the secret
+  keys the app wrote to the secret store. Key **names only**, never values;
+  see §5a.
 
 ## 5a. Secrets
 
@@ -175,6 +188,18 @@ an applied one is never edited.
   reveals it or makes the variable plain.
 - An unset or locked secret still shadows lower scopes; its name stays
   unresolved and the lower value is never sent.
+- **Pruning orphans.** Keychains can't list their keys, so the session
+  records every key it writes (set, rename, copy) in the SQLite
+  `secret_index` and forgets the ones it deletes (`pipeline.WithSecretIndex`
+  wraps the store). `Session.PruneSecrets` runs when a workspace opens and
+  after the file store is unlocked: indexed keys whose scope or secret
+  variable no longer exists are deleted from the store and the index. That
+  covers deletes made while the store was locked, hand-edited files and
+  values set on secret rows that were never saved. Keys written since the
+  app started are skipped (an unsaved row may still be open), a workspace
+  with load problems is skipped (a typo must not cost values), and the keys
+  of current secret variables are adopted first, so values stored before the
+  index existed become prunable too. Failures are logged, never fatal.
 
 ## 6. Request execution pipeline
 
@@ -205,7 +230,11 @@ Request (as written) + parentId + selected environment
   "variables"`) before anything goes on the wire.
 - The same preparation feeds the editor (`Preview`, `VisibleVariables`:
   inherited headers and auth, visible variables with secret values masked)
-  and code generation (`PrepareCode`: secrets kept as `{{name}}` unless
+  and code generation. `Preview.overridden` lists the inherited headers the
+  request's own enabled headers replace (shown struck through);
+  `Visible.shadowed` lists the definitions that lose to a higher scope, so a
+  settings tab that removes a row shows the lower-scope value that takes
+  over. Code generation (`PrepareCode`: secrets kept as `{{name}}` unless
   revealed).
 - Planned for Tier 3: a pre-request script after resolving scopes and a test
   script after the response (§7).

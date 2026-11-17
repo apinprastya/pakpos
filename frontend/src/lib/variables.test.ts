@@ -134,6 +134,31 @@ describe("overlayDraft", () => {
     expect(out.find((v) => v.key === "x")).toMatchObject({ scope: "global", scopeName: "Globals" });
   });
 
+  it("falls back to the next scope's definition when a saved row is removed", () => {
+    const visible = [
+      makePreviewVar("host", "env"),
+      makePreviewVar("kept", "env"),
+      makePreviewVar("solo", "env"),
+      makePreviewVar("g", "global", { scope: "global", scopeId: "g" }),
+    ];
+    const shadowed = [
+      makePreviewVar("host", "col", { scope: "collection", scopeId: "c1", scopeName: "Users" }),
+      makePreviewVar("host", "glob", { scope: "global", scopeId: "g" }),
+      makePreviewVar("kept", "col", { scope: "collection", scopeId: "c1" }),
+      makePreviewVar("solo", "older row of the same scope"),
+    ];
+    const out = overlayDraft(
+      visible,
+      target,
+      [makeVar("kept", "draft"), makeVar("host", "off", { enabled: false })],
+      shadowed,
+    );
+    const byKey = Object.fromEntries(out.map((v) => [v.key, v]));
+    expect(out.map((v) => v.key)).toEqual(["g", "host", "kept"]);
+    expect(byKey.host).toMatchObject({ value: "col", scope: "collection", scopeName: "Users" });
+    expect(byKey.kept).toMatchObject({ value: "draft", scope: "environment" });
+  });
+
   it("matches the globals scope whatever its id", () => {
     const out = overlayDraft(
       [makePreviewVar("old", "1", { scope: "global", scopeId: "g-id" })],

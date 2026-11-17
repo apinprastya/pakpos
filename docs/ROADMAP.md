@@ -7,7 +7,7 @@ tier gets its own plan document (`docs/PLAN-TIER<N>.md`) before work starts.
 |---|---|---|
 | 1 | MVP: build, send, save, history | **Done** ([plan](PLAN-TIER1.md); see its carry-over lists) |
 | 2 | Core productivity: collections, environments, variables | **Done** ([plan](PLAN-TIER2.md); see its "Definition of Done — what's left" and carry-over lists) |
-| 3 | Power features: scripting, runner, advanced auth & network | **Next** (plan to be written: `PLAN-TIER3.md`) |
+| 3 | Power features: scripting, runner, advanced auth & network | **In progress** ([plan](PLAN-TIER3.md); M1 carry-overs done) |
 | 4 | Nice-to-have | Later |
 
 In-app updates (signed `SHA256SUMS`, as in Lontar) were pulled forward from
@@ -71,7 +71,7 @@ Out of scope for now: importing Postman collections. Non-REST protocols
 - CI on GitHub for Linux, macOS and Windows (the first release run is still to do).
 - Code-split CodeMirror languages and rarely used dialogs.
 
-## Tier 3 — Power features (next)
+## Tier 3 — Power features (in progress)
 
 Carried over from Tier 2 (see PLAN-TIER2.md for the full lists):
 - Pruning orphaned secret values (e.g. after edits made while the store was locked).

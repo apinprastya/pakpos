@@ -72,6 +72,7 @@ describe("useVariableScope for settings tabs", () => {
     openWorkspace();
     vi.mocked(api.visibleVariables).mockResolvedValue({
       variables: [makePreviewVar("host", "dev"), makePreviewVar("old", "x")],
+      shadowed: [],
       environment: { id: "e1", name: "Dev" },
     });
   });
@@ -91,8 +92,10 @@ describe("useVariableScope for settings tabs", () => {
     vi.mocked(api.visibleVariables).mockResolvedValue({
       variables: [
         makePreviewVar("saved", "gone from the draft"),
+        makePreviewVar("lower", "env, gone from the draft"),
         makePreviewVar("g", "1", { scope: "global" }),
       ],
+      shadowed: [makePreviewVar("lower", "global", { scope: "global", scopeId: "g" })],
       environment: { id: "e1", name: "Dev" },
     });
     const { result } = renderHook(() => useVariableScope(docTab("environment", "e1", "Dev")));
@@ -100,7 +103,9 @@ describe("useVariableScope for settings tabs", () => {
     // The draft is visible right away, before Go answers.
     expect(result.current.variables.get("draft")?.value).toBe("{{host}}");
     await waitFor(() => expect(result.current.ready).toBe(true));
-    expect([...result.current.variables.keys()]).toEqual(["draft", "g"]);
+    expect([...result.current.variables.keys()]).toEqual(["draft", "g", "lower"]);
+    // The removed row's name falls back to the global it was shadowing.
+    expect(result.current.variables.get("lower")).toMatchObject({ value: "global", scope: "global" });
   });
 
   it("doesn't apply rows to a folder (it has no variables)", async () => {

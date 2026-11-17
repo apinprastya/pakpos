@@ -340,11 +340,11 @@ func TestManifestV1StaysUntilV2Write(t *testing.T) {
 	if _, err := ws.CreateEnvironment("Dev"); err != nil {
 		t.Fatal(err)
 	}
-	if ws.Manifest().Version != FormatVersion {
+	if ws.Manifest().Version != VersionV2 {
 		t.Fatalf("version = %d", ws.Manifest().Version)
 	}
 	reopened, err := Open(dir)
-	if err != nil || reopened.Manifest() != (Manifest{ID: "WS1", Name: "Old", Version: FormatVersion}) {
+	if err != nil || reopened.Manifest() != (Manifest{ID: "WS1", Name: "Old", Version: VersionV2}) {
 		t.Fatalf("reopened = %+v %v", reopened.Manifest(), err)
 	}
 }

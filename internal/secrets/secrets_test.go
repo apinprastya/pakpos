@@ -15,6 +15,28 @@ func TestKey(t *testing.T) {
 	}
 }
 
+func TestSplitKey(t *testing.T) {
+	tests := []struct {
+		in             string
+		ws, scope, key string
+		ok             bool
+	}{
+		{Key("WS", "ENV", "token"), "WS", "ENV", "token", true},
+		{Key("WS", "ENV", "a/b"), "WS", "ENV", "a/b", true},
+		{"pakpos/WS/ENV", "", "", "", false},
+		{"other/WS/ENV/k", "", "", "", false},
+		{"pakpos//ENV/k", "", "", "", false},
+		{"pakpos/WS//k", "", "", "", false},
+		{"pakpos/WS/ENV/", "", "", "", false},
+	}
+	for _, tt := range tests {
+		ws, scope, key, ok := SplitKey(tt.in)
+		if ws != tt.ws || scope != tt.scope || key != tt.key || ok != tt.ok {
+			t.Errorf("SplitKey(%q) = %q %q %q %v", tt.in, ws, scope, key, ok)
+		}
+	}
+}
+
 func TestSelect(t *testing.T) {
 	fallback := NewFake()
 	up, down := NewFake(), NewFake()

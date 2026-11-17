@@ -17,11 +17,13 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/model"
 	"pakpos/internal/core/vars"
 	"pakpos/internal/pipeline"
+	"pakpos/internal/secrets"
 	"pakpos/internal/store/fsstore"
 	"pakpos/internal/store/sqlite"
 )
@@ -1195,5 +1197,159 @@ func TestEndToEndExampleEchoedEncodedSecrets(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// dbHolds reports whether any file of the app database contains s.
+func dbHolds(t *testing.T, dataDir, s string) bool {
+	t.Helper()
+	files, _ := filepath.Glob(filepath.Join(dataDir, sqlite.DBFile+"*"))
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte(s)) {
+			return true
+		}
+	}
+	return false
+}
+
+// restart closes the harness's Core and starts a new one on the same data
+// dir and secret store, as on the next app start (keys written before are
+// candidates for pruning).
+func (h *harness) restart(t *testing.T, store secrets.Store) {
+	t.Helper()
+	_ = h.core.Close()
+	h.start(t, store)
+	h.core.started = time.Now().Add(2 * time.Second)
+}
+
+// Values the workspace no longer refers to are pruned when the workspace
+// opens on the next start (keychain): a value set on a secret row that was
+// never saved, and the values of an environment deleted while the store
+// failed. Live secrets keep theirs, and SQLite holds key names only.
+func TestEndToEndPruneOrphanSecrets(t *testing.T) {
+	h := newHarness(t)
+	info := h.openWorkspace(t)
+	dev, err := h.env.Create("Dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	devRef := pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: dev.ID}
+	if _, err := h.env.SaveVariables(devRef, []model.Variable{{Key: "token", Enabled: true, Secret: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(devRef, "token", "live-value-1"); err != nil {
+		t.Fatal(err)
+	}
+	// An unsaved row: the value is stored at once, the draft is then discarded.
+	if err := h.env.SetSecret(devRef, "draftRow", "draft-value-2"); err != nil {
+		t.Fatal(err)
+	}
+	prod, err := h.env.Create("Prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prodRef := pipeline.ScopeRef{Kind: vars.ScopeEnvironment, ID: prod.ID}
+	if _, err := h.env.SaveVariables(prodRef, []model.Variable{{Key: "pw", Enabled: true, Secret: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(prodRef, "pw", "prod-value-3"); err != nil {
+		t.Fatal(err)
+	}
+	h.secrets.Err = errors.New("keychain unavailable")
+	if err := h.env.Delete(prod.ID); err != nil {
+		t.Fatal(err)
+	}
+	h.secrets.Err = nil
+
+	// Reopening in the same session prunes nothing: the draft may still be open.
+	if _, err := h.ws.Open(info.Path); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(h.secrets.Keys()); n != 3 {
+		t.Fatalf("stored = %v", h.secrets.Keys())
+	}
+
+	h.restart(t, h.secrets)
+	if _, err := h.ws.Open(info.Path); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.secrets.Keys(); !slices.Equal(got, []string{secrets.Key(info.ID, dev.ID, "token")}) {
+		t.Fatalf("after prune = %v", got)
+	}
+	if v, err := h.env.RevealSecret(devRef, "token"); err != nil || v != "live-value-1" {
+		t.Fatalf("live secret = %q %v", v, err)
+	}
+	for _, v := range []string{"live-value-1", "draft-value-2", "prod-value-3"} {
+		if dbHolds(t, h.dataDir, v) {
+			t.Fatalf("the database holds the secret value %q", v)
+		}
+	}
+	// The scan does read the database: the live key's name is indexed.
+	if !dbHolds(t, h.dataDir, dev.ID) {
+		t.Fatal("the secret index doesn't hold the live key")
+	}
+}
+
+// A store that fails to delete is logged, never fatal: the workspace opens.
+func TestPruneFailureDoesNotBlockOpen(t *testing.T) {
+	h := newHarness(t)
+	info := h.openWorkspace(t)
+	if err := h.env.SetSecret(pipeline.ScopeRef{Kind: vars.ScopeGlobal}, "unsaved", "v"); err != nil {
+		t.Fatal(err)
+	}
+	h.restart(t, h.secrets)
+	h.secrets.Err = errors.New("keychain unavailable")
+	if _, err := h.ws.Open(info.Path); err != nil {
+		t.Fatal(err)
+	}
+	h.secrets.Err = nil
+	if len(h.secrets.Keys()) != 1 {
+		t.Fatalf("stored = %v", h.secrets.Keys())
+	}
+}
+
+// With the encrypted file store, pruning waits for the unlock.
+func TestEndToEndPruneOnUnlock(t *testing.T) {
+	store := secrets.NewFileStore(t.TempDir(), secrets.WithKDFParams(secrets.KDFParams{Time: 1, Memory: 64, Threads: 1}))
+	h := newHarnessWith(t, store)
+	if err := h.env.SetMasterPassword("one-password"); err != nil {
+		t.Fatal(err)
+	}
+	info := h.openWorkspace(t)
+	g := pipeline.ScopeRef{Kind: vars.ScopeGlobal}
+	if _, err := h.env.SaveGlobals([]model.Variable{{Key: "token", Enabled: true, Secret: true}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(g, "token", "kept"); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.SetSecret(g, "unsaved", "dropped"); err != nil {
+		t.Fatal(err)
+	}
+	globals, err := h.env.Globals()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.Lock(); err != nil {
+		t.Fatal(err)
+	}
+
+	h.restart(t, store)
+	// Locked: opening the workspace can't prune (and doesn't fail).
+	if _, err := h.ws.Open(info.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.env.Unlock("one-password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Get(secrets.Key(info.ID, globals.ID, "unsaved")); !errors.Is(err, secrets.ErrNotFound) {
+		t.Fatalf("unsaved value = %v, want pruned", err)
+	}
+	if v, err := store.Get(secrets.Key(info.ID, globals.ID, "token")); err != nil || v != "kept" {
+		t.Fatalf("token = %q %v", v, err)
 	}
 }
