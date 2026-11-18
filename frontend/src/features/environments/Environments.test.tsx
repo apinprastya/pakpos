@@ -120,6 +120,10 @@ describe("EnvironmentsView list", () => {
     row(/^Staging/).focus();
     await user.keyboard("{Alt>}{ArrowUp}{/Alt}");
     expect(api.reorderEnvironments).toHaveBeenCalledWith(["e2", "e1", "e3"]);
+    // The move refocuses Staging on the next frame; let that land before focusing Prod,
+    // or a slow runner fires it mid-keyboard and Alt+Down moves Staging instead.
+    await act(() => new Promise((r) => requestAnimationFrame(r)));
+    expect(row(/^Staging/)).toHaveFocus();
     vi.mocked(api.reorderEnvironments).mockClear();
     ready();
     row(/^Prod/).focus();
