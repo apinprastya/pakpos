@@ -1,6 +1,15 @@
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
-import { Info, KeyRound, Network, Palette, History, TriangleAlert, type LucideIcon } from "lucide-react";
+import {
+  Globe,
+  Info,
+  KeyRound,
+  Network,
+  Palette,
+  History,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,13 +28,24 @@ import { errorMessage } from "@/lib/errors";
 import { DEFAULT_SETTINGS, type AppSettings, type BuildInfo } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, type SettingsSection } from "@/stores/settings";
+import { useSecretsStore } from "@/stores/secrets";
 import { useUpdateStore } from "@/stores/update";
 import { SecretsSection } from "@/features/secrets/SecretsControls";
-import { fromDraft, lowersRetention, toDraft, type DraftErrors, type SettingsDraft } from "./settingsForm";
+import { NetworkSection } from "./NetworkSection";
+import {
+  fromDraft,
+  hasPendingSecrets,
+  lowersRetention,
+  toDraft,
+  type DraftErrors,
+  type PendingSecrets,
+  type SettingsDraft,
+} from "./settingsForm";
 
 const SECTIONS: { id: SettingsSection; label: string; icon: LucideIcon }[] = [
   { id: "appearance", label: "Appearance", icon: Palette },
   { id: "requests", label: "Requests", icon: Network },
+  { id: "network", label: "Network", icon: Globe },
   { id: "history", label: "History", icon: History },
   { id: "secrets", label: "Secrets", icon: KeyRound },
   { id: "about", label: "About", icon: Info },
@@ -86,24 +106,41 @@ function SettingsDialogBody() {
     if (parsed.errors) {
       setErrors(parsed.errors);
       // Jump to the section with the first problem.
-      setSection(
-        parsed.errors.historyRetention && !parsed.errors.timeoutSeconds && !parsed.errors.maxRedirects
-          ? "history"
-          : "requests",
-      );
+      setSection(firstSectionWithError(parsed.errors));
       return;
     }
     setErrors({});
+    // Passwords go to the secret store, which may need its master password first.
+    if (hasPendingSecrets(parsed.secrets) && !(await useSecretsStore.getState().ensureReady())) {
+      setFormError("Nothing was saved: the secret store must be unlocked to store passwords.");
+      return;
+    }
     setSaving(true);
     try {
       await save(parsed.settings);
-      toast.success("Settings saved");
-      close();
     } catch (e) {
       setFormError(errorMessage(e));
-    } finally {
       setSaving(false);
+      return;
     }
+    try {
+      await storeSecrets(parsed.secrets);
+    } catch (e) {
+      // The settings are saved; only the password is missing. Stay open to retry.
+      const next = useSettingsStore.getState().settings;
+      setSaved(next);
+      setDraft((d) => ({
+        ...toDraft(next),
+        proxyPassword: d.proxyPassword,
+        certs: keepPassphrases(toDraft(next).certs, d),
+      }));
+      setFormError(`Settings saved, but a password couldn't be stored: ${errorMessage(e)}`);
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    toast.success("Settings saved");
+    close();
   };
 
   const onReset = async () => {
@@ -162,6 +199,7 @@ function SettingsDialogBody() {
           <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
             {section === "appearance" && <AppearanceSection draft={draft} update={update} />}
             {section === "requests" && <RequestsSection draft={draft} update={update} errors={errors} />}
+            {section === "network" && <NetworkSection draft={draft} update={update} errors={errors} />}
             {section === "history" && (
               <HistorySection draft={draft} update={update} errors={errors} saved={saved} />
             )}
@@ -194,8 +232,26 @@ function SettingsDialogBody() {
 
 function sectionHasError(id: SettingsSection, errors: DraftErrors): boolean {
   if (id === "requests") return Boolean(errors.timeoutSeconds || errors.maxRedirects);
+  if (id === "network") return Boolean(errors.proxyUrl || errors.proxyBypass || errors.certs);
   if (id === "history") return Boolean(errors.historyRetention);
   return false;
+}
+
+function firstSectionWithError(errors: DraftErrors): SettingsSection {
+  return (
+    (["requests", "network", "history"] as const).find((id) => sectionHasError(id, errors)) ?? "requests"
+  );
+}
+
+/** Stores (or deletes, for "") the passwords typed in the Network section. */
+async function storeSecrets(secrets: PendingSecrets): Promise<void> {
+  if (secrets.proxyPassword !== undefined) await api.setProxyPassword(secrets.proxyPassword);
+  for (const { id, passphrase } of secrets.certPassphrases) await api.setCertPassphrase(id, passphrase);
+}
+
+/** Carries typed passphrases over to rows reloaded from Go. */
+function keepPassphrases(certs: SettingsDraft["certs"], from: SettingsDraft): SettingsDraft["certs"] {
+  return certs.map((c) => ({ ...c, passphrase: from.certs.find((x) => x.id === c.id)?.passphrase ?? "" }));
 }
 
 interface SectionProps {

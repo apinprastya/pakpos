@@ -48,7 +48,8 @@
       "apiKey": "",
       "apiValue": "",
       "apiIn": ""
-    }
+    },
+    "settings": {}
   },
   "warnings": [
     {

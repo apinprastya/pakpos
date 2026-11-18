@@ -114,10 +114,11 @@ func TestParse(t *testing.T) {
 			}
 		}},
 		{name: "--flag=value and combined short flags", text: "curl -sSL --request=put --header=X-A:1 https://a.com", check: func(t *testing.T, r model.Request) {
-			if r.Method != "PUT" || !reflect.DeepEqual(r.Headers, []model.KeyValue{kv("X-A", "1")}) {
+			if r.Method != "PUT" || !reflect.DeepEqual(r.Headers, []model.KeyValue{kv("X-A", "1")}) ||
+				r.Settings.FollowRedirects == nil || !*r.Settings.FollowRedirects {
 				t.Errorf("%+v", r)
 			}
-		}, warn: []string{"follows redirects"}},
+		}},
 		{name: "-- ends options", text: "curl -- -weird", check: func(t *testing.T, r model.Request) {
 			if r.URL != "-weird" {
 				t.Errorf("%q", r.URL)
@@ -299,7 +300,28 @@ func TestParse(t *testing.T) {
 				t.Errorf("%+v", f)
 			}
 		}, warn: []string{"file name", "isn't supported"}},
-		{name: "settings options", text: "curl -k -L --compressed -x http://p:1 --connect-timeout 2 -T f --cert c --max-redirs 3 https://a.com", warn: []string{"TLS", "redirects", "compressed", "Proxies", "Timeouts", "-T", "certificates"}},
+		{name: "settings options", text: "curl -k -L --compressed -x http://p:1 --connect-timeout 2 -T f --cert c --max-redirs 3 -m 2.5 https://a.com", check: func(t *testing.T, r model.Request) {
+			s := r.Settings
+			if s.VerifyTLS == nil || *s.VerifyTLS || s.FollowRedirects == nil || !*s.FollowRedirects ||
+				s.MaxRedirects == nil || *s.MaxRedirects != 3 || s.TimeoutMs == nil || *s.TimeoutMs != 2500 {
+				t.Errorf("%+v", s)
+			}
+		}, warn: []string{"compressed", "Proxies", "one timeout", "-T", "Certificates"}},
+		{name: "unlimited and zero redirects", text: "curl --location-trusted --max-redirs -1 --max-time 0 https://a.com", check: func(t *testing.T, r model.Request) {
+			if *r.Settings.MaxRedirects != 50 || !*r.Settings.FollowRedirects || *r.Settings.TimeoutMs != 0 {
+				t.Errorf("%+v", r.Settings)
+			}
+		}, warn: []string{"credentials", "at most 50"}},
+		{name: "max-redirs 0 stops following", text: "curl -L --max-redirs 0 https://a.com", check: func(t *testing.T, r model.Request) {
+			if *r.Settings.FollowRedirects || r.Settings.MaxRedirects != nil {
+				t.Errorf("%+v", r.Settings)
+			}
+		}},
+		{name: "bad settings values", text: "curl --max-redirs x --max-time soon -m 99999 https://a.com", check: func(t *testing.T, r model.Request) {
+			if r.Settings.MaxRedirects != nil || *r.Settings.TimeoutMs != 600000 {
+				t.Errorf("%+v", r.Settings)
+			}
+		}, warn: []string{"number of redirects", "number of seconds", "at most 10 minutes"}},
 		{name: "two urls", text: "curl https://a.com https://b.com", check: func(t *testing.T, r model.Request) {
 			if r.URL != "https://a.com" {
 				t.Error(r.URL)

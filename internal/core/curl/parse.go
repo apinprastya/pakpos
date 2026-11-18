@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime"
 	"mime/multipart"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
+	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/model"
 	"pakpos/internal/core/urlx"
 )
@@ -39,12 +42,11 @@ type option struct {
 }
 
 const (
-	settingTLS       = "Pakpos verifies TLS certificates unless you turn that off in Settings; this option wasn't imported."
-	settingRedirects = "Pakpos follows redirects as set in Settings; this option wasn't imported."
-	settingCompress  = "Pakpos always asks for compressed responses and decompresses them, so this option isn't needed."
-	settingProxy     = "Proxies are set in Settings; this option wasn't imported."
-	settingTimeout   = "Timeouts are set in Settings; this option wasn't imported."
-	otherAuth        = "Only basic auth is imported from -u; this auth method was ignored."
+	settingCompress = "Pakpos always asks for compressed responses and decompresses them, so this option isn't needed."
+	settingProxy    = "Proxies are set in Settings > Network; this option wasn't imported."
+	settingTimeout  = "Pakpos has one timeout for the whole request (--max-time); this option wasn't imported."
+	settingCerts    = "Certificates are set in Settings > Network; this option wasn't imported."
+	otherAuth       = "Only basic auth is imported from -u; this auth method was ignored."
 )
 
 var options = []option{
@@ -67,15 +69,15 @@ var options = []option{
 	{long: "oauth2-bearer", kind: optValue},
 	{long: "get", short: 'G'},
 	{long: "head", short: 'I'},
-	{long: "insecure", short: 'k', note: settingTLS},
-	{long: "location", short: 'L', note: settingRedirects},
-	{long: "location-trusted", note: settingRedirects},
-	{long: "max-redirs", kind: optValue, note: settingRedirects},
+	{long: "insecure", short: 'k'},
+	{long: "location", short: 'L'},
+	{long: "location-trusted"},
+	{long: "max-redirs", kind: optValue},
 	{long: "compressed", note: settingCompress},
 	{long: "proxy", short: 'x', kind: optValue, note: settingProxy},
 	{long: "proxy-user", short: 'U', kind: optValue, note: settingProxy},
 	{long: "noproxy", kind: optValue, note: settingProxy},
-	{long: "max-time", short: 'm', kind: optValue, note: settingTimeout},
+	{long: "max-time", short: 'm', kind: optValue},
 	{long: "connect-timeout", kind: optValue, note: settingTimeout},
 	{long: "digest", note: otherAuth},
 	{long: "ntlm", note: otherAuth},
@@ -84,13 +86,13 @@ var options = []option{
 	{long: "basic", quiet: true},
 	{long: "upload-file", short: 'T', kind: optValue, note: "Uploading a file with -T isn't supported; use a binary body instead."},
 	{long: "cookie-jar", short: 'c', kind: optValue, note: "Cookies are kept by Pakpos for the session; the cookie jar file wasn't used."},
-	{long: "cacert", kind: optValue, note: "Certificates aren't imported; this option was ignored."},
-	{long: "capath", kind: optValue, note: "Certificates aren't imported; this option was ignored."},
-	{long: "cert", short: 'E', kind: optValue, note: "Client certificates aren't supported yet; this option was ignored."},
-	{long: "key", kind: optValue, note: "Client certificates aren't supported yet; this option was ignored."},
-	{long: "cert-type", kind: optValue, note: "Client certificates aren't supported yet; this option was ignored."},
-	{long: "key-type", kind: optValue, note: "Client certificates aren't supported yet; this option was ignored."},
-	{long: "pass", kind: optValue, note: "Client certificates aren't supported yet; this option was ignored."},
+	{long: "cacert", kind: optValue, note: settingCerts},
+	{long: "capath", kind: optValue, note: settingCerts},
+	{long: "cert", short: 'E', kind: optValue, note: settingCerts},
+	{long: "key", kind: optValue, note: settingCerts},
+	{long: "cert-type", kind: optValue, note: settingCerts},
+	{long: "key-type", kind: optValue, note: settingCerts},
+	{long: "pass", kind: optValue, note: settingCerts},
 	{long: "resolve", kind: optValue, note: "Custom name resolution isn't supported; this option was ignored."},
 	{long: "connect-to", kind: optValue, note: "Custom name resolution isn't supported; this option was ignored."},
 	{long: "range", short: 'r', kind: optValue, note: "Add a Range header instead; this option was ignored."},
@@ -176,6 +178,7 @@ type parser struct {
 	form     []model.FormField
 	query    []model.KeyValue
 	auth     model.Auth
+	settings model.RequestSettings
 	get      bool
 	head     bool
 	noted    map[string]bool
@@ -303,6 +306,41 @@ func (p *parser) options(args []string) error {
 	return nil
 }
 
+// maxRedirs maps --max-redirs onto the request's redirect limit: 0 stops
+// following redirects; -1 (unlimited) and values over the cap use the cap.
+func (p *parser) maxRedirs(name, value string) {
+	n, err := strconv.Atoi(strings.TrimSpace(value))
+	switch {
+	case err != nil || n < -1:
+		p.warn(name, "%q isn't a number of redirects; this option was ignored.", value)
+		return
+	case n == 0:
+		follow := false
+		p.settings.FollowRedirects = &follow
+		return
+	case n == -1 || n > httpexec.MaxRedirectsCap:
+		p.warn(name, "Pakpos follows at most %d redirects; the limit was set to %d.", httpexec.MaxRedirectsCap, httpexec.MaxRedirectsCap)
+		n = httpexec.MaxRedirectsCap
+	}
+	p.settings.MaxRedirects = &n
+}
+
+// maxTime maps --max-time (seconds, may be fractional) onto the request's
+// timeout.
+func (p *parser) maxTime(name, value string) {
+	secs, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil || secs < 0 || math.IsNaN(secs) || math.IsInf(secs, 0) {
+		p.warn(name, "%q isn't a number of seconds; this option was ignored.", value)
+		return
+	}
+	ms := int(math.Round(secs * 1000))
+	if secs*1000 > httpexec.MaxTimeoutMs {
+		p.warn(name, "Pakpos waits at most %d minutes; the timeout was set to that.", httpexec.MaxTimeoutMs/60000)
+		ms = httpexec.MaxTimeoutMs
+	}
+	p.settings.TimeoutMs = &ms
+}
+
 func (p *parser) apply(o *option, name, value string) {
 	switch o.long {
 	case "request":
@@ -352,6 +390,19 @@ func (p *parser) apply(o *option, name, value string) {
 		p.urlQuery(value)
 	case "oauth2-bearer":
 		p.auth = model.Auth{Type: model.AuthBearer, Token: value}
+	case "insecure":
+		verify := false
+		p.settings.VerifyTLS = &verify
+	case "location", "location-trusted":
+		follow := true
+		p.settings.FollowRedirects = &follow
+		if o.long == "location-trusted" {
+			p.warn(name, "Redirects are followed, but Pakpos doesn't send credentials on to other hosts.")
+		}
+	case "max-redirs":
+		p.maxRedirs(name, value)
+	case "max-time":
+		p.maxTime(name, value)
 	case "get":
 		p.get = true
 	case "head":
@@ -516,9 +567,10 @@ func formValue(s string) (string, []param) {
 // request assembles the request from what the options said.
 func (p *parser) request() model.Request {
 	req := model.Request{
-		Method: "GET",
-		Body:   model.Body{Type: model.BodyNone},
-		Auth:   p.auth,
+		Method:   "GET",
+		Body:     model.Body{Type: model.BodyNone},
+		Auth:     p.auth,
+		Settings: p.settings,
 	}
 	if req.Auth.Type == "" {
 		req.Auth.Type = model.AuthNone

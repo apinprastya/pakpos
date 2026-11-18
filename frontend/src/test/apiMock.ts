@@ -25,6 +25,17 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     getSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
     defaultSettings: vi.fn().mockResolvedValue({ ...DEFAULT_SETTINGS }),
     setSettings: vi.fn(async (s) => s),
+    networkSecretStatus: vi
+      .fn()
+      .mockResolvedValue({ locked: false, proxyPassword: false, certPassphrases: [] }),
+    setProxyPassword: vi.fn().mockResolvedValue(undefined),
+    setCertPassphrase: vi.fn().mockResolvedValue(undefined),
+    listCookies: vi.fn().mockResolvedValue([]),
+    addCookie: vi.fn(async (c) => c),
+    updateCookie: vi.fn(async (_old, c) => c),
+    deleteCookie: vi.fn().mockResolvedValue(undefined),
+    clearCookieDomain: vi.fn().mockResolvedValue(0),
+    clearAllCookies: vi.fn().mockResolvedValue(undefined),
     getUiState: vi.fn().mockResolvedValue({}),
     setUiState: vi.fn().mockResolvedValue(undefined),
     send: vi.fn().mockResolvedValue({

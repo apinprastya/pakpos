@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -45,7 +46,7 @@ func TestHistoryService(t *testing.T) {
 
 func TestSettingsService(t *testing.T) {
 	h := newHarness(t)
-	if h.set.Get() != settings.Defaults() || h.set.Defaults() != settings.Defaults() {
+	if !reflect.DeepEqual(h.set.Get(), settings.Defaults()) || !reflect.DeepEqual(h.set.Defaults(), settings.Defaults()) {
 		t.Fatal("defaults")
 	}
 	bad := settings.Defaults()
@@ -57,7 +58,7 @@ func TestSettingsService(t *testing.T) {
 	next := settings.Defaults()
 	next.TimeoutMs, next.VerifyTLS, next.FollowRedirects, next.Theme = 2500, false, false, settings.ThemeDark
 	got, err := h.set.Set(next)
-	if err != nil || got != next || h.set.Get() != next {
+	if err != nil || !reflect.DeepEqual(got, next) || !reflect.DeepEqual(h.set.Get(), next) {
 		t.Fatalf("set = %+v %v", got, err)
 	}
 	es := h.core.executor().Settings()
@@ -72,7 +73,7 @@ func TestSettingsService(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c2.Close()
-	if NewSettingsService(c2).Get() != next {
+	if !reflect.DeepEqual(NewSettingsService(c2).Get(), next) {
 		t.Fatal("settings not persisted")
 	}
 	_ = c2.db.Close()

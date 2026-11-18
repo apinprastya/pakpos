@@ -36,13 +36,12 @@
       "apiKey": "",
       "apiValue": "",
       "apiIn": ""
+    },
+    "settings": {
+      "followRedirects": true
     }
   },
   "warnings": [
-    {
-      "option": "-L",
-      "message": "Pakpos follows redirects as set in Settings; this option wasn't imported."
-    },
     {
       "option": "",
       "message": "The data is JSON but no Content-Type was given (curl would send it as a form), so it was imported as JSON."

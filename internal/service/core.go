@@ -4,15 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"net/http"
-	"net/http/cookiejar"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"golang.org/x/net/publicsuffix"
-
+	"pakpos/internal/core/cookies"
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/settings"
 	"pakpos/internal/pipeline"
@@ -87,12 +84,17 @@ type Core struct {
 	// started is when this Core was created: secret keys written since are
 	// never pruned (they may belong to an unsaved secret row).
 	started time.Time
+	// transports is shared by every executor, so pooled connections survive
+	// a workspace switch or a settings change that doesn't touch the network.
+	transports *httpexec.Transports
 
-	mu       sync.RWMutex
-	ws       *fsstore.Workspace
-	watcher  *fsstore.Watcher
-	exec     *httpexec.Executor
-	jar      http.CookieJar
+	mu      sync.RWMutex
+	ws      *fsstore.Workspace
+	watcher *fsstore.Watcher
+	exec    *httpexec.Executor
+	// jar holds the open workspace's cookies ("" workspace when none is
+	// open); persistent ones are stored in SQLite.
+	jar      *cookies.Jar
 	settings settings.Settings
 
 	sendsMu sync.Mutex
@@ -132,6 +134,8 @@ func NewCore(cfg Config) (*Core, error) {
 		debounce: cfg.WatchDebounce,
 		started:  time.Now(),
 		sends:    map[string]func(){},
+
+		transports: httpexec.NewTransports(),
 	}
 	if c.log == nil {
 		c.log = slog.Default()
@@ -152,12 +156,13 @@ func NewCore(cfg Config) (*Core, error) {
 	}
 
 	s := settings.Defaults()
-	if _, err := db.GetSetting(settingsKey, &s); err != nil || s.Validate() != nil {
+	if _, err := db.GetSetting(settingsKey, &s); err != nil || s.Normalize().Validate() != nil {
 		c.log.Warn("stored settings ignored, using defaults", "err", err)
 		s = settings.Defaults()
 	}
-	c.settings = s
-	c.resetExecutorLocked(true)
+	c.settings = s.Normalize()
+	c.loadJarLocked("")
+	c.resetExecutorLocked()
 	return c, nil
 }
 
@@ -169,18 +174,51 @@ func (c *Core) Close() error {
 	return c.db.Close()
 }
 
-// resetExecutorLocked rebuilds the executor from the current settings. With
-// newJar, cookies are forgotten (used when switching workspaces). In-flight
-// sends keep the executor they started with.
-func (c *Core) resetExecutorLocked(newJar bool) {
-	if newJar || c.jar == nil {
-		jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List}) // never fails
-		c.jar = jar
-	}
+// resetExecutorLocked rebuilds the executor from the current settings and
+// jar. In-flight sends keep the executor they started with; every executor
+// shares the transport cache.
+func (c *Core) resetExecutorLocked() {
 	base := httpexec.DefaultSettings()
 	base.TempDir = c.tempDir
 	base.Jar = c.jar
+	base.Transports = c.transports
+	base.Network.Secret = c.appSecret
 	c.exec = httpexec.New(c.settings.Executor(base))
+}
+
+// loadJarLocked switches to the cookie jar of a workspace ("" for none):
+// its persistent cookies come from SQLite (expired ones are pruned), session
+// cookies start empty. A load failure is logged and leaves an empty jar that
+// still saves new cookies.
+func (c *Core) loadJarLocked(workspaceID string) {
+	jar, err := cookies.New(cookies.Options{
+		Store: c.db.Cookies(workspaceID),
+		OnError: func(err error) {
+			c.log.Warn("save cookie", "workspace", workspaceID, "err", err)
+		},
+	})
+	if err != nil {
+		c.log.Warn("load cookies", "workspace", workspaceID, "err", err)
+	}
+	c.jar = jar
+}
+
+// cookieJar returns the open workspace's jar.
+func (c *Core) cookieJar() *cookies.Jar {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.jar
+}
+
+// appSecret reads an app-level password (the proxy password, a client
+// certificate passphrase) from the secret store: "" when none is stored
+// (also when the file store has no master password yet).
+func (c *Core) appSecret(name string) (string, error) {
+	v, err := c.secrets.Get(secrets.AppKey(name))
+	if errors.Is(err, secrets.ErrNotFound) || errors.Is(err, secrets.ErrNoPassword) {
+		return "", nil
+	}
+	return v, err
 }
 
 func (c *Core) executor() *httpexec.Executor {
@@ -252,7 +290,8 @@ func (c *Core) selectedEnvironment(workspaceID string) string {
 	return id
 }
 
-// setWorkspace replaces the open workspace, restarts the watcher and resets cookies.
+// setWorkspace replaces the open workspace, restarts the watcher and loads
+// the workspace's cookies.
 func (c *Core) setWorkspace(ws *fsstore.Workspace) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -269,7 +308,8 @@ func (c *Core) setWorkspace(ws *fsstore.Workspace) {
 		c.log.Warn("watch workspace; external changes won't be picked up", "err", err)
 	}
 	c.watcher = w
-	c.resetExecutorLocked(true)
+	c.loadJarLocked(id)
+	c.resetExecutorLocked()
 }
 
 func (c *Core) closeWorkspaceLocked() {
@@ -279,7 +319,8 @@ func (c *Core) closeWorkspaceLocked() {
 	}
 	if c.ws != nil {
 		c.ws = nil
-		c.resetExecutorLocked(true)
+		c.loadJarLocked("")
+		c.resetExecutorLocked()
 	}
 }
 

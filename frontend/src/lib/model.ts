@@ -48,6 +48,18 @@ export interface Auth {
   apiIn: APIKeyLocation;
 }
 
+/**
+ * Per-request overrides of the app's network settings (Go model.RequestSettings).
+ * A missing field means "use the app setting".
+ */
+export interface RequestSettings {
+  /** Whole-request timeout; 0 means no timeout. */
+  timeoutMs?: number;
+  followRedirects?: boolean;
+  maxRedirects?: number;
+  verifyTls?: boolean;
+}
+
 export interface Request {
   id: string;
   name: string;
@@ -59,6 +71,7 @@ export interface Request {
   headers: KeyValue[];
   body: Body;
   auth: Auth;
+  settings: RequestSettings;
 }
 
 export type BodyKind = "json" | "xml" | "html" | "image" | "text" | "binary" | "empty" | "";
@@ -109,6 +122,8 @@ export type SendErrorKind =
   | "dns"
   | "connection_refused"
   | "tls"
+  /** The proxy couldn't be reached, refused the credentials, or its settings are unusable. */
+  | "proxy"
   | "timeout"
   | "canceled"
   | "too_many_redirects"
@@ -297,7 +312,19 @@ export function emptyRequest(): Request {
     headers: [],
     body: emptyBody(),
     auth: emptyAuth(),
+    settings: {},
   };
+}
+
+/** Keeps only the set fields, in a fixed order (so requests compare by JSON). */
+export function normalizeRequestSettings(input: unknown): RequestSettings {
+  const s = (input ?? {}) as Record<string, unknown>;
+  const out: RequestSettings = {};
+  if (typeof s.timeoutMs === "number") out.timeoutMs = s.timeoutMs;
+  if (typeof s.followRedirects === "boolean") out.followRedirects = s.followRedirects;
+  if (typeof s.maxRedirects === "number") out.maxRedirects = s.maxRedirects;
+  if (typeof s.verifyTls === "boolean") out.verifyTls = s.verifyTls;
+  return out;
 }
 
 /* Loose input shapes: Go sends null for empty slices and "" for zero enums. */
@@ -350,6 +377,7 @@ export function normalizeRequest(input: unknown): Request {
       apiValue: a.apiValue ?? "",
       apiIn: a.apiIn || "header",
     },
+    settings: normalizeRequestSettings(r.settings),
   };
 }
 
@@ -744,6 +772,7 @@ export function compactRequest(req: Request): Request {
       urlEncoded: keep(req.body.urlEncoded),
       formData: req.body.formData.filter((f) => f.key !== "" || f.value !== "" || f.filePath !== ""),
     },
+    settings: normalizeRequestSettings(req.settings),
   };
 }
 
@@ -768,6 +797,85 @@ export interface AppSettings {
   layout: LayoutSetting;
   /** Look for a new release at startup and once a day. */
   checkForUpdates: boolean;
+  proxy: ProxySettings;
+  /** PEM bundle trusted in addition to the system roots; "" for none. */
+  caFile: string;
+  /** Tried in order; the first whose host matches is sent. */
+  clientCerts: ClientCert[];
+}
+
+export type ProxyMode = "none" | "system" | "custom";
+
+export interface ProxySettings {
+  mode: ProxyMode;
+  /** http://, https:// or socks5://host:port (custom only). */
+  url: string;
+  username: string;
+  /** Hosts reached directly, as typed (commas or new lines). */
+  bypass: string;
+}
+
+/** A client certificate: a PEM certificate and key, or a PKCS#12 file. */
+export interface ClientCert {
+  id: string;
+  /** Host pattern: api.example.com, *.example.com, 10.0.0.0/8 or *. */
+  host: string;
+  certFile: string;
+  keyFile: string;
+  pfxFile: string;
+}
+
+/** Which network passwords are stored on this machine (never the values). */
+export interface NetworkSecretStatus {
+  /** The secret store must be unlocked to tell. */
+  locked: boolean;
+  proxyPassword: boolean;
+  /** Ids of client certificates with a stored passphrase. */
+  certPassphrases: string[];
+}
+
+/** A cookie in the jar (Go cookies.Cookie). Its identity is domain + path + name. */
+export interface StoredCookie {
+  name: string;
+  value: string;
+  /** Without a leading dot. */
+  domain: string;
+  path: string;
+  /** Sent to `domain` only, not its subdomains. */
+  hostOnly: boolean;
+  secure: boolean;
+  httpOnly: boolean;
+  sameSite: "" | "lax" | "strict" | "none";
+  /** Unix milliseconds; 0 for a session cookie (gone when Pakpos quits). */
+  expiresAt: number;
+  createdAt: number;
+}
+
+export interface CookieRef {
+  domain: string;
+  path: string;
+  name: string;
+}
+
+export function cookieRef(c: Pick<StoredCookie, "domain" | "path" | "name">): CookieRef {
+  return { domain: c.domain, path: c.path, name: c.name };
+}
+
+export function normalizeStoredCookie(input: unknown): StoredCookie {
+  const c = (input ?? {}) as Loose<StoredCookie>;
+  const sameSite = c.sameSite === "lax" || c.sameSite === "strict" || c.sameSite === "none" ? c.sameSite : "";
+  return {
+    name: c.name ?? "",
+    value: c.value ?? "",
+    domain: c.domain ?? "",
+    path: c.path || "/",
+    hostOnly: c.hostOnly ?? false,
+    secure: c.secure ?? false,
+    httpOnly: c.httpOnly ?? false,
+    sameSite,
+    expiresAt: c.expiresAt ?? 0,
+    createdAt: c.createdAt ?? 0,
+  };
 }
 
 /** Limits matching internal/core/settings. */
@@ -799,6 +907,25 @@ export function normalizeSettings(
     historyRetention: typeof s.historyRetention === "number" ? s.historyRetention : defaults.historyRetention,
     layout: s.layout === "vertical" || s.layout === "horizontal" ? s.layout : defaults.layout,
     checkForUpdates: typeof s.checkForUpdates === "boolean" ? s.checkForUpdates : defaults.checkForUpdates,
+    proxy: normalizeProxy(s.proxy, defaults.proxy),
+    caFile: typeof s.caFile === "string" ? s.caFile : defaults.caFile,
+    clientCerts: (Array.isArray(s.clientCerts) ? s.clientCerts : defaults.clientCerts).map((c) => ({
+      id: c?.id ?? "",
+      host: c?.host ?? "",
+      certFile: c?.certFile ?? "",
+      keyFile: c?.keyFile ?? "",
+      pfxFile: c?.pfxFile ?? "",
+    })),
+  };
+}
+
+function normalizeProxy(p: Partial<ProxySettings> | null | undefined, d: ProxySettings): ProxySettings {
+  const mode = p?.mode === "none" || p?.mode === "system" || p?.mode === "custom" ? p.mode : d.mode;
+  return {
+    mode,
+    url: p?.url ?? d.url,
+    username: p?.username ?? d.username,
+    bypass: p?.bypass ?? d.bypass,
   };
 }
 
@@ -812,6 +939,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   historyRetention: 500,
   layout: "vertical",
   checkForUpdates: true,
+  proxy: { mode: "system", url: "", username: "", bypass: "" },
+  caFile: "",
+  clientCerts: [],
 };
 
 /** Result of a check for updates (Go service.UpdateInfo). */

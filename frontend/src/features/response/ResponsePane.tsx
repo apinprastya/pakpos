@@ -79,7 +79,7 @@ export function ResponsePane() {
           <HeadersTable headers={response.headers} />
         </TabsContent>
         <TabsContent value="cookies" className="min-h-0 flex-1 overflow-auto">
-          <CookiesTable cookies={response.cookies} />
+          <CookiesTable cookies={response.cookies} url={response.url} />
         </TabsContent>
         <TabsContent value="debug" className="min-h-0 flex-1">
           <DebugView hops={result?.hops ?? []} />

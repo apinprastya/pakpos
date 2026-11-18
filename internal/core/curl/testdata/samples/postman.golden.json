@@ -37,12 +37,10 @@
       "apiKey": "",
       "apiValue": "",
       "apiIn": ""
+    },
+    "settings": {
+      "followRedirects": true
     }
   },
-  "warnings": [
-    {
-      "option": "--location",
-      "message": "Pakpos follows redirects as set in Settings; this option wasn't imported."
-    }
-  ]
+  "warnings": []
 }

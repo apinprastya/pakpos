@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -92,7 +93,7 @@ func TestNewCoreIgnoresInvalidStoredSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	if c.currentSettings() != settings.Defaults() {
+	if !reflect.DeepEqual(c.currentSettings(), settings.Defaults()) {
 		t.Fatal("invalid settings should fall back to defaults")
 	}
 }

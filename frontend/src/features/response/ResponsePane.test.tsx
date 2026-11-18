@@ -39,11 +39,16 @@ describe("ResponsePane", () => {
     expect(screen.queryByText(/without a workspace/)).not.toBeInTheDocument();
   });
 
-  it.each(["tls", "timeout", "too_many_redirects"])("offers Open settings for %s errors", async (kind) => {
+  it.each([
+    ["tls", "network"],
+    ["proxy", "network"],
+    ["timeout", "requests"],
+    ["too_many_redirects", "requests"],
+  ])("offers Open settings for %s errors", async (kind, section) => {
     const user = userEvent.setup();
     show(makeResult({ response: null, error: { kind: kind as never, message: "x" }, historyId: 1 }));
     await user.click(screen.getByRole("button", { name: "Open settings" }));
-    expect(useSettingsStore.getState()).toMatchObject({ dialogOpen: true, section: "requests" });
+    expect(useSettingsStore.getState()).toMatchObject({ dialogOpen: true, section });
   });
 
   it("doesn't offer settings for errors settings can't fix", () => {

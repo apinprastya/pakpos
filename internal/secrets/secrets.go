@@ -50,6 +50,17 @@ func Key(workspaceID, scopeID, key string) string {
 	return strings.Join([]string{KeyPrefix, workspaceID, scopeID, key}, "/")
 }
 
+// AppScope is the workspace segment of app-level keys (network passwords),
+// which belong to no workspace: pakpos/_app/<name>.
+const AppScope = "_app"
+
+// AppKey builds the storage key of an app-level secret, e.g. AppKey("proxy")
+// is pakpos/_app/proxy and AppKey("cert/<id>") a client certificate's
+// passphrase.
+func AppKey(name string) string {
+	return strings.Join([]string{KeyPrefix, AppScope, name}, "/")
+}
+
 // SplitKey is the reverse of Key: it returns the workspace id, scope id and
 // variable key of a key Pakpos wrote, or ok=false for any other string. The
 // variable key may itself contain "/".

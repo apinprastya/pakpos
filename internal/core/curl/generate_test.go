@@ -174,3 +174,35 @@ func TestQuote(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateRequestSettings(t *testing.T) {
+	no, yes, three, ms := false, true, 3, 2500
+	tests := []struct {
+		settings model.RequestSettings
+		want     string
+	}{
+		{model.RequestSettings{}, "curl https://a.com"},
+		{model.RequestSettings{VerifyTLS: &no, FollowRedirects: &yes, MaxRedirects: &three, TimeoutMs: &ms},
+			"curl https://a.com \\\n  -k \\\n  -L \\\n  --max-redirs 3 \\\n  --max-time 2.5"},
+		{model.RequestSettings{VerifyTLS: &yes, FollowRedirects: &no, MaxRedirects: &three}, "curl https://a.com"},
+		{model.RequestSettings{FollowRedirects: &yes}, "curl https://a.com \\\n  -L"},
+	}
+	for _, tt := range tests {
+		got := Generate(model.Request{URL: "https://a.com", Settings: tt.settings})
+		if got != tt.want {
+			t.Errorf("Generate(%+v) = %q, want %q", tt.settings, got, tt.want)
+			continue
+		}
+		// Parsing it back gives the settings curl can express.
+		back, _, err := Parse(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tt.settings.VerifyTLS != nil && !*tt.settings.VerifyTLS && (back.Settings.VerifyTLS == nil || *back.Settings.VerifyTLS) {
+			t.Errorf("-k lost: %+v", back.Settings)
+		}
+		if tt.settings.TimeoutMs != nil && (back.Settings.TimeoutMs == nil || *back.Settings.TimeoutMs != *tt.settings.TimeoutMs) {
+			t.Errorf("timeout lost: %+v", back.Settings)
+		}
+	}
+}

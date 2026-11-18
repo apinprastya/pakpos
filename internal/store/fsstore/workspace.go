@@ -42,7 +42,8 @@ const (
 	// v3 (Tier 3) is reserved for scripts, the new auth types and
 	// per-request settings. Like v2 it is additive: a v1 or v2 manifest is
 	// rewritten to v3 only by the first v3-only write
-	// (upgradeManifestLocked(FormatVersion)); no such write exists yet.
+	// (upgradeManifestLocked(FormatVersion)): today a request with
+	// per-request settings.
 	FormatVersion = 3
 	// VersionV2 is the format of Tier 2 workspaces.
 	//
@@ -666,6 +667,9 @@ func (w *Workspace) createLocked(parentID string, req model.Request) (model.Requ
 	req.Name = cleanName(req.Name, "Untitled request")
 	normalizeRequest(&req)
 	req.Seq = w.nextSeqLocked(parentID)
+	if err := w.upgradeForRequestLocked(req); err != nil {
+		return model.Request{}, err
+	}
 
 	file := uniqueRequestFile(dirPath, slugify(req.Name, "request"))
 	if err := w.writeYAML(filepath.Join(dirPath, file), req); err != nil {
@@ -692,11 +696,23 @@ func (w *Workspace) SaveRequest(req model.Request) (model.Request, error) {
 	return req, nil
 }
 
+// upgradeForRequestLocked lifts the manifest to FormatVersion before a
+// request with v3-only fields (per-request settings) is written.
+func (w *Workspace) upgradeForRequestLocked(req model.Request) error {
+	if req.Settings.IsZero() {
+		return nil
+	}
+	return w.upgradeManifestLocked(FormatVersion)
+}
+
 // writeRequest writes req to e's file, renaming the file (and its examples
 // sidecar) if the name's slug changed.
 func (w *Workspace) writeRequest(e *reqEntry, req model.Request) error {
 	dirPath, err := w.dirLocked(e.parentID)
 	if err != nil {
+		return err
+	}
+	if err := w.upgradeForRequestLocked(req); err != nil {
 		return err
 	}
 	file := e.file

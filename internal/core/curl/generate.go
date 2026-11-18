@@ -2,6 +2,7 @@ package curl
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"pakpos/internal/core/auth"
@@ -20,7 +21,7 @@ import (
 // names that need escaping) per urlencoded row, -F/--form-string per
 // form-data field, --data-binary @path for binary. Bearer and API key auth
 // are written as the header or query parameter they send. Disabled rows are
-// left out.
+// left out. The request's own settings follow the URL (see settingArgs).
 func Generate(req model.Request) string {
 	// An incomplete API key setting is left out, as it can't be sent.
 	r, _ := auth.Materialize(req, true)
@@ -50,6 +51,7 @@ func Generate(req model.Request) string {
 	first = append(first, Quote(target))
 
 	lines := []string{strings.Join(first, " ")}
+	lines = append(lines, settingArgs(r.Settings)...)
 	if r.Auth.Type == model.AuthBasic {
 		lines = append(lines, "-u "+Quote(r.Auth.Username+":"+r.Auth.Password))
 	}
@@ -65,6 +67,26 @@ func Generate(req model.Request) string {
 }
 
 var globRe = regexp.MustCompile(`[\[\]{}]`)
+
+// settingArgs writes the request's own settings as curl options: -k when it
+// turns TLS verification off, -L (and --max-redirs) when it follows
+// redirects, --max-time for its timeout. App settings aren't written.
+func settingArgs(s model.RequestSettings) []string {
+	var out []string
+	if s.VerifyTLS != nil && !*s.VerifyTLS {
+		out = append(out, "-k")
+	}
+	if s.FollowRedirects != nil && *s.FollowRedirects {
+		out = append(out, "-L")
+		if s.MaxRedirects != nil {
+			out = append(out, "--max-redirs "+strconv.Itoa(*s.MaxRedirects))
+		}
+	}
+	if s.TimeoutMs != nil && *s.TimeoutMs > 0 {
+		out = append(out, "--max-time "+strconv.FormatFloat(float64(*s.TimeoutMs)/1000, 'f', -1, 64))
+	}
+	return out
+}
 
 func enabledHeaders(rows []model.KeyValue) []model.KeyValue {
 	out := []model.KeyValue{}

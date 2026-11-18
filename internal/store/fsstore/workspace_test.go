@@ -208,6 +208,52 @@ func TestManifestVersions(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a request without settings keeps v2", func(t *testing.T) {
+		ws, dir := open(t, VersionV2)
+		col := mustCol(t, ws, "API")
+		r, err := ws.CreateRequest(col.ID, model.Request{Name: "Plain", Method: "GET"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ws.SaveRequest(r); err != nil {
+			t.Fatal(err)
+		}
+		if ws.Manifest().Version != VersionV2 || !strings.Contains(read(dir), "version: 2") {
+			t.Fatalf("manifest %q", read(dir))
+		}
+	})
+
+	verify := false
+	for _, tc := range []struct {
+		name  string
+		write func(ws *Workspace, colID string) error
+	}{
+		{"create", func(ws *Workspace, colID string) error {
+			_, err := ws.CreateRequest(colID, model.Request{Name: "R", Settings: model.RequestSettings{VerifyTLS: &verify}})
+			return err
+		}},
+		{"save", func(ws *Workspace, colID string) error {
+			r, err := ws.CreateRequest(colID, model.Request{Name: "R"})
+			if err != nil {
+				return err
+			}
+			r.Settings.VerifyTLS = &verify
+			_, err = ws.SaveRequest(r)
+			return err
+		}},
+	} {
+		t.Run("request settings upgrade v1 on "+tc.name, func(t *testing.T) {
+			ws, dir := open(t, 1)
+			col := mustCol(t, ws, "API")
+			if err := tc.write(ws, col.ID); err != nil {
+				t.Fatal(err)
+			}
+			if ws.Manifest().Version != FormatVersion || !strings.Contains(read(dir), fmt.Sprintf("version: %d", FormatVersion)) {
+				t.Fatalf("manifest %q", read(dir))
+			}
+		})
+	}
 }
 
 func TestCollectionsCRUD(t *testing.T) {

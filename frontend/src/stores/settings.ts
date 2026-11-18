@@ -5,7 +5,7 @@ import { DEFAULT_SETTINGS, type AppSettings, type LayoutSetting, type ThemeSetti
 import { useLayoutStore } from "./layout";
 import { useThemeStore } from "./theme";
 
-export type SettingsSection = "appearance" | "requests" | "history" | "secrets" | "about";
+export type SettingsSection = "appearance" | "requests" | "network" | "history" | "secrets" | "about";
 
 /**
  * App settings. Go (SQLite) is the single source of truth, including theme and

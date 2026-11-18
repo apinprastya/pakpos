@@ -16,7 +16,8 @@ func TestImportCurl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Request.Method != "POST" || got.Request.Name != "POST /" || got.Request.Body.Type != model.BodyURLEncoded || len(got.Warnings) != 1 {
+	if got.Request.Method != "POST" || got.Request.Name != "POST /" || got.Request.Body.Type != model.BodyURLEncoded || len(got.Warnings) != 0 ||
+		got.Request.Settings.VerifyTLS == nil || *got.Request.Settings.VerifyTLS {
 		t.Fatalf("%+v", got)
 	}
 	got, err = h.req.ImportCurl(`curl https://a.com`)

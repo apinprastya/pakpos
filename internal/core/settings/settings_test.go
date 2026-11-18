@@ -54,3 +54,80 @@ func TestExecutorMapping(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+func TestNetworkValidation(t *testing.T) {
+	pem := func(host string) ClientCert {
+		return ClientCert{ID: "a", Host: host, CertFile: "c.pem", KeyFile: "k.pem"}
+	}
+	bad := map[string]func(*Settings){
+		"proxy mode":       func(s *Settings) { s.Proxy.Mode = "auto" },
+		"custom no url":    func(s *Settings) { s.Proxy = Proxy{Mode: ProxyCustom} },
+		"custom ftp":       func(s *Settings) { s.Proxy = Proxy{Mode: ProxyCustom, URL: "ftp://p"} },
+		"bypass":           func(s *Settings) { s.Proxy.Bypass = "ok.example, 10.0.0.0/99" },
+		"cert host":        func(s *Settings) { s.ClientCerts = []ClientCert{pem("")} },
+		"cert host bad":    func(s *Settings) { s.ClientCerts = []ClientCert{pem("a.*.com")} },
+		"cert no files":    func(s *Settings) { s.ClientCerts = []ClientCert{{ID: "a", Host: "x"}} },
+		"cert key missing": func(s *Settings) { s.ClientCerts = []ClientCert{{ID: "a", Host: "x", CertFile: "c"}} },
+		"cert both": func(s *Settings) {
+			s.ClientCerts = []ClientCert{{ID: "a", Host: "x", CertFile: "c", KeyFile: "k", PFXFile: "p"}}
+		},
+		"cert no id":  func(s *Settings) { c := pem("x"); c.ID = ""; s.ClientCerts = []ClientCert{c} },
+		"cert dup id": func(s *Settings) { s.ClientCerts = []ClientCert{pem("x"), pem("y")} },
+		"too many": func(s *Settings) {
+			for i := 0; i <= MaxClientCerts; i++ {
+				c := pem("x")
+				c.ID = time.Duration(i).String()
+				s.ClientCerts = append(s.ClientCerts, c)
+			}
+		},
+	}
+	for name, mod := range bad {
+		t.Run(name, func(t *testing.T) {
+			s := Defaults()
+			mod(&s)
+			if err := s.Validate(); err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+	ok := Defaults()
+	ok.Proxy = Proxy{Mode: ProxyCustom, URL: "socks5://p:1080", Username: "me", Bypass: "localhost\n*.local, 10.0.0.0/8"}
+	ok.ClientCerts = []ClientCert{pem("*.example.com"), {ID: "b", Host: "api.example.com", PFXFile: "me.p12"}}
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	ok.Proxy.Mode = ProxyNone
+	if err := ok.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNormalize(t *testing.T) {
+	s := Defaults()
+	s.Proxy.URL, s.Proxy.Username, s.CAFile = " http://p:1 ", " me ", " /ca.pem "
+	s.ClientCerts = []ClientCert{{Host: " API.example.com ", CertFile: " c ", KeyFile: " k "}, {ID: "keep", Host: "x", PFXFile: "p"}}
+	n := s.Normalize()
+	if n.Proxy.URL != "http://p:1" || n.Proxy.Username != "me" || n.CAFile != "/ca.pem" {
+		t.Fatalf("got %+v", n)
+	}
+	if n.ClientCerts[0].ID == "" || n.ClientCerts[0].Host != "api.example.com" || n.ClientCerts[0].CertFile != "c" || n.ClientCerts[1].ID != "keep" {
+		t.Fatalf("certs %+v", n.ClientCerts)
+	}
+	if got := (Settings{}).Normalize().ClientCerts; got == nil {
+		t.Fatal("nil certs")
+	}
+}
+
+func TestNetworkMapping(t *testing.T) {
+	s := Defaults()
+	s.Proxy = Proxy{Mode: ProxyCustom, URL: "http://p:1", Username: "me", Bypass: "a, b"}
+	s.CAFile = "/ca.pem"
+	s.ClientCerts = []ClientCert{{ID: "x", Host: "h", PFXFile: "p"}}
+	base := httpexec.DefaultSettings()
+	base.Network.Secret = func(string) (string, error) { return "pw", nil }
+	got := s.Executor(base).Network
+	if got.Proxy.Mode != httpexec.ProxyCustom || got.Proxy.URL != "http://p:1" || len(got.Proxy.Bypass) != 2 ||
+		got.CAFile != "/ca.pem" || got.ClientCerts[0].PFXFile != "p" || got.Secret == nil {
+		t.Fatalf("got %+v", got)
+	}
+}

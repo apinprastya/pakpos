@@ -31,13 +31,14 @@ A desktop REST API client (Postman-style), REST only.
 ┌──────────────────────────────▼───────────────────────────────┐
 │  Go services (thin, bound to Wails)                          │
 │   WorkspaceService  RequestService  EnvService  HistoryService│
-│   SettingsService   ExampleService                           │
+│   SettingsService   ExampleService  CookieService            │
 ├──────────────────────────────────────────────────────────────┤
 │  pipeline (send/preview/codegen preparation, secret          │
 │  bookkeeping; no Wails)                                      │
 ├──────────────────────────────────────────────────────────────┤
 │  Core (pure Go, no Wails import → reusable by future CLI)    │
 │   model · vars (resolve {{x}}) · inherit · auth · httpexec   │
+│   cookies (jar)                                              │
 │   curl (import/export) · codegen · (script: Tier 3)          │
 │   store/fsstore (YAML) · store/sqlite · secrets              │
 └──────────────────────────────────────────────────────────────┘
@@ -152,7 +153,7 @@ place instead.
 ## 5. SQLite (app data dir)
 
 Driver: `modernc.org/sqlite` (pure Go, no CGO → easy cross-compilation).
-Migrations are numbered files (`0001_init.sql` … `0004_secret_index.sql`);
+Migrations are numbered files (`0001_init.sql` … `0005_cookies.sql`);
 an applied one is never edited.
 
 - `history`: id, timestamp, workspace_id, environment_name, the request **as
@@ -170,12 +171,27 @@ an applied one is never edited.
 - `secret_index`: `(workspace_id, scope_id, key, written_at)`, the secret
   keys the app wrote to the secret store. Key **names only**, never values;
   see §5a.
+- `cookies`: `(workspace_id, domain, path, name)` → value, host-only,
+  secure, http-only, SameSite, `expires_at` and `created_at` (Unix ms). Only
+  **persistent** cookies (Max-Age or Expires); session cookies live in the
+  jar's memory and are gone on restart. Workspace `''` holds the cookies of
+  sends made without a workspace. Expired rows are deleted when a jar loads.
+  Cookies never go into workspace files.
+- `settings` also holds the network settings (proxy mode, URL, user name,
+  bypass list; CA file; client certificate paths). The proxy password and
+  PKCS#12 passphrases are **not** there: they are app-level secret-store keys
+  `pakpos/_app/proxy` and `pakpos/_app/cert/<id>` (§5a).
 
 ## 5a. Secrets
 
 - A variable in any scope can be `secret: true`. The value lives in a
   `secrets.Store` under `pakpos/<workspaceId>/<scopeId>/<key>`; scope IDs
   rather than names, so renaming an environment or collection keeps values.
+- App-level secrets (the proxy password, PKCS#12 passphrases) belong to no
+  workspace: `pakpos/_app/proxy` and `pakpos/_app/cert/<certificate id>`
+  (`secrets.AppKey`). They are set from Settings > Network, read lazily when
+  a transport is built, and the passphrase is deleted with its certificate.
+  They are not in the secret index (no pruning needed).
 - At startup the OS keychain is probed (set/get/delete with a 3 s timeout).
   Without one (e.g. Linux without a Secret Service) the **file store** is
   used: `<data>/secrets.enc`, AES-256-GCM over the whole key→value map with a
@@ -238,8 +254,25 @@ Request (as written) + parentId + selected environment
   revealed).
 - Planned for Tier 3: a pre-request script after resolving scopes and a test
   script after the response (§7).
-- Per-workspace `http.Client` with cookie jar; settings: timeout, redirects,
-  TLS verify (proxy and client certs in Tier 3).
+- Per-workspace cookie jar (`core/cookies`, persistent cookies in SQLite):
+  switching workspace loads that workspace's jar; the executor is rebuilt
+  around it and the app settings.
+- Effective options per send: the app settings (timeout, redirects, TLS
+  verify) with the request's own `settings` applied on top
+  (`model.RequestSettings`, nil = app setting). The timeout is a context
+  deadline; redirect and TLS choices travel in the send's context.
+- Transports come from a cache shared across executors
+  (`httpexec.Transports`), keyed by network config (proxy, CA file, client
+  certificates), TLS verification and the client certificate matched for the
+  hop's host. Each hop (redirects too) picks its transport, so a request that
+  turns verification off or needs a client certificate doesn't disturb other
+  sends' pooled connections. A network settings change or a new proxy
+  password/passphrase drops the cached transports (idle connections closed).
+- Proxy: none, system (`HTTP(S)_PROXY`/`NO_PROXY`), or custom `http://`,
+  `https://`, `socks5://` with credentials (password from the secret store)
+  and a bypass list (names, `*.wildcards`, `.suffixes`, IPs, CIDRs). TLS: a
+  PEM CA bundle added to the system roots, and client certificates (PEM pair
+  or PKCS#12) chosen by host pattern.
 
 ## 7. Scripting (goja)
 

@@ -64,7 +64,7 @@ export interface ErrorCopy {
   title: string;
   hint: string | null;
   /** Settings section that can fix this error, offered as an "Open settings" action. */
-  settings?: "requests";
+  settings?: "requests" | "network";
 }
 
 const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
@@ -81,8 +81,13 @@ const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
   },
   tls: {
     title: "The secure connection failed",
-    hint: "For a server with a self-signed certificate, turn off certificate verification in settings.",
-    settings: "requests",
+    hint: "Add the server's CA or a client certificate in Network settings, or turn off certificate verification for this request in its Settings tab.",
+    settings: "network",
+  },
+  proxy: {
+    title: "The proxy failed",
+    hint: "Check the proxy address, user name and password in Network settings.",
+    settings: "network",
   },
   timeout: {
     title: "The request timed out",
