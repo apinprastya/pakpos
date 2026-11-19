@@ -129,6 +129,14 @@ describe("tabs store: tool tabs", () => {
     expect(stored().state.tabs[1].tool?.state).toMatchObject({ input: "", sortKeys: true });
   });
 
+  it("keeps the URL tool's mode and direction, but not a large input", async () => {
+    const id = s().openTool("url", "a b");
+    s().updateToolState(id, (st) => ({ ...(st as object), mode: "form", direction: "decode" }));
+    expect(stored().state.tabs[1].tool?.state).toEqual({ input: "a b", mode: "form", direction: "decode" });
+    s().updateToolState(id, (st) => ({ ...(st as object), input: "x".repeat(200_000) }));
+    expect(stored().state.tabs[1].tool?.state).toEqual({ input: "", mode: "form", direction: "decode" });
+  });
+
   it("restores unknown tools by id and drops malformed entries", async () => {
     const tabs = [
       {

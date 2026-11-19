@@ -7,7 +7,8 @@ import { useActiveTab, useTabsStore } from "@/stores/tabs";
 import { editorText, editorView, setEditorText } from "@/test/editor";
 import { activeTab, resetTabs } from "@/test/store";
 import { ToolTab } from "../ToolTab";
-import { DEBOUNCE_FROM, MAX_JSON_INPUT } from "./JsonTool";
+import { DEBOUNCE_FROM } from "../useSettled";
+import { MAX_JSON_INPUT } from "./JsonTool";
 
 vi.mock("sonner", async (orig) => {
   const actual = await orig<typeof import("sonner")>();
