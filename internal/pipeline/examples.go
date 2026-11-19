@@ -73,6 +73,9 @@ func (s *Session) ExampleSecrets(requestID, envID string, sent model.Request) (v
 // gone over the wire or come back. Longest first.
 func (s *Session) SendSecrets(req model.Request, parentID, envID string) (values []SecretValue, locked bool) {
 	plain, locked := s.secretValues(req, parentID, envID)
+	tokens, tokensLocked := s.tokenSecrets(req, parentID)
+	plain = append(plain, tokens...)
+	locked = locked || tokensLocked
 	values = append(values, plain...)
 	values = append(values, EncodedForms(plain)...)
 	if p, err := s.Prepare(req, parentID, envID); err == nil && p.Request.Auth.Type == model.AuthBasic {
@@ -170,6 +173,13 @@ func eachString(ex *fsstore.Example, f func(*string)) {
 	for _, p := range []*string{&r.Name, &r.URL, &r.Body.Raw, &r.Body.BinaryPath,
 		&r.Auth.Username, &r.Auth.Password, &r.Auth.Token, &r.Auth.Prefix, &r.Auth.APIKey, &r.Auth.APIValue} {
 		f(p)
+	}
+	if o := r.Auth.OAuth2; o != nil {
+		for _, p := range []*string{&o.AuthURL, &o.TokenURL, &o.RedirectURL, &o.ClientID, &o.ClientSecret,
+			&o.Scope, &o.Username, &o.Password, &o.HeaderPrefix, &o.QueryParam} {
+			f(p)
+		}
+		kvs(o.ExtraParams)
 	}
 	kvs(r.PathParams)
 	kvs(r.Query)

@@ -429,3 +429,42 @@ func TestTransportsDropStaleNetworks(t *testing.T) {
 		t.Fatalf("stale transport kept: len %d", cache.Len())
 	}
 }
+
+func TestHTTPClientUsesTheNetworkSettings(t *testing.T) {
+	ca := testnet.NewCA(t, "CA")
+	srv := testnet.TLSServer(t, ca, nil, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		_, _ = io.WriteString(w, "token")
+	}))
+	caFile := testnet.WriteFile(t, t.TempDir(), "ca.pem", ca.PEM)
+
+	// Without the CA the server isn't trusted; with it, it is.
+	if _, err := newExec(t, nil).HTTPClient().Get(srv.URL); err == nil {
+		t.Fatal("an unknown CA must fail")
+	}
+	e := newExec(t, func(s *Settings) { s.Network.CAFile = caFile; s.Timeout = 0 })
+	c := e.HTTPClient()
+	if c.Timeout != TokenTimeout || c.Jar != nil {
+		t.Errorf("client %+v", c)
+	}
+	resp, err := c.Get(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if string(body) != "token" {
+		t.Errorf("body %q", body)
+	}
+	resp, err = c.Get(srv.URL + "/redirect")
+	if err != nil || resp.StatusCode != http.StatusFound {
+		t.Fatalf("redirects are not followed: %v %v", resp, err)
+	}
+	_ = resp.Body.Close()
+	if got := newExec(t, func(s *Settings) { s.Timeout = time.Second }).HTTPClient().Timeout; got != time.Second {
+		t.Errorf("timeout %v", got)
+	}
+}

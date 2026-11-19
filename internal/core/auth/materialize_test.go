@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -76,5 +77,43 @@ func TestMaterialize(t *testing.T) {
 				t.Errorf("query = %+v, want %+v", got.Query, tt.wantQuery)
 			}
 		})
+	}
+}
+
+func TestTokenAuth(t *testing.T) {
+	tests := []struct {
+		name string
+		o    *model.OAuth2
+		want model.Auth
+	}{
+		{"nil settings", nil, model.Auth{Type: model.AuthBearer, Token: "t", Prefix: "Bearer"}},
+		{"header default", &model.OAuth2{}, model.Auth{Type: model.AuthBearer, Token: "t", Prefix: "Bearer"}},
+		{"header prefix", &model.OAuth2{HeaderPrefix: " Token "}, model.Auth{Type: model.AuthBearer, Token: "t", Prefix: "Token"}},
+		{"query default", &model.OAuth2{Placement: model.PlaceQuery}, model.Auth{Type: model.AuthAPIKey, APIKey: "access_token", APIValue: "t", APIIn: model.APIKeyInQuery}},
+		{"query name", &model.OAuth2{Placement: model.PlaceQuery, QueryParam: "tok"}, model.Auth{Type: model.AuthAPIKey, APIKey: "tok", APIValue: "t", APIIn: model.APIKeyInQuery}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TokenAuth(tt.o, "t"); got != tt.want {
+				t.Errorf("got %+v", got)
+			}
+		})
+	}
+}
+
+func TestMaterializeOAuth2(t *testing.T) {
+	req := model.Request{Auth: model.Auth{Type: model.AuthOAuth2, OAuth2: &model.OAuth2{HeaderPrefix: "Token"}}}
+	out, err := Materialize(req, true)
+	if err != nil || len(out.Headers) != 1 || out.Headers[0].Value != "Token {{oauth2AccessToken}}" || out.Auth.Type != model.AuthNone {
+		t.Fatalf("header: %+v %v", out, err)
+	}
+	req.Auth.OAuth2 = &model.OAuth2{Placement: model.PlaceQuery}
+	out, err = Materialize(req, true)
+	if err != nil || len(out.Query) != 1 || out.Query[0].Key != "access_token" || out.Query[0].Value != TokenPlaceholder {
+		t.Fatalf("query: %+v %v", out, err)
+	}
+	r := &http.Request{Header: http.Header{}}
+	if err := Apply(r, req.Auth); !errors.Is(err, ErrOAuth2Token) {
+		t.Errorf("Apply must refuse an OAuth 2.0 auth without a token: %v", err)
 	}
 }

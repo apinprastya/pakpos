@@ -210,13 +210,14 @@ func (s *WorkspaceService) SaveFolder(id string, settings fsstore.FolderSettings
 	return ws.SaveFolder(id, settings)
 }
 
-// DeleteFolder deletes a folder with everything in it.
+// DeleteFolder deletes a folder with everything in it, and their OAuth 2.0
+// tokens.
 func (s *WorkspaceService) DeleteFolder(id string) error {
-	ws, err := s.c.workspace()
+	_, p, err := s.c.openSession()
 	if err != nil {
 		return err
 	}
-	return ws.DeleteFolder(id)
+	return p.DeleteFolder(id)
 }
 
 // MoveRequest moves a request into a collection or folder at index among

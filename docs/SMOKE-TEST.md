@@ -181,6 +181,20 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir, a collection with Login (test scri
 - [ ] Past runs: listed with time, environment and totals; opening one shows its results; delete removes it; only the last 20 are kept. Starting a second run in the same workspace while one runs says to wait or cancel.
 - [ ] Export JSON and Export HTML save a report (the save dialog suggests `<name>-run-<date>.<ext>`); the HTML opens in a browser without network access, in light and dark; neither file contains the `apiKey` or token values.
 
+## Tier 3: OAuth 2.0
+
+Use `XDG_CONFIG_HOME` pointing at a temp dir and a real provider (e.g. an Auth0, Keycloak or Google test client) or a local server (Keycloak in Docker, or `go run` of a tiny wrapper around `internal/core/auth/oauth2/oauth2test`). Keep the client secret in a secret environment variable (`{{clientSecret}}`).
+
+- [ ] Auth tab: "OAuth 2.0" is offered on requests, folders and collections; each grant shows only its fields; the callback help names the random-port loopback, and "Fixed URL" shows the URL with a Copy button and flags a non-loopback URL; a literal client secret or password is masked with "Move to secret variable".
+- [ ] Authorization code + PKCE: "Get new access token" opens the system browser, the panel shows "Waiting for you to sign in…" with Copy the link and Cancel; after signing in the browser page says "You can close this window and return to Pakpos." (readable in light and dark), and the panel shows "Valid until … (in …)", the scope and "Can be refreshed". With a fixed port registered at the provider, the same works; with the port taken, the error says another program may be using it.
+- [ ] Implicit (where the provider still allows it): the page posts the fragment back and the token arrives; the address bar no longer shows the token.
+- [ ] Client credentials and password: a send with no token gets one automatically; "Get new access token" works without a browser.
+- [ ] Sends: the token goes in `Authorization: Bearer …` (or the chosen prefix, or the query parameter); the Debug tab shows `[secret:oauth2AccessToken]`. A token expiring within 30 s is refreshed before the send (provider logs show a refresh_token grant); with auto refresh off an expired token fails with "has expired. Get a new access token…". A revoked refresh token fails the send with the provider's error and kind "The OAuth 2.0 token isn't usable".
+- [ ] Inheritance: a request set to "Inherit from parent" under a collection with OAuth 2.0 shows the collection's token status read-only with a link to its settings, and sends with it. The palette's "Get new OAuth 2.0 token" works from a request with its own OAuth 2.0 auth and from collection/folder settings tabs.
+- [ ] Refresh, Reveal (shows the token, Hide hides it), Clear (status goes back to "No access token yet."). With the file store locked, the panel says the store is locked and Unlock asks for the master password.
+- [ ] Generate code / Copy as cURL show `{{oauth2AccessToken}}`; with "Reveal secrets" the code holds the token. History, the workspace files, saved examples (the save dialog names `oauth2AccessToken` if the API echoes it) and runner exports never contain the token or the client secret.
+- [ ] Deleting the request, folder or collection removes its token from the keychain (check with the OS keychain tool); a duplicated request starts without a token.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

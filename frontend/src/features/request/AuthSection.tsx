@@ -4,7 +4,7 @@ import type { Request } from "@/lib/model";
 import { collectionIdOf } from "@/lib/tree";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { AuthEditor } from "./AuthEditor";
-import { SUGGESTED_NAMES, type SecretField } from "./auth";
+import { SUGGESTED_NAMES, withSecretField, type SecretField } from "./auth";
 import { InheritedAuth } from "./Inherited";
 import type { PreviewState } from "./usePreview";
 
@@ -30,6 +30,7 @@ export function AuthSection({ request, parentId, preview, onChange }: Props) {
         allowInherit
         inheritInfo={<InheritedAuth state={preview} hasParent={parentId !== ""} subject="request" />}
         onMoveToSecret={hasWorkspace ? (field, value) => setMoving({ field, value }) : undefined}
+        tokenOwner={hasWorkspace ? { ownerId: request.id, parentId } : undefined}
       />
       <MoveToSecretDialog
         value={moving?.value ?? null}
@@ -37,7 +38,7 @@ export function AuthSection({ request, parentId, preview, onChange }: Props) {
         collectionId={collectionIdOf(collections, parentId)}
         onMoved={(name) => {
           const field = moving!.field;
-          onChange((r) => ({ ...r, auth: { ...r.auth, [field]: `{{${name}}}` } }));
+          onChange((r) => ({ ...r, auth: withSecretField(r.auth, field, `{{${name}}}`) }));
         }}
         onClose={() => setMoving(null)}
       />

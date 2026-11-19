@@ -242,6 +242,22 @@ func TestManifestVersions(t *testing.T) {
 			_, err = ws.SaveRequest(r)
 			return err
 		}},
+		{"oauth2 request", func(ws *Workspace, colID string) error {
+			_, err := ws.CreateRequest(colID, model.Request{Name: "R", Auth: model.Auth{Type: model.AuthOAuth2}})
+			return err
+		}},
+		{"oauth2 collection", func(ws *Workspace, colID string) error {
+			_, err := ws.SaveCollection(colID, CollectionSettings{Auth: model.Auth{Type: model.AuthOAuth2, OAuth2: &model.OAuth2{}}})
+			return err
+		}},
+		{"oauth2 folder", func(ws *Workspace, colID string) error {
+			f, err := ws.CreateFolder(colID, "F")
+			if err != nil {
+				return err
+			}
+			_, err = ws.SaveFolder(f.ID, FolderSettings{Auth: model.Auth{Type: model.AuthOAuth2}})
+			return err
+		}},
 	} {
 		t.Run("request settings upgrade v1 on "+tc.name, func(t *testing.T) {
 			ws, dir := open(t, 1)

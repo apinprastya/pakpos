@@ -113,6 +113,10 @@ const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
     title: "A pre-request script failed",
     hint: "Nothing was sent. Fix the script at the line named above, then send again.",
   },
+  auth: {
+    title: "The OAuth 2.0 token isn't usable",
+    hint: "Nothing was sent. Get a new access token in the Auth tab named above, then send again.",
+  },
 };
 
 export function errorCopy(kind: string): ErrorCopy {

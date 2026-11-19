@@ -63,5 +63,6 @@ describe("response format", () => {
     expect(errorCopy("dns").title).toBe("Couldn't find the server");
     expect(errorCopy("decode").title).toBe("The response couldn't be decompressed");
     expect(errorCopy("weird")).toEqual(errorCopy("network"));
+    expect(errorCopy("auth").hint).toMatch(/Auth tab/);
   });
 });

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
@@ -98,6 +99,9 @@ type Core struct {
 	// transports is shared by every executor, so pooled connections survive
 	// a workspace switch or a settings change that doesn't touch the network.
 	transports *httpexec.Transports
+	// oauth gets and refreshes OAuth 2.0 tokens through the current
+	// executor's transports; one per Core so refreshes are serialised.
+	oauth *pipeline.OAuth2
 
 	mu      sync.RWMutex
 	ws      *fsstore.Workspace
@@ -155,6 +159,7 @@ func NewCore(cfg Config) (*Core, error) {
 	if c.log == nil {
 		c.log = slog.Default()
 	}
+	c.oauth = pipeline.NewOAuth2(func() *http.Client { return c.executor().HTTPClient() }, nil)
 	if c.debounce <= 0 {
 		c.debounce = 300 * time.Millisecond
 	}
@@ -259,9 +264,11 @@ func (c *Core) workspace() (*fsstore.Workspace, error) {
 }
 
 // session returns the send pipeline for ws. It records the secret keys it
-// writes in the database's secret index and uses ws's script overlay.
+// writes in the database's secret index, uses ws's script overlay and gets
+// OAuth 2.0 tokens through the app's network settings.
 func (c *Core) session(ws *fsstore.Workspace) *pipeline.Session {
-	return pipeline.New(ws, c.secrets, c.log).WithSecretIndex(c.db).WithOverlay(c.overlayFor(ws.Manifest().ID))
+	return pipeline.New(ws, c.secrets, c.log).WithSecretIndex(c.db).
+		WithOverlay(c.overlayFor(ws.Manifest().ID)).WithOAuth2(c.oauth)
 }
 
 // overlayFor returns the script overlay of the open workspace when it is

@@ -25,6 +25,7 @@ func init() {
 	application.RegisterEvent[service.UpdateProgress](service.EventUpdateProgress)
 	application.RegisterEvent[service.ScriptConsoleEvent](service.EventScriptConsole)
 	application.RegisterEvent[service.RunnerProgressEvent](service.EventRunnerProgress)
+	application.RegisterEvent[service.OAuth2FlowEvent](service.EventOAuth2Flow)
 }
 
 func main() {
@@ -75,6 +76,7 @@ func main() {
 			application.NewService(service.NewUIStateService(core)),
 			application.NewService(service.NewCookieService(core)),
 			application.NewService(service.NewRunnerService(core)),
+			application.NewService(service.NewAuthService(core, control)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{

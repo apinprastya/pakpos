@@ -1,4 +1,4 @@
-import type { AuthType } from "@/lib/model";
+import { emptyOAuth2, type Auth, type AuthType } from "@/lib/model";
 import { splitVars } from "@/lib/varTokens";
 
 export const AUTH_LABELS: Record<AuthType, string> = {
@@ -7,17 +7,44 @@ export const AUTH_LABELS: Record<AuthType, string> = {
   basic: "Basic auth",
   bearer: "Bearer token",
   apikey: "API key",
+  oauth2: "OAuth 2.0",
 };
 
-/** Auth fields that usually hold a secret. */
-export type SecretField = "password" | "token" | "apiValue";
+/** Auth fields that usually hold a secret (the OAuth 2.0 ones live in `auth.oauth2`). */
+export type SecretField = "password" | "token" | "apiValue" | "oauth2ClientSecret" | "oauth2Password";
 
 /** Variable names offered when moving a field's value to a secret. */
 export const SUGGESTED_NAMES: Record<SecretField, string> = {
   password: "password",
   token: "token",
   apiValue: "apiKey",
+  oauth2ClientSecret: "clientSecret",
+  oauth2Password: "password",
 };
+
+/** The value of a secret field. */
+export function secretFieldValue(auth: Auth, field: SecretField): string {
+  switch (field) {
+    case "oauth2ClientSecret":
+      return auth.oauth2?.clientSecret ?? "";
+    case "oauth2Password":
+      return auth.oauth2?.password ?? "";
+    default:
+      return auth[field];
+  }
+}
+
+/** auth with a secret field set to value. */
+export function withSecretField(auth: Auth, field: SecretField, value: string): Auth {
+  switch (field) {
+    case "oauth2ClientSecret":
+      return { ...auth, oauth2: { ...(auth.oauth2 ?? emptyOAuth2()), clientSecret: value } };
+    case "oauth2Password":
+      return { ...auth, oauth2: { ...(auth.oauth2 ?? emptyOAuth2()), password: value } };
+    default:
+      return { ...auth, [field]: value };
+  }
+}
 
 /**
  * True for a value typed in as is: not empty, without any `{{variable}}`,

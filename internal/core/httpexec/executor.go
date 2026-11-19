@@ -162,6 +162,29 @@ func (e *Executor) options(rs model.RequestSettings) (sendOptions, error) {
 	return o, nil
 }
 
+// TokenTimeout bounds a request made with HTTPClient when the app has no
+// timeout.
+const TokenTimeout = 30 * time.Second
+
+// HTTPClient returns a client for requests made on the user's behalf
+// outside a send (an OAuth 2.0 token endpoint). It goes through the same
+// cached transports as sends, so the proxy, CA, client certificates and
+// TLS verification apply, but without the cookie jar, debug hops or body
+// limits. Redirects are not followed.
+func (e *Executor) HTTPClient() *http.Client {
+	timeout := e.settings.Timeout
+	if timeout <= 0 {
+		timeout = TokenTimeout
+	}
+	return &http.Client{
+		Transport: routeTransport{e: e},
+		Timeout:   timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
 // Settings returns the effective settings.
 func (e *Executor) Settings() Settings { return e.settings }
 

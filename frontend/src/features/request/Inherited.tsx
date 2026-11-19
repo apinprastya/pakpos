@@ -3,6 +3,7 @@ import { openContainerSettings } from "@/features/scopes/docActions";
 import type { InheritSource } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { AUTH_LABELS } from "./auth";
+import { OAuth2Token } from "./OAuth2Token";
 import type { PreviewState } from "./usePreview";
 
 function SourceLink({ source }: { source: InheritSource }) {
@@ -46,6 +47,20 @@ export function InheritedAuth({
         {src.kind} <SourceLink source={src} />
       </span>
     );
+    if (state.preview.auth.type === "oauth2") {
+      // The token belongs to that level: shown here, managed in its settings.
+      return (
+        <div className="flex flex-col gap-2">
+          <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+            {body}
+            <span className="mt-1 block">
+              Get, refresh or clear its access token in the {src.kind}&apos;s settings.
+            </span>
+          </p>
+          <OAuth2Token ownerId={src.id} parentId="" />
+        </div>
+      );
+    }
   } else {
     body = "No auth is set on the collection or its folders, so none is sent.";
   }

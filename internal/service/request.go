@@ -135,13 +135,13 @@ func (s *RequestService) Duplicate(id string) (model.Request, error) {
 	return ws.DuplicateRequest(id)
 }
 
-// Delete removes a saved request.
+// Delete removes a saved request and its OAuth 2.0 token.
 func (s *RequestService) Delete(id string) error {
-	ws, err := s.c.workspace()
+	_, p, err := s.c.openSession()
 	if err != nil {
 		return err
 	}
-	return ws.DeleteRequest(id)
+	return p.DeleteRequest(id)
 }
 
 // Move moves a request to the end of another collection or folder.
@@ -174,7 +174,8 @@ func (s *RequestService) Reorder(parentID string, ids []string) error {
 // The pipeline (pipeline.Send): inherit auth and headers, build the
 // variable scopes (globals, collection, selected environment, local) with
 // the script overlay and secrets, run the pre-request scripts (collection,
-// folders, request), resolve, send, then run the test scripts in the same
+// folders, request), resolve, put the OAuth 2.0 token on (refreshing it
+// when it expires soon; an unusable token is error kind "auth"), send, then run the test scripts in the same
 // order. Script console output is also emitted as EventScriptConsole while
 // the send runs. History stores req as written (variables unresolved, no
 // script changes) with the environment name, so secret values never reach
@@ -244,6 +245,16 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 	}
 	if perr != nil {
 		result.Error = &httpexec.Error{Kind: httpexec.KindVariables, Message: pipeline.VariableMessage(perr), Err: perr}
+		result.HistoryID = s.record(wsID, envName, req, nil, result.Error, started)
+		return result, nil
+	}
+	if aerr := sd.Authorize(ctx, &prepared); aerr != nil {
+		if ctx.Err() != nil {
+			result.Error = &httpexec.Error{Kind: httpexec.KindCanceled, Message: "The request was cancelled", Err: aerr}
+			return result, nil
+		}
+		result.Error = &httpexec.Error{Kind: httpexec.KindAuth, Message: aerr.Error(), Err: aerr}
+		result.SecretsLocked = result.SecretsLocked || sd.SecretsLocked()
 		result.HistoryID = s.record(wsID, envName, req, nil, result.Error, started)
 		return result, nil
 	}

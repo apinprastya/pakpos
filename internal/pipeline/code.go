@@ -50,6 +50,9 @@ func (s *Session) PrepareCode(req model.Request, parentID, envID string, opts Co
 	if env != nil {
 		p.Environment = &EnvRef{ID: env.ID, Name: env.Name}
 	}
+	if err == nil {
+		s.codeToken(&p, eff, opts)
+	}
 	return p, err
 }
 
