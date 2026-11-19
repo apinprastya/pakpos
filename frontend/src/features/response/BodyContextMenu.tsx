@@ -1,6 +1,6 @@
 import { useState, type RefObject } from "react";
 import type { EditorView } from "@codemirror/view";
-import { Braces, Copy, Route, TextSelect, Type } from "lucide-react";
+import { Braces, Copy, FileJson, Route, TextSelect, Type } from "lucide-react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -10,6 +10,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { useTabsStore } from "@/stores/tabs";
 import { formatPath, jsonFieldAt, type JsonField } from "./jsonField";
 
 interface Props {
@@ -22,7 +23,8 @@ interface Props {
 /**
  * The response body's right-click menu: copy the selection, select all and,
  * for JSON, copy the value, key or path of the field under the pointer (or at
- * the cursor when the menu is opened from the keyboard).
+ * the cursor when the menu is opened from the keyboard). "Open in JSON tool"
+ * takes the selection, or the whole body when nothing is selected.
  */
 export function BodyContextMenu({ view, json, children }: Props) {
   const [field, setField] = useState<JsonField | null>(null);
@@ -48,6 +50,11 @@ export function BodyContextMenu({ view, json, children }: Props) {
   };
 
   const path = field ? formatPath(field.path) : "";
+
+  const openInJsonTool = () => {
+    const text = selection || view.current?.state.doc.toString() || "";
+    useTabsStore.getState().openTool("json", text);
+  };
 
   return (
     <ContextMenu>
@@ -89,6 +96,15 @@ export function BodyContextMenu({ view, json, children }: Props) {
           <TextSelect />
           Select all
         </ContextMenuItem>
+        {(json || selection) && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={openInJsonTool}>
+              <FileJson />
+              Open in JSON tool
+            </ContextMenuItem>
+          </>
+        )}
       </ContextMenuContent>
     </ContextMenu>
   );

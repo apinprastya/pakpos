@@ -612,7 +612,9 @@ export function useActiveTab(): Tab {
 
 function persistedTool(tool: ToolTab | null): ToolTab | null {
   if (!tool) return null;
-  return toolDef(tool.id)?.persist ? tool : { id: tool.id, state: null };
+  const def = toolDef(tool.id);
+  if (!def?.persist) return { id: tool.id, state: null };
+  return def.serialize ? { id: tool.id, state: def.serialize(tool.state) } : tool;
 }
 
 /**

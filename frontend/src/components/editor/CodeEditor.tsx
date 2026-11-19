@@ -63,6 +63,8 @@ export interface CodeEditorProps {
    * language's own (e.g. `pm` members in scripts).
    */
   completions?: CompletionSource[];
+  /** Extra editor extensions (decided at mount), e.g. error marks driven through `onView`. */
+  extensions?: Extension[];
 }
 
 export function CodeEditor({
@@ -83,6 +85,7 @@ export function CodeEditor({
   onBlur,
   onPaste,
   completions,
+  extensions,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -128,6 +131,7 @@ export function CodeEditor({
     ];
     if (placeholder) exts.push(placeholderExt(placeholder));
     if (variables) exts.push(variablesExt(variables));
+    if (extensions) exts.push(...extensions);
     if (completions?.length) {
       exts.push(
         autocompletion({ icons: false }),

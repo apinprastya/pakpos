@@ -10,6 +10,7 @@ import { debugText } from "./debugText";
 import { resetTabs } from "@/test/store";
 import { useSettingsStore } from "@/stores/settings";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useTabsStore } from "@/stores/tabs";
 import { ResponsePane } from "./ResponsePane";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -177,6 +178,42 @@ describe("ResponsePane", () => {
     fireEvent.contextMenu(editorView("Response body").contentDOM);
     expect(await screen.findByRole("menuitem", { name: "Select all" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Copy value" })).not.toBeInTheDocument();
+  });
+
+  it("opens the body, or the selection, in the JSON tool", async () => {
+    const user = userEvent.setup();
+    show(ok());
+    const view = editorView("Response body");
+    const body = view.state.doc.toString();
+    fireEvent.contextMenu(view.contentDOM);
+    await user.click(await screen.findByRole("menuitem", { name: "Open in JSON tool" }));
+    const tools = () => useTabsStore.getState().tabs.filter((t) => t.tool?.id === "json");
+    expect(tools()).toHaveLength(1);
+    expect(tools()[0].tool?.state).toMatchObject({ input: body, mode: "format" });
+    expect(useTabsStore.getState().activeId).toBe(tools()[0].id);
+  });
+
+  it("replaces the open JSON tool's input with the selection", async () => {
+    const user = userEvent.setup();
+    show(ok({ kind: "text", contentType: "text/plain", body: 'x {"a":1} y' }));
+    act(() => {
+      useTabsStore.getState().openTool("json", "old");
+      useTabsStore.getState().activate("t1");
+    });
+    const tools = () => useTabsStore.getState().tabs.filter((t) => t.tool?.id === "json");
+    const text = editorView("Response body");
+    act(() => text.dispatch({ selection: { anchor: 2, head: 9 } }));
+    fireEvent.contextMenu(text.contentDOM);
+    await user.click(await screen.findByRole("menuitem", { name: "Open in JSON tool" }));
+    expect(tools()).toHaveLength(1);
+    expect(tools()[0].tool?.state).toMatchObject({ input: '{"a":1}' });
+  });
+
+  it("doesn't offer the JSON tool for a text body with nothing selected", async () => {
+    show(ok({ kind: "text", contentType: "text/plain", body: "hello" }));
+    fireEvent.contextMenu(editorView("Response body").contentDOM);
+    await screen.findByRole("menuitem", { name: "Select all" });
+    expect(screen.queryByRole("menuitem", { name: "Open in JSON tool" })).not.toBeInTheDocument();
   });
 
   it("shows what went over the wire in the Debug tab", async () => {
