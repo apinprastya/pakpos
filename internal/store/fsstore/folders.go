@@ -375,7 +375,7 @@ func (w *Workspace) RenameFolder(id, name string) (Folder, error) {
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
 		w.unwatchDir(oldPath)
-		rerr := os.Rename(oldPath, newPath)
+		rerr := renameDir(oldPath, newPath)
 		w.resumeDir(oldPath)
 		if rerr != nil {
 			w.watchDir(oldPath)
@@ -441,7 +441,7 @@ func (w *Workspace) DeleteFolder(id string) error {
 	}
 	w.markTree(dir)
 	w.unwatchDir(dir)
-	rerr := os.RemoveAll(dir)
+	rerr := removeDirAll(dir)
 	w.resumeDir(dir)
 	if rerr != nil {
 		w.watchDir(dir)
@@ -632,7 +632,7 @@ func (w *Workspace) MoveFolder(id, toParentID string, index int) (Folder, error)
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
 		w.unwatchDir(oldPath)
-		rerr := os.Rename(oldPath, newPath)
+		rerr := renameDir(oldPath, newPath)
 		w.resumeDir(oldPath)
 		if rerr != nil {
 			w.watchDir(oldPath)

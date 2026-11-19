@@ -490,7 +490,7 @@ func (w *Workspace) RenameCollection(id, name string) (Collection, error) {
 		w.markWrite(oldPath)
 		w.markWrite(newPath)
 		w.unwatchDir(oldPath)
-		rerr := os.Rename(oldPath, newPath)
+		rerr := renameDir(oldPath, newPath)
 		w.resumeDir(oldPath)
 		if rerr != nil {
 			w.watchDir(oldPath)
@@ -570,7 +570,7 @@ func (w *Workspace) DeleteCollection(id string) error {
 	dirPath := filepath.Join(w.root, CollectionsDir, c.dir)
 	w.markTree(dirPath)
 	w.unwatchDir(dirPath)
-	rerr := os.RemoveAll(dirPath)
+	rerr := removeDirAll(dirPath)
 	w.resumeDir(dirPath)
 	if rerr != nil {
 		w.watchDir(dirPath)

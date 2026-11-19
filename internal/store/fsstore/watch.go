@@ -107,6 +107,12 @@ func (w *Workspace) resumeDir(dir string) {
 	w.suspMu.Unlock()
 }
 
+func (w *Workspace) isSuspended(path string) bool {
+	w.suspMu.Lock()
+	defer w.suspMu.Unlock()
+	return w.isSuspendedLocked(path)
+}
+
 // isSuspendedLocked reports whether path is at or below a suspended
 // directory. The caller holds suspMu.
 func (w *Workspace) isSuspendedLocked(path string) bool {
@@ -153,6 +159,11 @@ func (wt *Watcher) addTree(dir string) {
 			return nil
 		}
 		if p != dir && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
+		}
+		// Don't list a suspended directory: on Windows the open handle
+		// blocks its pending rename (renameDir retries, but why wait).
+		if wt.ws.isSuspended(p) {
 			return filepath.SkipDir
 		}
 		wt.add(p)
