@@ -36,6 +36,10 @@ type ScriptOptions struct {
 	Iteration      int
 	IterationCount int
 	IterationData  map[string]string
+	// Local, when not nil, seeds the local scope instead of IterationData:
+	// the runner passes the previous send's Local() so pm.variables values
+	// last for the whole iteration.
+	Local map[string]string
 }
 
 // ScriptReport is what the scripts of one event (pre-request or test)
@@ -106,9 +110,19 @@ func NewSendWithoutWorkspace(req model.Request, opts ScriptOptions, vopts ...var
 
 func (sd *Send) seedLocal() {
 	local := &sd.scopes.List[len(sd.scopes.List)-1]
-	for _, k := range sortedKeys(sd.opts.IterationData) {
-		setRow(local, k, sd.opts.IterationData[k], false)
+	seed := sd.opts.IterationData
+	if sd.opts.Local != nil {
+		seed = sd.opts.Local
 	}
+	for _, k := range sortedKeys(seed) {
+		setRow(local, k, seed[k], false)
+	}
+}
+
+// Local returns the local scope's values as the scripts left them (the
+// data row plus pm.variables writes). Never nil.
+func (sd *Send) Local() map[string]string {
+	return sendVars{sd}.All(vars.ScopeLocal)
 }
 
 // Prepare resolves the request as the pre-request scripts left it.

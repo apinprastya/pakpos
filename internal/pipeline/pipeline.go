@@ -52,6 +52,9 @@ func New(ws *fsstore.Workspace, sec secrets.Store, log *slog.Logger, opts ...var
 
 func (s *Session) workspaceID() string { return s.ws.Manifest().ID }
 
+// Workspace returns the session's workspace.
+func (s *Session) Workspace() *fsstore.Workspace { return s.ws }
+
 // EnvRef identifies an environment by id and name.
 type EnvRef struct {
 	ID   string `json:"id"`

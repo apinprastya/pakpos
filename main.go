@@ -24,6 +24,7 @@ func init() {
 	application.RegisterEvent[service.WorkspaceChangedEvent](service.EventWorkspaceChanged)
 	application.RegisterEvent[service.UpdateProgress](service.EventUpdateProgress)
 	application.RegisterEvent[service.ScriptConsoleEvent](service.EventScriptConsole)
+	application.RegisterEvent[service.RunnerProgressEvent](service.EventRunnerProgress)
 }
 
 func main() {
@@ -73,6 +74,7 @@ func main() {
 			application.NewService(service.NewExampleService(core)),
 			application.NewService(service.NewUIStateService(core)),
 			application.NewService(service.NewCookieService(core)),
+			application.NewService(service.NewRunnerService(core)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{

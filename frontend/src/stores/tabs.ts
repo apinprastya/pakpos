@@ -15,8 +15,44 @@ import {
   type Variable,
 } from "@/lib/model";
 
-/** What a non-request tab edits. */
-export type DocKind = "environment" | "globals" | "collection" | "folder";
+/** What a non-request tab edits (or, for `runner`, runs). */
+export type DocKind = "environment" | "globals" | "collection" | "folder" | "runner";
+
+/**
+ * A runner tab's configuration, kept with the tab (results are not: past runs
+ * are reloaded from Go). Requests are selected by default, so `excludedIds`
+ * lists the unchecked ones and new requests join the run.
+ */
+export interface RunnerSettings {
+  targetKind: "collection" | "folder";
+  excludedIds: string[];
+  /** null: the environment selected when the run starts; "": none. */
+  environmentId: string | null;
+  /** 0 with a data file: one per row. */
+  iterations: number;
+  delayMs: number;
+  /** Path of the data file ("" for none). */
+  dataFile: string;
+  stopOnFailure: boolean;
+  keepVariables: boolean;
+  saveResponses: boolean;
+  recordHistory: boolean;
+}
+
+export function defaultRunnerSettings(targetKind: RunnerSettings["targetKind"]): RunnerSettings {
+  return {
+    targetKind,
+    excludedIds: [],
+    environmentId: null,
+    iterations: 1,
+    delayMs: 0,
+    dataFile: "",
+    stopOnFailure: false,
+    keepVariables: true,
+    saveResponses: false,
+    recordHistory: false,
+  };
+}
 
 /**
  * The editable part of an environment, the globals, or a collection's or
@@ -43,6 +79,8 @@ export interface DocState {
   saved: DocDraft | null;
   /** The target was deleted outside the app while the tab had edits. */
   missing: boolean;
+  /** Set for runner tabs (whose draft stays null). */
+  runner?: RunnerSettings;
 }
 
 export function emptyDocDraft(): DocDraft {
@@ -96,10 +134,10 @@ export interface Tab {
 }
 
 /** Panes whose section tabs are remembered per tab. */
-export type TabPane = "request" | "response" | "settings" | "scripts";
+export type TabPane = "request" | "response" | "settings" | "scripts" | "runner";
 export type TabSections = Partial<Record<TabPane, string>>;
 
-const TAB_PANES: TabPane[] = ["request", "response", "settings", "scripts"];
+const TAB_PANES: TabPane[] = ["request", "response", "settings", "scripts", "runner"];
 
 /** Keeps only string sections of known panes (persisted data may be anything). */
 export function restoreSections(raw: unknown): TabSections {
@@ -160,6 +198,15 @@ interface TabsState {
   /** Replaces only the saved copy (after an immediate change on disk, e.g. making a secret plain). */
   setDocSaved: (id: string, saved: DocDraft) => void;
   patchDoc: (id: string, patch: Partial<Pick<DocState, "name" | "missing">>) => void;
+  /** Opens the runner tab of a collection or folder, or focuses the open one. */
+  openRunner: (
+    kind: RunnerSettings["targetKind"],
+    targetId: string,
+    name: string,
+    workspaceId: string,
+  ) => string;
+  /** Changes a runner tab's configuration. */
+  updateRunner: (id: string, patch: Partial<RunnerSettings>) => void;
   /** Remembers which section of a pane is open in a tab. */
   setSection: (id: string, pane: TabPane, section: string) => void;
 }
@@ -198,6 +245,7 @@ const DOC_TITLES: Record<DocKind, (name: string) => string> = {
   globals: () => "Globals",
   collection: (name) => `${name || "Collection"} settings`,
   folder: (name) => `${name || "Folder"} settings`,
+  runner: (name) => `Run ${name || "collection"}`,
 };
 
 export function tabTitle(tab: Tab): string {
@@ -421,6 +469,19 @@ export const useTabsStore = create<TabsState>()(
 
       patchDoc: (id, patch) => set((s) => ({ tabs: mapDoc(s.tabs, id, (d) => ({ ...d, ...patch })) })),
 
+      openRunner: (kind, targetId, name, workspaceId) => {
+        const id = get().openDoc("runner", targetId, name, workspaceId);
+        set((s) => ({
+          tabs: mapDoc(s.tabs, id, (d) => (d.runner ? d : { ...d, runner: defaultRunnerSettings(kind) })),
+        }));
+        return id;
+      },
+
+      updateRunner: (id, patch) =>
+        set((s) => ({
+          tabs: mapDoc(s.tabs, id, (d) => (d.runner ? { ...d, runner: { ...d.runner, ...patch } } : d)),
+        })),
+
       setSection: (id, pane, section) =>
         set((s) => ({
           tabs: s.tabs.map((t) =>
@@ -489,7 +550,26 @@ export function useActiveTab(): Tab {
   return useTabsStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0]);
 }
 
-const DOC_KINDS: DocKind[] = ["environment", "globals", "collection", "folder"];
+const DOC_KINDS: DocKind[] = ["environment", "globals", "collection", "folder", "runner"];
+
+function restoreRunner(raw: unknown): RunnerSettings {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Partial<RunnerSettings>;
+  const d = defaultRunnerSettings(r.targetKind === "folder" ? "folder" : "collection");
+  const num = (v: unknown, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  const bool = (v: unknown, fallback: boolean) => (typeof v === "boolean" ? v : fallback);
+  return {
+    ...d,
+    excludedIds: Array.isArray(r.excludedIds) ? r.excludedIds.filter((x) => typeof x === "string") : [],
+    environmentId: typeof r.environmentId === "string" ? r.environmentId : null,
+    iterations: num(r.iterations, d.iterations),
+    delayMs: num(r.delayMs, d.delayMs),
+    dataFile: typeof r.dataFile === "string" ? r.dataFile : "",
+    stopOnFailure: bool(r.stopOnFailure, d.stopOnFailure),
+    keepVariables: bool(r.keepVariables, d.keepVariables),
+    saveResponses: bool(r.saveResponses, d.saveResponses),
+    recordHistory: bool(r.recordHistory, d.recordHistory),
+  };
+}
 
 function restoreDraft(d: Partial<DocDraft> | null | undefined): DocDraft | null {
   if (!d) return null;
@@ -505,6 +585,17 @@ function restoreDraft(d: Partial<DocDraft> | null | undefined): DocDraft | null 
 /** Restores a persisted doc tab; anything unrecognised becomes a request tab. */
 function restoreDoc(d: Partial<DocState> | null | undefined): DocState | null {
   if (!d || !d.kind || !DOC_KINDS.includes(d.kind)) return null;
+  if (d.kind === "runner") {
+    return {
+      kind: "runner",
+      targetId: d.targetId ?? "",
+      name: d.name ?? "",
+      draft: null,
+      saved: null,
+      missing: false,
+      runner: restoreRunner(d.runner),
+    };
+  }
   const draft = restoreDraft(d.draft);
   const saved = restoreDraft(d.saved);
   return {

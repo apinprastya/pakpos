@@ -271,41 +271,7 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 
 // record stores the request as written (never the resolved copy).
 func (s *RequestService) record(wsID, envName string, req model.Request, resp *model.Response, sendErr *httpexec.Error, started time.Time) int64 {
-	method := strings.ToUpper(strings.TrimSpace(req.Method))
-	if method == "" {
-		method = "GET"
-	}
-	e := sqlite.HistoryEntry{
-		HistorySummary: sqlite.HistorySummary{
-			CreatedAt:       started,
-			RequestID:       req.ID,
-			RequestName:     req.Name,
-			Method:          method,
-			URL:             req.URL,
-			EnvironmentName: envName,
-		},
-		Request:  req,
-		Response: resp,
-	}
-	e.WorkspaceID = wsID
-	if resp != nil {
-		e.Status, e.DurationMs, e.Size = resp.StatusCode, resp.Timings.Total, resp.Size
-	}
-	if sendErr != nil {
-		e.ErrorKind, e.ErrorMessage = string(sendErr.Kind), sendErr.Message
-	}
-	id, err := s.c.db.AddHistory(e)
-	if err != nil {
-		s.c.log.Warn("record history", "err", err)
-		return 0
-	}
-	if keep := s.c.currentSettings().HistoryRetention; keep > 0 {
-		// Retention is per workspace: only this send's group is trimmed.
-		if _, err := s.c.db.PruneWorkspaceHistory(wsID, keep); err != nil {
-			s.c.log.Warn("prune history", "err", err)
-		}
-	}
-	return id
+	return s.c.recordHistory(wsID, envName, req, resp, sendErr, started)
 }
 
 // Cancel stops a running send. It reports whether one was found.

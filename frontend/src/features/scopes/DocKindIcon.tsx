@@ -1,8 +1,8 @@
-import { Folder, FolderTree, Globe, Layers } from "lucide-react";
+import { Folder, FolderTree, Globe, Layers, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DocKind } from "@/stores/tabs";
 
-/** The icon of an environment, globals, collection or folder settings tab. */
+/** The icon of an environment, globals, collection or folder settings, or runner tab. */
 export function DocKindIcon({ kind, className }: { kind: DocKind; className?: string }) {
   const props = { "aria-hidden": true, className: cn("shrink-0 text-muted-foreground", className) };
   switch (kind) {
@@ -14,5 +14,7 @@ export function DocKindIcon({ kind, className }: { kind: DocKind; className?: st
       return <FolderTree {...props} />;
     case "folder":
       return <Folder {...props} />;
+    case "runner":
+      return <Play {...props} />;
   }
 }

@@ -392,3 +392,60 @@ func TestVarErrorUnwraps(t *testing.T) {
 		t.Errorf("e = %v", e)
 	}
 }
+
+func TestLocalCarriesAcrossSends(t *testing.T) {
+	f := newFixture(t)
+	f.withScripts(model.Scripts{}, model.Scripts{}, model.Scripts{PreRequest: `
+pm.variables.set("step", String(Number(pm.variables.get("step") || "0") + 1));
+pm.variables.unset("drop");
+console.log(pm.iterationData.get("user"));
+`})
+	opts := ScriptOptions{IterationData: map[string]string{"user": "ana", "drop": "x"}}
+	sd := f.sess.NewSend(f.req, "", "", opts)
+	if pre := sd.PreRequest(context.Background()); pre.Err != nil {
+		t.Fatal(pre.Err)
+	}
+	local := sd.Local()
+	if !reflect.DeepEqual(local, map[string]string{"user": "ana", "step": "1"}) {
+		t.Fatalf("local = %v", local)
+	}
+	opts.Local = local
+	sd = f.sess.NewSend(f.req, "", "", opts)
+	pre := sd.PreRequest(context.Background())
+	if got := sd.Local(); got["step"] != "2" || got["drop"] != "" {
+		t.Errorf("second local = %v", got)
+	}
+	// pm.iterationData stays the data row.
+	if len(pre.Console) != 1 || pre.Console[0].Text != "ana" {
+		t.Errorf("console = %+v", pre.Console)
+	}
+}
+
+func TestIsolatedSession(t *testing.T) {
+	f := newFixture(t)
+	ov := NewOverlay()
+	ov.put(f.dev.ID, "seen", overlayEntry{value: "before"})
+	f.sess.WithOverlay(ov)
+	iso := f.sess.Isolated()
+	f.withScripts(model.Scripts{}, model.Scripts{}, model.Scripts{PreRequest: `
+console.log(pm.environment.get("seen"));
+pm.environment.set("host", "isolated.example");
+`})
+	sd := iso.NewSend(f.req, "", f.dev.ID, ScriptOptions{})
+	pre := sd.PreRequest(context.Background())
+	if pre.Err != nil || pre.Console[0].Text != "before" {
+		t.Fatalf("pre = %+v", pre)
+	}
+	if p := must(sd.Prepare()); !strings.HasPrefix(p.Request.URL, "https://isolated.example") {
+		t.Errorf("isolated url = %q", p.Request.URL)
+	}
+	if _, ok := ov.scope(f.dev.ID)["host"]; ok {
+		t.Error("isolated write reached the shared overlay")
+	}
+	if iso.Workspace() != f.ws {
+		t.Error("workspace not kept")
+	}
+	if c := (*Overlay)(nil).Clone(); c == nil || len(c.entries) != 0 {
+		t.Errorf("nil clone = %+v", c)
+	}
+}

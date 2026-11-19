@@ -21,7 +21,7 @@ interface Source {
 /** Where a settings tab sees variables from. Request tabs use their preview instead. */
 function sourceOf(tab: Tab): Source | null {
   const doc = tab.doc;
-  if (!doc) return null;
+  if (!doc || doc.kind === "runner") return null;
   switch (doc.kind) {
     case "environment":
       return {

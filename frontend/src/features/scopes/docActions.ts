@@ -91,13 +91,15 @@ async function readDoc(doc: DocState): Promise<{ draft: DocDraft; name: string }
       const f = await api.getFolder(doc.targetId);
       return { draft: folderDraft(f), name: f.name };
     }
+    case "runner":
+      throw new Error("A runner tab has nothing to load");
   }
 }
 
 /** Loads a doc tab that has no draft yet. Rejects with Go's error so the editor can show it. */
 export async function loadDocTab(tabId: string): Promise<void> {
   const tab = findTab(tabId);
-  if (!tab?.doc) return;
+  if (!tab?.doc || tab.doc.kind === "runner") return;
   const { draft, name } = await readDoc(tab.doc);
   useTabsStore.getState().markDocSaved(tabId, draft, name);
 }
@@ -106,7 +108,7 @@ export async function loadDocTab(tabId: string): Promise<void> {
 export async function saveDocTab(tabId: string, closeAfter = false): Promise<boolean> {
   const tab = findTab(tabId);
   const doc = tab?.doc;
-  if (!tab || !doc?.draft) return false;
+  if (!tab || !doc?.draft || doc.kind === "runner") return false;
   if (doc.missing) {
     toast.error(`Couldn't save ${tabTitle(tab)}`, {
       description: "It was deleted outside the app. Copy your changes elsewhere, then close the tab.",
@@ -224,13 +226,14 @@ export function syncEnvironmentTabs(): void {
   }
 }
 
-/** Keeps collection and folder settings tabs in step with the tree: names and deletions. */
+/** Keeps collection and folder settings and runner tabs in step with the tree: names and deletions. */
 export function syncContainerTabs(): void {
   const ws = useWorkspaceStore.getState();
   if (ws.status !== "ready" || !ws.treeLoaded) return;
-  for (const tab of docTabs(["collection", "folder"])) {
+  for (const tab of docTabs(["collection", "folder", "runner"])) {
     const node = findNode(ws.collections, tab.doc!.targetId);
-    if (!node || node.kind !== tab.doc!.kind) {
+    const kind = tab.doc!.runner?.targetKind ?? tab.doc!.kind;
+    if (!node || node.kind !== kind) {
       targetGone(tab);
       continue;
     }

@@ -1,4 +1,12 @@
 import { emptyAuth, emptyRequest } from "@/lib/model";
+import {
+  emptyRunSummary,
+  type DataPreview,
+  type RunListItem,
+  type RunReport,
+  type RunResult,
+  type RunSummary,
+} from "@/lib/runModel";
 import type {
   UpdateInfo,
   CodeResult,
@@ -267,4 +275,85 @@ export function makeConsoleEntry(text: string, patch: Partial<ConsoleEntry> = {}
 export function makeOverlayValue(key: string, value = "", patch: Partial<OverlayValue> = {}): OverlayValue {
   const v: OverlayValue = { key, value, state: "set", secret: false, ...patch };
   return v.secret ? { ...v, value: "" } : v;
+}
+
+/** A sent request of a run: 200 OK, no tests or console. */
+export function makeRunResult(name: string, patch: Partial<RunResult> = {}): RunResult {
+  return {
+    iteration: 0,
+    index: 0,
+    requestId: `r-${name}`,
+    name,
+    method: "GET",
+    startedAt: "2026-11-19T09:30:00Z",
+    status: 200,
+    statusText: "OK",
+    durationMs: 12,
+    size: 128,
+    tests: [],
+    console: [],
+    error: null,
+    skipped: false,
+    secretsLocked: false,
+    response: null,
+    ...patch,
+  };
+}
+
+/** An all-zero summary; patch the counts the test needs. */
+export function makeRunSummary(patch: Partial<RunSummary> = {}): RunSummary {
+  return { ...emptyRunSummary(), ...patch };
+}
+
+/** A finished run of collection `c1` ("API") with no results. */
+export function makeRunReport(patch: Partial<RunReport> = {}): RunReport {
+  return {
+    id: "run-1",
+    workspaceId: "ws1",
+    target: { id: "c1", kind: "collection", name: "API", path: ["API"] },
+    environmentId: "",
+    environmentName: "",
+    iterations: 1,
+    delayMs: 0,
+    dataFile: "",
+    options: { stopOnFailure: false, keepVariables: true, saveResponses: false, recordHistory: false },
+    requests: [],
+    startedAt: "2026-11-19T09:30:00Z",
+    finishedAt: "2026-11-19T09:30:01Z",
+    outcome: "passed",
+    error: "",
+    results: [],
+    summary: makeRunSummary(),
+    ...patch,
+  };
+}
+
+/** A stored run of collection `c1` in the past runs list. */
+export function makeRunListItem(id: string, patch: Partial<RunListItem> = {}): RunListItem {
+  return {
+    id,
+    createdAt: "2026-11-19T09:30:00Z",
+    target: { id: "c1", kind: "collection", name: "API", path: [] },
+    environmentName: "Dev",
+    iterations: 1,
+    dataFile: "",
+    outcome: "passed",
+    durationMs: 1000,
+    totals: { requests: 2, errors: 0, skipped: 0, testsPassed: 2, testsFailed: 0 },
+    ...patch,
+  };
+}
+
+/** A data file preview with `user` and `pass` columns. */
+export function makeDataPreview(patch: Partial<DataPreview> = {}): DataPreview {
+  return {
+    name: "users.csv",
+    rows: 2,
+    columns: ["user", "pass"],
+    sample: [
+      ["ana", "a1"],
+      ["bo", "b2"],
+    ],
+    ...patch,
+  };
 }

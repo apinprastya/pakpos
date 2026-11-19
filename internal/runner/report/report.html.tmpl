@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="{{.Generator}}">
+<title>Run report: {{.Run.Target.Name}}</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1c1c1f; --muted: #6b6b73; --line: #e4e4e8; --panel: #f6f6f8;
+  --ok: #1a7f37; --redirect: #8250df; --client: #b35900; --server: #cf222e;
+  --get: #1a7f37; --post: #b35900; --put: #0969da; --patch: #8250df; --delete: #cf222e; --other: #6b6b73;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b; --fg: #e8e8ec; --muted: #9a9aa3; --line: #2e2e33; --panel: #212125;
+    --ok: #4ac26b; --redirect: #b392f0; --client: #e3a14a; --server: #ff7b72;
+    --get: #4ac26b; --post: #e3a14a; --put: #58a6ff; --patch: #b392f0; --delete: #ff7b72; --other: #9a9aa3;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 32px 0 8px; }
+h3 { font-size: 13px; margin: 20px 0 6px; color: var(--muted); font-weight: 600; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.mono, code, pre { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 16px 0; }
+.stat { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--panel); }
+.stat b { display: block; font-size: 18px; }
+.stat span { color: var(--muted); font-size: 12px; }
+.table { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+details > summary { cursor: pointer; color: var(--muted); }
+pre { white-space: pre-wrap; word-break: break-word; margin: 4px 0; padding: 6px 8px; background: var(--panel); border-radius: 4px; }
+ul.plain { list-style: none; margin: 4px 0; padding: 0; }
+.muted { color: var(--muted); }
+.s-ok { color: var(--ok); } .s-redirect { color: var(--redirect); } .s-client { color: var(--client); } .s-server { color: var(--server); }
+.m-get { color: var(--get); } .m-post { color: var(--post); } .m-put { color: var(--put); }
+.m-patch { color: var(--patch); } .m-delete { color: var(--delete); } .m-other { color: var(--other); }
+.pass { color: var(--ok); } .fail { color: var(--server); }
+.outcome-passed { color: var(--ok); } .outcome-failed, .outcome-error, .outcome-stopped { color: var(--server); }
+.outcome-canceled { color: var(--client); }
+</style>
+</head>
+<body>
+<main>
+{{- $run := .Run}}
+<h1>{{$run.Target.Name}}</h1>
+<p class="sub">{{join $run.Target.Path " / "}} · {{if $run.EnvironmentName}}Environment {{$run.EnvironmentName}}{{else}}No environment{{end}} · {{$run.Iterations}} iteration{{if ne $run.Iterations 1}}s{{end}}{{if $run.DataFile}} · Data file {{$run.DataFile}}{{end}}{{if $run.DelayMs}} · Delay {{$run.DelayMs}} ms{{end}}<br>
+Started {{when $run.StartedAt}} · <strong class="outcome-{{$run.Outcome}}">{{outcome $run.Outcome}}</strong>{{if $run.Error}}: {{$run.Error}}{{end}}</p>
+
+{{- with $run.Summary}}
+<div class="stats">
+  <div class="stat"><b>{{.Requests}}</b><span>Requests</span></div>
+  <div class="stat"><b class="pass">{{.TestsPassed}}</b><span>Tests passed</span></div>
+  <div class="stat"><b{{if .TestsFailed}} class="fail"{{end}}>{{.TestsFailed}}</b><span>Tests failed</span></div>
+  <div class="stat"><b{{if .Errors}} class="fail"{{end}}>{{.Errors}}</b><span>Errors</span></div>
+  <div class="stat"><b>{{.Skipped}}</b><span>Skipped</span></div>
+  <div class="stat"><b>{{ms .DurationMs}}</b><span>Duration</span></div>
+  <div class="stat"><b>{{ms .AvgResponseMs}}</b><span>Average response time</span></div>
+</div>
+{{- if .SecretsLocked}}
+<p class="muted">The secret store was locked during the run, so some secret variables had no value.</p>
+{{- end}}
+
+{{- if .FailuresTotal}}
+<h2>Failures ({{.FailuresTotal}})</h2>
+<div class="table"><table>
+<thead><tr><th>Iteration</th><th>Request</th><th>Test</th><th>Message</th></tr></thead>
+<tbody>
+{{- range .Failures}}
+<tr><td>{{inc .Iteration}}</td><td>{{.Name}}</td><td>{{if .Test}}{{.Test}}{{else}}<span class="muted">Request error</span>{{end}}</td><td class="mono">{{.Message}}</td></tr>
+{{- end}}
+</tbody></table></div>
+{{- if gt .FailuresTotal (len .Failures)}}
+<p class="muted">Showing the first {{len .Failures}} failures.</p>
+{{- end}}
+{{- end}}
+
+<h2>Requests</h2>
+<div class="table"><table>
+<thead><tr><th>Request</th><th class="num">Runs</th><th class="num">Errors</th><th class="num">Skipped</th><th class="num">Tests passed</th><th class="num">Tests failed</th><th class="num">Avg</th><th class="num">Min</th><th class="num">Max</th></tr></thead>
+<tbody>
+{{- range .PerRequest}}
+<tr><td><span class="mono {{methodCls .Method}}">{{.Method}}</span> {{.Name}}</td><td class="num">{{.Runs}}</td><td class="num">{{.Errors}}</td><td class="num">{{.Skipped}}</td><td class="num">{{.TestsPassed}}</td><td class="num">{{.TestsFailed}}</td><td class="num">{{ms .AvgMs}}</td><td class="num">{{ms .MinMs}}</td><td class="num">{{ms .MaxMs}}</td></tr>
+{{- end}}
+</tbody></table></div>
+{{- end}}
+
+<h2>Results</h2>
+{{- range .Iterations}}
+<h3>Iteration {{.Number}}</h3>
+<div class="table"><table>
+<thead><tr><th>Request</th><th>Status</th><th class="num">Time</th><th class="num">Size</th><th class="num">Tests</th><th>Details</th></tr></thead>
+<tbody>
+{{- range .Results}}
+<tr>
+<td><span class="mono {{methodCls .Method}}">{{.Method}}</span> {{.Name}}</td>
+<td class="{{statusCls .}}">{{if .Skipped}}Skipped{{else if .Error}}{{.Error.Message}}{{else}}{{.Status}} {{.StatusText}}{{end}}</td>
+<td class="num">{{if .Status}}{{ms .DurationMs}}{{end}}</td>
+<td class="num">{{if .Status}}{{size .Size}}{{end}}</td>
+<td class="num{{if failed .}} fail{{end}}">{{tests .}}</td>
+<td>
+{{- if .Tests}}
+<details><summary>Tests</summary><ul class="plain">
+{{- range .Tests}}
+<li>{{if .Skipped}}<span class="muted">Skipped</span>{{else if .Passed}}<span class="pass">Passed</span>{{else}}<span class="fail">Failed</span>{{end}} {{.Name}}{{if .Error}}<br><span class="mono">{{.Error}}</span>{{end}}</li>
+{{- end}}
+</ul></details>
+{{- end}}
+{{- if .Console}}
+<details><summary>Console ({{len .Console}})</summary><pre>
+{{- range .Console}}{{.Level}}  {{.Text}}
+{{end}}</pre></details>
+{{- end}}
+{{- with .Response}}
+<details><summary>Response body</summary>
+{{- if .Omitted}}<p class="muted">{{if eq .Omitted "binary"}}Binary body not saved.{{else}}Not saved: the run's saved bodies reached their limit.{{end}}</p>
+{{- else}}<pre>{{.Body}}</pre>{{if .Truncated}}<p class="muted">Cut at 1 MB.</p>{{end}}
+{{- end}}
+</details>
+{{- end}}
+</td>
+</tr>
+{{- end}}
+</tbody></table></div>
+{{- else}}
+<p class="muted">No requests ran.</p>
+{{- end}}
+
+<p class="muted">Generated by {{.Generator}}. Secret values are masked as [secret:name].</p>
+</main>
+</body>
+</html>

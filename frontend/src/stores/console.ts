@@ -21,6 +21,15 @@ export interface ConsoleGroup {
   /** The send has finished: its lines are final, late events are ignored. */
   done: boolean;
   lines: ConsoleLine[];
+  /** Where the send came from when not a tab, e.g. "Run API · Iteration 2". */
+  context?: string;
+}
+
+/** A finished send of a collection run, added in one go. */
+export interface RunSendMeta extends SendMeta {
+  context: string;
+  status: string;
+  startedAt: number;
 }
 
 export interface SendMeta {
@@ -45,6 +54,8 @@ interface ConsoleState {
   begin: (sendId: string, meta: SendMeta) => void;
   append: (sendId: string, entries: ConsoleEntry[]) => void;
   finish: (sendId: string, result: SendResult) => void;
+  /** Adds a finished runner send's lines under their own header (nothing when there are none). */
+  addRunSend: (sendId: string, meta: RunSendMeta, entries: ConsoleEntry[]) => void;
   clear: () => void;
 }
 
@@ -136,6 +147,26 @@ export const useConsoleStore = create<ConsoleState>()((set, get) => ({
         ),
       ),
       unread: s.open ? 0 : s.unread + added,
+    }));
+  },
+
+  addRunSend: (sendId, meta, entries) => {
+    if (entries.length === 0) return;
+    set((s) => ({
+      groups: capped([
+        ...s.groups.filter((g) => g.sendId !== sendId),
+        {
+          sendId,
+          startedAt: meta.startedAt,
+          method: meta.method,
+          name: meta.name,
+          status: meta.status,
+          done: true,
+          lines: withIds(entries),
+          context: meta.context,
+        },
+      ]),
+      unread: s.open ? 0 : s.unread + entries.length,
     }));
   },
 

@@ -134,9 +134,13 @@ export function ConsoleDrawer() {
 
 function Group({ group }: { group: ConsoleGroup }) {
   return (
-    <div role="group" aria-label={`${group.method} ${group.name}`}>
+    <div
+      role="group"
+      aria-label={`${group.method} ${group.name}${group.context ? ` (${group.context})` : ""}`}
+    >
       <div className="flex items-center gap-2 px-3 pt-1.5 pb-0.5 text-[11px] text-muted-foreground">
         <span className="tabular-nums">{time(group.startedAt)}</span>
+        {group.context && <span className="shrink-0">{group.context}</span>}
         <span className={cn("font-mono font-semibold", methodTextClass(group.method))}>{group.method}</span>
         <span className="truncate text-foreground">{group.name}</span>
         <span>{group.status || "Sending…"}</span>

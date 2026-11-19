@@ -288,6 +288,15 @@ describe("sidebar: collections tree", () => {
     expect(moveRequest).toHaveBeenCalledWith("r2", "c1", 0);
   });
 
+  it("opens the runner of a collection from its menu", async () => {
+    const user = userEvent.setup();
+    ready();
+    renderSidebar();
+    fireEvent.contextMenu(within(item("Users")).getByText("Users"));
+    await user.click(await screen.findByRole("menuitem", { name: "Run collection…" }));
+    expect(activeTab().doc).toMatchObject({ kind: "runner", targetId: "c1", name: "Users" });
+  });
+
   it("offers actions in the right-click and More menus", async () => {
     const user = userEvent.setup();
     ready();

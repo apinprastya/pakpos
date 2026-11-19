@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 
 /** A second step of the palette, reached from an action. */
-export type PalettePage = "environment" | "move";
+export type PalettePage = "environment" | "move" | "run-collection" | "run-folder" | "run-history";
 
 /** The command palette's state, and the confirm one of its actions asked for. */
 interface PaletteState {

@@ -7,10 +7,14 @@ import { copyAsCurl } from "@/features/code/actions";
 import { saveTab } from "@/features/request/actions";
 import { openContainerScripts, openRequestScripts } from "@/features/scripts/open";
 import { resetAllScriptValues } from "@/features/scripts/overlay";
+import { openRunnerFor } from "@/features/runner/open";
+import { usePaletteStore } from "@/stores/palette";
+import { useRunnerStore } from "@/stores/runner";
 import { useConsoleStore } from "@/stores/console";
 import type { DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 import type { SecretsStatus, WorkspaceInfo } from "@/lib/model";
 import { modKeyLabel } from "@/lib/platform";
+import { destinations } from "@/lib/tree";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { useCookiesStore } from "@/stores/cookies";
 import { useEnvironmentsStore } from "@/stores/environments";
@@ -67,6 +71,29 @@ function openScripts(tab: Tab, event: "prerequest" | "test") {
     openRequestScripts(tab.id, event);
   }
 }
+
+/**
+ * Runs a collection or folder: the active tab's own target (its settings or
+ * runner tab), the only one there is, or a second step to choose one.
+ */
+function runTarget(ctx: ActionContext, kind: "collection" | "folder") {
+  const doc = ctx.tab.doc;
+  const own =
+    doc && (doc.kind === kind || (doc.kind === "runner" && doc.runner?.targetKind === kind))
+      ? doc.targetId
+      : "";
+  const all = destinations(useWorkspaceStore.getState().collections).filter((d) => d.kind === kind);
+  const id = own || (all.length === 1 ? all[0].id : "");
+  if (id) {
+    usePaletteStore.getState().close();
+    openRunnerFor(id);
+    return;
+  }
+  ctx.goTo(kind === "collection" ? "run-collection" : "run-folder");
+}
+
+const hasContainer = (kind: "collection" | "folder") => (ctx: ActionContext) =>
+  !!ctx.workspace && destinations(useWorkspaceStore.getState().collections).some((d) => d.kind === kind);
 
 const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Appearance" },
@@ -168,6 +195,36 @@ export const ACTIONS: PaletteAction[] = [
     group: "Scripts",
     enabled: () => useConsoleStore.getState().groups.length > 0,
     run: () => useConsoleStore.getState().clear(),
+  },
+  {
+    id: "run-collection",
+    label: "Run collection…",
+    keywords: ["runner", "test", "iterations", "data"],
+    group: "Runner",
+    enabled: hasContainer("collection"),
+    opensPage: true,
+    run: (ctx) => runTarget(ctx, "collection"),
+  },
+  {
+    id: "run-folder",
+    label: "Run folder…",
+    keywords: ["runner", "test", "iterations", "data"],
+    group: "Runner",
+    enabled: hasContainer("folder"),
+    opensPage: true,
+    run: (ctx) => runTarget(ctx, "folder"),
+  },
+  {
+    id: "open-run-history",
+    label: "Open run history",
+    keywords: ["runner", "past runs", "results", "report"],
+    group: "Runner",
+    enabled: (ctx) => !!ctx.workspace,
+    opensPage: true,
+    run: (ctx) => {
+      void useRunnerStore.getState().loadPast();
+      ctx.goTo("run-history");
+    },
   },
   {
     id: "reset-script-values",

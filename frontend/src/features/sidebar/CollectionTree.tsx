@@ -25,6 +25,7 @@ import {
   FolderPlus,
   MoreHorizontal,
   Pencil,
+  Play,
   Trash2,
   Settings2,
   Terminal,
@@ -40,6 +41,7 @@ import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTreeStore } from "@/stores/tree";
 import { openContainerSettings } from "@/features/scopes/docActions";
+import { openRunnerFor } from "@/features/runner/open";
 import { copySavedAsCurl } from "@/features/code/actions";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import type { DeleteTarget } from "./ConfirmDeleteDialog";
@@ -206,6 +208,11 @@ export function CollectionTree({
     ...(c.kind === "folder"
       ? [{ label: "Move to", icon: FolderInput, empty: "No collections", submenu: moveMenu(c) }]
       : []),
+    {
+      label: c.kind === "folder" ? "Run folder…" : "Run collection…",
+      icon: Play,
+      onSelect: () => void openRunnerFor(c.id),
+    },
     { label: "Settings", icon: Settings2, onSelect: () => openContainerSettings(c.id) },
     "separator",
     { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteNode(c) },
