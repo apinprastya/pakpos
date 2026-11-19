@@ -40,6 +40,10 @@
     },
     "settings": {
       "followRedirects": true
+    },
+    "scripts": {
+      "preRequest": "",
+      "test": ""
     }
   },
   "warnings": []

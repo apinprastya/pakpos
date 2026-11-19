@@ -16,20 +16,23 @@ import (
 
 // Folder is the content of a folder's _folder.yaml. A folder is a
 // subdirectory of a collection or of another folder. Its Auth and Headers
-// are inherited by everything inside it (see core/inherit); folders have no
-// variables.
+// are inherited by everything inside it (see core/inherit) and its Scripts
+// run for every request inside it; folders have no variables.
 type Folder struct {
 	ID      string           `json:"id" yaml:"id"`
 	Name    string           `json:"name" yaml:"name"`
 	Seq     int              `json:"seq" yaml:"seq"`
 	Auth    model.Auth       `json:"auth" yaml:"auth,omitempty"`
 	Headers []model.KeyValue `json:"headers" yaml:"headers,omitempty"`
+	Scripts model.Scripts    `json:"scripts" yaml:"scripts,omitempty"`
 }
 
-// FolderSettings are the parts of a folder its requests inherit.
+// FolderSettings are the parts of a folder its requests inherit. Scripts
+// nil keeps the folder's scripts as they are.
 type FolderSettings struct {
 	Auth    model.Auth       `json:"auth"`
 	Headers []model.KeyValue `json:"headers"`
+	Scripts *model.Scripts   `json:"scripts"`
 }
 
 type folderEntry struct {
@@ -285,6 +288,7 @@ func (w *Workspace) InheritChain(id string) ([]inherit.Level, error) {
 			levels = append(levels, inherit.Level{
 				Kind: inherit.KindCollection, ID: c.meta.ID, Name: c.meta.Name,
 				Auth: c.meta.Auth, Headers: append([]model.KeyValue{}, c.meta.Headers...),
+				Scripts: c.meta.Scripts,
 			})
 			continue
 		}
@@ -292,6 +296,7 @@ func (w *Workspace) InheritChain(id string) ([]inherit.Level, error) {
 		levels = append(levels, inherit.Level{
 			Kind: inherit.KindFolder, ID: f.ID, Name: f.Name,
 			Auth: f.Auth, Headers: append([]model.KeyValue{}, f.Headers...),
+			Scripts: f.Scripts,
 		})
 	}
 	return levels, nil
@@ -388,7 +393,8 @@ func (w *Workspace) RenameFolder(id, name string) (Folder, error) {
 	return copyFolder(meta), nil
 }
 
-// SaveFolder replaces a folder's auth and headers.
+// SaveFolder replaces a folder's auth and headers, and its scripts when
+// s.Scripts is set. Non-empty scripts are v3 data.
 func (w *Workspace) SaveFolder(id string, s FolderSettings) (Folder, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -400,13 +406,20 @@ func (w *Workspace) SaveFolder(id string, s FolderSettings) (Folder, error) {
 	if err != nil {
 		return Folder{}, err
 	}
-	// A hand-made folder in a v1 workspace: its settings are v2 data.
-	if err := w.upgradeManifestLocked(VersionV2); err != nil {
-		return Folder{}, err
-	}
 	meta := f.meta
 	meta.Auth = s.Auth
 	meta.Headers = append([]model.KeyValue(nil), s.Headers...)
+	if s.Scripts != nil {
+		meta.Scripts = *s.Scripts
+	}
+	// A hand-made folder in a v1 workspace: its settings are v2 data.
+	to := VersionV2
+	if !meta.Scripts.IsZero() {
+		to = FormatVersion
+	}
+	if err := w.upgradeManifestLocked(to); err != nil {
+		return Folder{}, err
+	}
 	if err := w.writeYAML(filepath.Join(dir, FolderFile), meta); err != nil {
 		return Folder{}, fmt.Errorf("save folder %q: %w", meta.Name, err)
 	}

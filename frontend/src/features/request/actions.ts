@@ -39,6 +39,9 @@ export async function sendTab(tabId: string): Promise<void> {
       secretsLocked: false,
       environment: null,
       hops: [],
+      tests: [],
+      console: [],
+      skipped: false,
     };
   }
   // Ignore results for tabs that were closed or re-sent meanwhile.

@@ -35,6 +35,10 @@ const (
 	MaxRedirectsCap  = httpexec.MaxRedirectsCap
 	MaxHistoryRetain = 100_000
 	MaxClientCerts   = 100
+	// Script timeouts (pre-request and test scripts, per script run).
+	DefaultScriptTimeoutMs = 5_000
+	MinScriptTimeoutMs     = 1_000
+	MaxScriptTimeoutMs     = 60_000
 )
 
 // ProxyMode says how requests reach the network.
@@ -91,6 +95,8 @@ type Settings struct {
 	CAFile string `json:"caFile"`
 	// ClientCerts are tried in order; the first whose host matches is sent.
 	ClientCerts []ClientCert `json:"clientCerts"`
+	// ScriptTimeoutMs stops a pre-request or test script that runs longer.
+	ScriptTimeoutMs int `json:"scriptTimeoutMs"`
 }
 
 // Defaults returns the settings of a fresh install.
@@ -105,14 +111,24 @@ func Defaults() Settings {
 		Layout:           LayoutVertical,
 		CheckForUpdates:  true,
 		// Go's default before network settings existed.
-		Proxy:       Proxy{Mode: ProxySystem},
-		ClientCerts: []ClientCert{},
+		Proxy:           Proxy{Mode: ProxySystem},
+		ClientCerts:     []ClientCert{},
+		ScriptTimeoutMs: DefaultScriptTimeoutMs,
 	}
 }
 
+// ScriptTimeout is how long one script may run.
+func (s Settings) ScriptTimeout() time.Duration {
+	return time.Duration(s.ScriptTimeoutMs) * time.Millisecond
+}
+
 // Normalize trims paths and patterns and gives new client certificates an
-// ID, so Validate and the secret keys can rely on them.
+// ID, so Validate and the secret keys can rely on them. A missing script
+// timeout (settings saved before it existed) gets the default.
 func (s Settings) Normalize() Settings {
+	if s.ScriptTimeoutMs == 0 {
+		s.ScriptTimeoutMs = DefaultScriptTimeoutMs
+	}
 	s.Proxy.URL = strings.TrimSpace(s.Proxy.URL)
 	s.Proxy.Username = strings.TrimSpace(s.Proxy.Username)
 	s.CAFile = strings.TrimSpace(s.CAFile)
@@ -149,6 +165,9 @@ func (s Settings) Validate() error {
 	}
 	if s.HistoryRetention < 0 || s.HistoryRetention > MaxHistoryRetain {
 		return fmt.Errorf("history retention must be between 0 and %d", MaxHistoryRetain)
+	}
+	if s.ScriptTimeoutMs < MinScriptTimeoutMs || s.ScriptTimeoutMs > MaxScriptTimeoutMs {
+		return fmt.Errorf("script timeout must be between %d and %d seconds", MinScriptTimeoutMs/1000, MaxScriptTimeoutMs/1000)
 	}
 	return s.validateNetwork()
 }

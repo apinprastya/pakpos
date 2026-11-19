@@ -42,11 +42,18 @@ beforeEach(() => {
   vi.mocked(api.getCollection).mockResolvedValue({
     id: "c1",
     name: "Users",
+    scripts: { preRequest: "", test: "" },
     auth: bearer,
     headers: [{ key: "X", value: "1", enabled: true }],
     variables: [makeVar("k", "", { secret: true })],
   });
-  vi.mocked(api.getFolder).mockResolvedValue({ id: "f1", name: "Admin", auth: emptyAuth(), headers: [] });
+  vi.mocked(api.getFolder).mockResolvedValue({
+    id: "f1",
+    name: "Admin",
+    auth: emptyAuth(),
+    headers: [],
+    scripts: { preRequest: "", test: "" },
+  });
 });
 
 describe("doc scopes", () => {
@@ -201,6 +208,7 @@ describe("keeping doc tabs in step", () => {
     vi.mocked(api.getCollection).mockResolvedValueOnce({
       id: "c1",
       name: "Users",
+      scripts: { preRequest: "", test: "" },
       auth: emptyAuth(),
       headers: [],
       variables: [],
@@ -268,6 +276,7 @@ describe("renamed secrets", () => {
     vi.mocked(api.getCollection).mockResolvedValue({
       id: "c1",
       name: "Users",
+      scripts: { preRequest: "", test: "" },
       auth: emptyAuth(),
       headers: [],
       variables: [secret("k")],

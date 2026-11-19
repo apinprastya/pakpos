@@ -14,14 +14,16 @@ import (
 
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/model"
+	"pakpos/internal/core/script"
 	"pakpos/internal/pipeline"
 	"pakpos/internal/secrets"
 	"pakpos/internal/store/sqlite"
 )
 
-// SendResult is what the UI gets back from Send. Exactly one of Response and
-// Error is set. HistoryID is 0 when the send was not recorded (cancelled, or
-// recording failed).
+// SendResult is what the UI gets back from Send. At most one of Response
+// and Error is set; neither is when a pre-request script skipped the
+// request (Skipped). HistoryID is 0 when the send was not recorded
+// (cancelled, skipped, or recording failed).
 type SendResult struct {
 	Response  *model.Response `json:"response"`
 	Error     *httpexec.Error `json:"error"`
@@ -30,14 +32,24 @@ type SendResult struct {
 	// written. Never nil.
 	Unresolved []string `json:"unresolved"`
 	// SecretsLocked is true when the request uses secret variables that
-	// couldn't be read because the secret store is locked.
+	// couldn't be read, or a script couldn't write one, because the secret
+	// store is locked.
 	SecretsLocked bool `json:"secretsLocked"`
 	// Environment is the environment the request was sent with, or nil.
 	Environment *pipeline.EnvRef `json:"environment"`
 	// Hops is what went over the wire (the request, then each redirect
-	// followed), with secret values masked as {{name}}. Empty when nothing
-	// was sent. Never stored in history. Never nil.
+	// followed), with secret values masked as [secret:name]. Empty when
+	// nothing was sent. Never stored in history. Never nil.
 	Hops []model.Hop `json:"hops"`
+	// Tests are the pm.test results of the pre-request and test scripts,
+	// collection first; a test script error is a failed "Script error"
+	// test. Masked; never stored. Never nil.
+	Tests []script.TestResult `json:"tests"`
+	// Console is the scripts' console output, masked; never stored. Never nil.
+	Console []script.ConsoleEntry `json:"console"`
+	// Skipped is true when a pre-request script called
+	// pm.execution.skipRequest: nothing was sent.
+	Skipped bool `json:"skipped"`
 }
 
 // RequestService saves requests in the workspace and sends them.
@@ -144,12 +156,17 @@ func (s *RequestService) Reorder(parentID string, ids []string) error {
 // Cancel and must be unique among running sends. parentID is the collection
 // or folder an unsaved draft belongs to ("" for none); a saved request
 // inherits from its parent on disk. Send failures (DNS, timeout, a variable
-// cycle…) are returned in SendResult.Error, not as a Go error.
+// cycle, a pre-request script error…) are returned in SendResult.Error, not
+// as a Go error.
 //
-// The pipeline: inherit auth and headers, build the variable scopes (globals,
-// collection, selected environment, local) with secrets, resolve, send.
-// History stores req as written (variables unresolved) with the environment
-// name, so secret values never reach the database.
+// The pipeline (pipeline.Send): inherit auth and headers, build the
+// variable scopes (globals, collection, selected environment, local) with
+// the script overlay and secrets, run the pre-request scripts (collection,
+// folders, request), resolve, send, then run the test scripts in the same
+// order. Script console output is also emitted as EventScriptConsole while
+// the send runs. History stores req as written (variables unresolved, no
+// script changes) with the environment name, so secret values never reach
+// the database.
 func (s *RequestService) Send(ctx context.Context, sendID string, req model.Request, parentID string) (SendResult, error) {
 	if strings.TrimSpace(sendID) == "" {
 		return SendResult{}, errors.New("send id is required")
@@ -163,29 +180,54 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 
 	// Record against the workspace open when the send started, even if the
 	// user switches workspace while it runs.
-	wsID, envID := "", ""
+	wsID := ""
 	started := s.now()
-	var prepared pipeline.Prepared
-	var perr error
-	var sess *pipeline.Session
+	opts := pipeline.ScriptOptions{
+		Timeout: s.c.currentSettings().ScriptTimeout(),
+		OnConsole: func(entries []script.ConsoleEntry) {
+			s.c.events.Emit(EventScriptConsole, ScriptConsoleEvent{SendID: sendID, Entries: entries})
+		},
+	}
+	var sd *pipeline.Send
 	if ws, err := s.c.workspace(); err == nil {
 		wsID = ws.Manifest().ID
-		envID = s.c.selectedEnvironment(wsID)
-		sess = s.c.session(ws)
-		prepared, perr = sess.Prepare(req, parentID, envID)
+		sd = s.c.session(ws).NewSend(req, parentID, s.c.selectedEnvironment(wsID), opts)
 	} else {
-		prepared, perr = pipeline.PrepareWithoutWorkspace(req)
+		sd = pipeline.NewSendWithoutWorkspace(req, opts)
 	}
 	result := SendResult{
-		Unresolved: prepared.Unresolved, SecretsLocked: prepared.SecretsLocked,
-		Environment: prepared.Environment, Hops: []model.Hop{},
+		Unresolved: []string{}, Hops: []model.Hop{},
+		Tests: []script.TestResult{}, Console: []script.ConsoleEntry{},
 	}
-	if result.Unresolved == nil {
-		result.Unresolved = []string{}
+	addReport := func(r pipeline.ScriptReport) {
+		result.Tests = append(result.Tests, r.Tests...)
+		result.Console = append(result.Console, r.Console...)
+		result.SecretsLocked = result.SecretsLocked || sd.SecretsLocked()
 	}
+
+	pre := sd.PreRequest(ctx)
+	addReport(pre)
+	prepared, perr := sd.Prepare()
+	result.Environment = prepared.Environment
 	envName := ""
 	if prepared.Environment != nil {
 		envName = prepared.Environment.Name
+	}
+	switch {
+	case pre.Err != nil && pre.Err.Canceled:
+		result.Error = &httpexec.Error{Kind: httpexec.KindCanceled, Message: "The request was cancelled", Err: pre.Err}
+		return result, nil
+	case pre.Err != nil:
+		result.Error = &httpexec.Error{Kind: httpexec.KindScript, Message: pre.Err.Error(), Err: pre.Err}
+		result.HistoryID = s.record(wsID, envName, req, nil, result.Error, started)
+		return result, nil
+	case pre.Skip:
+		result.Skipped = true
+		return result, nil
+	}
+	result.Unresolved, result.SecretsLocked = prepared.Unresolved, result.SecretsLocked || prepared.SecretsLocked
+	if result.Unresolved == nil {
+		result.Unresolved = []string{}
 	}
 	if perr != nil {
 		result.Error = &httpexec.Error{Kind: httpexec.KindVariables, Message: pipeline.VariableMessage(perr), Err: perr}
@@ -197,18 +239,17 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 	resp, err := s.c.executor().Execute(httpexec.WithRecorder(ctx, rec), "", prepared.Request)
 	sendErr := httpexec.Classify(err)
 	result.Response, result.Error = resp, sendErr
-	result.Hops = rec.Hops()
+	// Only the UI sees hops, and never a secret's value.
+	result.Hops = pipeline.MaskHops(rec.Hops(), sd.Secrets())
 	if sendErr != nil && errors.Is(sendErr, secrets.ErrLocked) {
 		// The proxy password or a certificate passphrase is locked away.
 		result.SecretsLocked = true
 	}
-	if sess != nil {
-		// Only the UI sees hops, and never a secret's value.
-		values, _ := sess.SendSecrets(req, parentID, envID)
-		result.Hops = pipeline.MaskHops(result.Hops, values)
-	}
 	if sendErr != nil && sendErr.Kind == httpexec.KindCanceled {
 		return result, nil
+	}
+	if resp != nil {
+		addReport(sd.Test(ctx, resp))
 	}
 
 	result.HistoryID = s.record(wsID, envName, req, resp, sendErr, started)

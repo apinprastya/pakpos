@@ -23,6 +23,7 @@ func init() {
 	// Registering events lets the binding generator emit typed TS for them.
 	application.RegisterEvent[service.WorkspaceChangedEvent](service.EventWorkspaceChanged)
 	application.RegisterEvent[service.UpdateProgress](service.EventUpdateProgress)
+	application.RegisterEvent[service.ScriptConsoleEvent](service.EventScriptConsole)
 }
 
 func main() {

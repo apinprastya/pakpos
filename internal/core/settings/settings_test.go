@@ -23,6 +23,8 @@ func TestValidate(t *testing.T) {
 		"redirects big": func(s *Settings) { s.MaxRedirects = MaxRedirectsCap + 1 },
 		"retention neg": func(s *Settings) { s.HistoryRetention = -1 },
 		"retention big": func(s *Settings) { s.HistoryRetention = MaxHistoryRetain + 1 },
+		"script short":  func(s *Settings) { s.ScriptTimeoutMs = MinScriptTimeoutMs - 1 },
+		"script long":   func(s *Settings) { s.ScriptTimeoutMs = MaxScriptTimeoutMs + 1 },
 	}
 	for name, mod := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -129,5 +131,26 @@ func TestNetworkMapping(t *testing.T) {
 	if got.Proxy.Mode != httpexec.ProxyCustom || got.Proxy.URL != "http://p:1" || len(got.Proxy.Bypass) != 2 ||
 		got.CAFile != "/ca.pem" || got.ClientCerts[0].PFXFile != "p" || got.Secret == nil {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestScriptTimeout(t *testing.T) {
+	s := Defaults()
+	if s.ScriptTimeout() != 5*time.Second {
+		t.Errorf("default = %v", s.ScriptTimeout())
+	}
+	s.ScriptTimeoutMs = 0
+	if got := s.Normalize(); got.ScriptTimeoutMs != DefaultScriptTimeoutMs {
+		t.Errorf("normalized = %d", got.ScriptTimeoutMs)
+	}
+	for _, ms := range []int{MinScriptTimeoutMs, MaxScriptTimeoutMs} {
+		s.ScriptTimeoutMs = ms
+		if err := s.Validate(); err != nil {
+			t.Errorf("%d: %v", ms, err)
+		}
+	}
+	s.ScriptTimeoutMs = 500
+	if err := s.Validate(); err == nil || err.Error() != "script timeout must be between 1 and 60 seconds" {
+		t.Errorf("err = %v", err)
 	}
 }

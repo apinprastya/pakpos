@@ -11,6 +11,7 @@ import (
 
 	"pakpos/internal/core/cookies"
 	"pakpos/internal/core/httpexec"
+	"pakpos/internal/core/script"
 	"pakpos/internal/core/settings"
 	"pakpos/internal/pipeline"
 	"pakpos/internal/secrets"
@@ -36,6 +37,16 @@ type Events interface {
 type AppControl interface {
 	OpenURL(url string) error
 	Quit()
+}
+
+// EventScriptConsole carries a send's script console output while it runs
+// (one event per script run that logged something), masked.
+const EventScriptConsole = "script:console"
+
+// ScriptConsoleEvent is the payload of EventScriptConsole.
+type ScriptConsoleEvent struct {
+	SendID  string                `json:"sendId"`
+	Entries []script.ConsoleEntry `json:"entries"`
 }
 
 // EventWorkspaceChanged fires when workspace files change outside the app.
@@ -96,6 +107,10 @@ type Core struct {
 	// open); persistent ones are stored in SQLite.
 	jar      *cookies.Jar
 	settings settings.Settings
+	// overlay holds the values scripts set in the open workspace; a new
+	// one starts with every workspace opened, so it never outlives it.
+	overlay   *pipeline.Overlay
+	overlayWS string
 
 	sendsMu sync.Mutex
 	sends   map[string]func()
@@ -244,9 +259,20 @@ func (c *Core) workspace() (*fsstore.Workspace, error) {
 }
 
 // session returns the send pipeline for ws. It records the secret keys it
-// writes in the database's secret index.
+// writes in the database's secret index and uses ws's script overlay.
 func (c *Core) session(ws *fsstore.Workspace) *pipeline.Session {
-	return pipeline.New(ws, c.secrets, c.log).WithSecretIndex(c.db)
+	return pipeline.New(ws, c.secrets, c.log).WithSecretIndex(c.db).WithOverlay(c.overlayFor(ws.Manifest().ID))
+}
+
+// overlayFor returns the script overlay of the open workspace when it is
+// workspaceID, else nil (a send that outlived its workspace writes nowhere).
+func (c *Core) overlayFor(workspaceID string) *pipeline.Overlay {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.overlayWS != workspaceID {
+		return nil
+	}
+	return c.overlay
 }
 
 // pruneSecrets deletes stored secret values the open workspace no longer
@@ -308,6 +334,7 @@ func (c *Core) setWorkspace(ws *fsstore.Workspace) {
 		c.log.Warn("watch workspace; external changes won't be picked up", "err", err)
 	}
 	c.watcher = w
+	c.overlay, c.overlayWS = pipeline.NewOverlay(), id
 	c.loadJarLocked(id)
 	c.resetExecutorLocked()
 }
@@ -317,6 +344,7 @@ func (c *Core) closeWorkspaceLocked() {
 		_ = c.watcher.Close()
 		c.watcher = nil
 	}
+	c.overlay, c.overlayWS = nil, ""
 	if c.ws != nil {
 		c.ws = nil
 		c.loadJarLocked("")

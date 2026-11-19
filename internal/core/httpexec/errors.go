@@ -33,6 +33,9 @@ const (
 	// KindVariables means {{variables}} couldn't be resolved (a cycle or
 	// nesting that is too deep). Set by the send pipeline, not by Classify.
 	KindVariables ErrorKind = "variables"
+	// KindScript means a pre-request script failed (an exception, a syntax
+	// error or a timeout), so nothing was sent. Set by the send pipeline.
+	KindScript ErrorKind = "script"
 )
 
 // Error is a classified send failure. Message is written for end users.

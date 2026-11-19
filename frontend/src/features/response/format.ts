@@ -109,6 +109,10 @@ const ERROR_COPY: Record<SendErrorKind, ErrorCopy> = {
     title: "Variables couldn't be resolved",
     hint: "Nothing was sent. Fix the variables named above, then send again.",
   },
+  script: {
+    title: "A pre-request script failed",
+    hint: "Nothing was sent. Fix the script at the line named above, then send again.",
+  },
 };
 
 export function errorCopy(kind: string): ErrorCopy {

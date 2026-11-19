@@ -160,6 +160,7 @@ describe("move to secret variable", () => {
     vi.mocked(api.getCollection).mockResolvedValue({
       id: "c1",
       name: "Users",
+      scripts: { preRequest: "", test: "" },
       auth: emptyAuth(),
       headers: [],
       variables: [makeVar("password", "x")],
@@ -228,6 +229,7 @@ describe("move to secret helpers", () => {
     vi.mocked(api.getCollection).mockResolvedValue({
       id: "c1",
       name: "Users",
+      scripts: { preRequest: "", test: "" },
       auth: emptyAuth(),
       headers: [],
       variables: [],

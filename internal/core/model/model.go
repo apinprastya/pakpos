@@ -86,6 +86,35 @@ type Request struct {
 	// Unset fields use the app setting; the block is omitted from YAML when
 	// nothing is set (a v3-only field: writing it upgrades the manifest).
 	Settings RequestSettings `json:"settings" yaml:"settings,omitempty"`
+	// Scripts run before the request is sent and after its response (a
+	// v3-only field: writing non-empty scripts upgrades the manifest).
+	Scripts Scripts `json:"scripts" yaml:"scripts,omitempty"`
+}
+
+// Scripts are the JavaScript run before a send (PreRequest) and after its
+// response (Test), on a request, a folder or a collection. Empty scripts
+// are omitted from YAML; non-empty ones are written as literal block
+// scalars so diffs stay readable.
+type Scripts struct {
+	PreRequest string `json:"preRequest" yaml:"preRequest,omitempty"`
+	Test       string `json:"test" yaml:"test,omitempty"`
+}
+
+// IsZero reports whether both scripts are empty (yaml omitempty uses it).
+func (s Scripts) IsZero() bool { return s.PreRequest == "" && s.Test == "" }
+
+// MarshalYAML writes each non-empty script as a literal block scalar.
+func (s Scripts) MarshalYAML() (any, error) {
+	node := &yaml.Node{Kind: yaml.MappingNode}
+	for _, f := range []struct{ key, value string }{{"preRequest", s.PreRequest}, {"test", s.Test}} {
+		if f.value == "" {
+			continue
+		}
+		node.Content = append(node.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: f.key},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: f.value, Style: yaml.LiteralStyle})
+	}
+	return node, nil
 }
 
 // RequestSettings are per-request overrides of the app's network settings.

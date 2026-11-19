@@ -29,6 +29,9 @@ export function makeResult(patch: Partial<SendResult> = {}): SendResult {
     secretsLocked: false,
     environment: null,
     hops: [],
+    tests: [],
+    console: [],
+    skipped: false,
     ...patch,
   };
 }
@@ -133,6 +136,7 @@ export function makePreviewVar(
     scopeId: "e1",
     scopeName: "Dev",
     set: true,
+    overlay: "",
     ...patch,
   };
   return v.secret ? { ...v, value: "" } : v;

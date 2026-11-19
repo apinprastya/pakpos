@@ -231,7 +231,8 @@ function SettingsDialogBody() {
 }
 
 function sectionHasError(id: SettingsSection, errors: DraftErrors): boolean {
-  if (id === "requests") return Boolean(errors.timeoutSeconds || errors.maxRedirects);
+  if (id === "requests")
+    return Boolean(errors.timeoutSeconds || errors.maxRedirects || errors.scriptTimeoutSeconds);
   if (id === "network") return Boolean(errors.proxyUrl || errors.proxyBypass || errors.certs);
   if (id === "history") return Boolean(errors.historyRetention);
   return false;
@@ -430,6 +431,14 @@ function RequestsSection({ draft, update, errors }: SectionProps & { errors: Dra
           </p>
         </div>
       )}
+      <NumberField
+        label="Script timeout"
+        hint="Stop a pre-request or test script that runs longer (1 to 60 seconds)."
+        suffix="seconds"
+        value={draft.scriptTimeoutSeconds}
+        onChange={(v) => update({ scriptTimeoutSeconds: v })}
+        error={errors.scriptTimeoutSeconds}
+      />
     </section>
   );
 }

@@ -43,7 +43,7 @@ const (
 	// per-request settings. Like v2 it is additive: a v1 or v2 manifest is
 	// rewritten to v3 only by the first v3-only write
 	// (upgradeManifestLocked(FormatVersion)): today a request with
-	// per-request settings.
+	// per-request settings, and scripts on a request, folder or collection.
 	FormatVersion = 3
 	// VersionV2 is the format of Tier 2 workspaces.
 	//
@@ -85,6 +85,7 @@ type Collection struct {
 	Auth      model.Auth       `json:"auth" yaml:"auth,omitempty"`
 	Headers   []model.KeyValue `json:"headers" yaml:"headers,omitempty"`
 	Variables []model.Variable `json:"variables" yaml:"variables,omitempty"`
+	Scripts   model.Scripts    `json:"scripts" yaml:"scripts,omitempty"`
 }
 
 // RequestSummary is what the sidebar tree needs for one request.
@@ -509,17 +510,20 @@ func (w *Workspace) RenameCollection(id, name string) (Collection, error) {
 }
 
 // CollectionSettings are the parts of a collection its requests inherit
-// (auth, headers) or resolve variables from.
+// (auth, headers) or resolve variables from, and the scripts run for each
+// of them. Scripts nil keeps the collection's scripts as they are.
 type CollectionSettings struct {
 	Auth      model.Auth       `json:"auth"`
 	Headers   []model.KeyValue `json:"headers"`
 	Variables []model.Variable `json:"variables"`
+	Scripts   *model.Scripts   `json:"scripts"`
 }
 
 // SaveCollection replaces a collection's auth, headers and variables.
 // Secret variable values are never written (only the key and flag are);
 // the returned collection has them cleared too. Saving a secret variable
-// upgrades a v1 manifest, since a Tier 1 build would drop the flag.
+// upgrades a v1 manifest, since a Tier 1 build would drop the flag;
+// non-empty scripts upgrade it to v3.
 func (w *Workspace) SaveCollection(id string, s CollectionSettings) (Collection, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -531,6 +535,14 @@ func (w *Workspace) SaveCollection(id string, s CollectionSettings) (Collection,
 	meta.Auth = s.Auth
 	meta.Headers = append([]model.KeyValue(nil), s.Headers...)
 	meta.Variables = normalizeVars(s.Variables)
+	if s.Scripts != nil {
+		meta.Scripts = *s.Scripts
+	}
+	if !meta.Scripts.IsZero() {
+		if err := w.upgradeManifestLocked(FormatVersion); err != nil {
+			return Collection{}, err
+		}
+	}
 	for _, v := range meta.Variables {
 		if v.Secret {
 			if err := w.upgradeManifestLocked(VersionV2); err != nil {
@@ -697,9 +709,9 @@ func (w *Workspace) SaveRequest(req model.Request) (model.Request, error) {
 }
 
 // upgradeForRequestLocked lifts the manifest to FormatVersion before a
-// request with v3-only fields (per-request settings) is written.
+// request with v3-only fields (per-request settings, scripts) is written.
 func (w *Workspace) upgradeForRequestLocked(req model.Request) error {
-	if req.Settings.IsZero() {
+	if req.Settings.IsZero() && req.Scripts.IsZero() {
 		return nil
 	}
 	return w.upgradeManifestLocked(FormatVersion)

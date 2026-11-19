@@ -65,6 +65,7 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     deleteCollection: vi.fn().mockResolvedValue(undefined),
     reorderCollections: vi.fn().mockResolvedValue(undefined),
     onWorkspaceChanged: vi.fn().mockReturnValue(() => {}),
+    onScriptConsole: vi.fn().mockReturnValue(() => {}),
     getRequest: vi.fn(),
     importCurl: vi.fn(),
     generateCode: vi.fn().mockResolvedValue({
@@ -111,6 +112,9 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     secretStatus: vi.fn().mockResolvedValue({ set: [], locked: false }),
     revealSecret: vi.fn().mockResolvedValue(""),
     makeVariablePlain: vi.fn(),
+    overlayValues: vi.fn().mockResolvedValue([]),
+    resetOverlay: vi.fn().mockResolvedValue(undefined),
+    persistOverlay: vi.fn().mockResolvedValue([]),
     selectEnvironment: vi.fn().mockResolvedValue(undefined),
     selectedEnvironment: vi.fn().mockResolvedValue(null),
     resolvePreview: vi.fn().mockResolvedValue({

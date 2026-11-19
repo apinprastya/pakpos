@@ -41,6 +41,9 @@ type Level struct {
 	Name    string
 	Auth    model.Auth
 	Headers []model.KeyValue
+	// Scripts run before (pre-request) and after (test) each request
+	// below this level, collection first (see pipeline).
+	Scripts model.Scripts
 }
 
 // Source identifies the level an inherited setting comes from, for the UI.

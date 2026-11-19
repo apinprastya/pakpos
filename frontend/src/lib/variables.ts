@@ -247,6 +247,8 @@ export function overlayDraft(
       scopeId: target.id,
       scopeName: target.name,
       set: row.secret ? Boolean(saved?.secret && saved.set) : true,
+      // A draft row is the file's value; script values are M4's concern.
+      overlay: "",
     });
   }
   return [...byKey.values()].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
