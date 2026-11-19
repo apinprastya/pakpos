@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
-import type { ConsoleEntry } from "@/lib/model";
+import { statusName, type ConsoleEntry } from "@/lib/model";
 import {
   emptyRunSummary,
   type ExportFormat,
@@ -53,7 +53,7 @@ interface RunnerState {
 export function resultStatus(r: RunResult): string {
   if (r.skipped) return "Skipped";
   if (r.error) return r.error.message;
-  return `${r.status} ${r.statusText}`.trim();
+  return statusName(r.status, r.statusText);
 }
 
 /** A pre-request script error as a console line, like a single send's. */

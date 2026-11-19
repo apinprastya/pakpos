@@ -1,0 +1,13 @@
+import axios from "axios";
+
+const response = await axios.request({
+  method: "get",
+  url: "https://intranet.example.com/",
+  validateStatus: () => true,
+});
+
+console.log(response.status);
+console.log(response.data);
+
+# warnings:
+# NTLM auth needs the server's challenge, which this code doesn't answer, so it sends no auth. Add it with an HTTP library that supports NTLM.

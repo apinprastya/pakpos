@@ -90,6 +90,11 @@ describe("ResponsePane", () => {
     expect(screen.getByText("DNS lookup")).toBeInTheDocument();
   });
 
+  it("puts the code before a bare reason phrase, as Go sends it", () => {
+    show(ok({ statusCode: 201, statusText: "Created" }));
+    expect(screen.getByLabelText("Status 201 Created")).toBeInTheDocument();
+  });
+
   it("notes reused connections and skipped phases", async () => {
     const user = userEvent.setup();
     show(

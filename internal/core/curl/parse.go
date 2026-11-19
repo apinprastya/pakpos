@@ -46,7 +46,7 @@ const (
 	settingProxy    = "Proxies are set in Settings > Network; this option wasn't imported."
 	settingTimeout  = "Pakpos has one timeout for the whole request (--max-time); this option wasn't imported."
 	settingCerts    = "Certificates are set in Settings > Network; this option wasn't imported."
-	otherAuth       = "Only basic auth is imported from -u; this auth method was ignored."
+	otherAuth       = "Only basic, Digest, NTLM and AWS Signature v4 auth are imported from -u; this auth method was ignored."
 )
 
 var options = []option{
@@ -79,8 +79,8 @@ var options = []option{
 	{long: "noproxy", kind: optValue, note: settingProxy},
 	{long: "max-time", short: 'm', kind: optValue},
 	{long: "connect-timeout", kind: optValue, note: settingTimeout},
-	{long: "digest", note: otherAuth},
-	{long: "ntlm", note: otherAuth},
+	{long: "digest"},
+	{long: "ntlm"},
 	{long: "negotiate", note: otherAuth},
 	{long: "anyauth", note: otherAuth},
 	{long: "basic", quiet: true},
@@ -100,7 +100,7 @@ var options = []option{
 	{long: "retry", kind: optValue, note: "Retries aren't supported; this option was ignored."},
 	{long: "variable", kind: optValue, note: "curl variables aren't supported; this option was ignored."},
 	{long: "unix-socket", kind: optValue, note: "Unix sockets aren't supported; this option was ignored."},
-	{long: "aws-sigv4", kind: optValue, note: "AWS signatures aren't supported; this option was ignored."},
+	{long: "aws-sigv4", kind: optValue},
 	{long: "request-target", kind: optValue, note: "This option isn't supported and was ignored."},
 	{long: "time-cond", short: 'z', kind: optValue, note: "Add an If-Modified-Since header instead; this option was ignored."},
 	// Quiet: they change output, progress or the protocol version, not the request.
@@ -178,6 +178,11 @@ type parser struct {
 	form     []model.FormField
 	query    []model.KeyValue
 	auth     model.Auth
+	// authKind is set by --digest, --ntlm or --aws-sigv4 (awsSig holds its
+	// value); -u credentials then go to that auth type.
+	authKind model.AuthType
+	awsSig   string
+	user     bool // -u was given
 	settings model.RequestSettings
 	get      bool
 	head     bool
@@ -374,6 +379,7 @@ func (p *parser) apply(o *option, name, value string) {
 			p.warn(name, "No password was given for %q (curl would ask for one); the password is empty.", user)
 		}
 		p.auth = model.Auth{Type: model.AuthBasic, Username: user, Password: pass}
+		p.user = true
 	case "cookie":
 		if !strings.Contains(value, "=") {
 			p.warn(name, "Reading cookies from a file isn't supported; %q was ignored.", value)
@@ -390,6 +396,12 @@ func (p *parser) apply(o *option, name, value string) {
 		p.urlQuery(value)
 	case "oauth2-bearer":
 		p.auth = model.Auth{Type: model.AuthBearer, Token: value}
+	case "digest":
+		p.authKind = model.AuthDigest
+	case "ntlm":
+		p.authKind = model.AuthNTLM
+	case "aws-sigv4":
+		p.authKind, p.awsSig = model.AuthAWSV4, value
 	case "insecure":
 		verify := false
 		p.settings.VerifyTLS = &verify
@@ -608,6 +620,7 @@ func (p *parser) request() model.Request {
 	}
 
 	req.Headers, req.Auth = authFromHeader(headers, req.Auth)
+	req.Headers, req.Auth = p.otherAuth(req.Headers, req.Auth)
 	if len(p.query) > 0 || (p.get && len(p.data) > 0) {
 		rawURL = urlx.WithQuery(rawURL, query)
 	}
@@ -793,6 +806,52 @@ func addDefault(headers []model.KeyValue, name, value string) []model.KeyValue {
 
 // authFromHeader turns a single Bearer or Basic Authorization header into
 // auth. It wins over -u, as an explicit header does in curl.
+// otherAuth turns -u credentials into the auth chosen with --digest,
+// --ntlm or --aws-sigv4 "aws:amz:<region>:<service>". For SigV4, an
+// X-Amz-Security-Token header becomes the session token.
+func (p *parser) otherAuth(headers []model.KeyValue, a model.Auth) ([]model.KeyValue, model.Auth) {
+	if p.authKind == "" || a.Type != model.AuthBasic {
+		if p.authKind != "" && !p.user {
+			p.warn("", "--%s needs credentials from -u; none were given, so no auth was imported.", map[model.AuthType]string{
+				model.AuthDigest: "digest", model.AuthNTLM: "ntlm", model.AuthAWSV4: "aws-sigv4"}[p.authKind])
+		}
+		return headers, a
+	}
+	switch p.authKind {
+	case model.AuthDigest:
+		return headers, model.Auth{Type: model.AuthDigest, Digest: &model.Digest{Username: a.Username, Password: a.Password}}
+	case model.AuthNTLM:
+		n := &model.NTLM{Username: a.Username, Password: a.Password}
+		if d, u, ok := strings.Cut(a.Username, `\`); ok {
+			n.Domain, n.Username = d, u
+		}
+		return headers, model.Auth{Type: model.AuthNTLM, NTLM: n}
+	}
+	w := &model.AWSV4{AccessKey: a.Username, SecretKey: a.Password}
+	parts := strings.Split(p.awsSig, ":")
+	if len(parts) > 2 {
+		w.Region = parts[2]
+	}
+	if len(parts) > 3 {
+		w.Service = parts[3]
+	}
+	if w.Region == "" || w.Service == "" {
+		p.warn("--aws-sigv4", "The region or service isn't in %q (curl would guess them from the host); fill them in on the Auth tab.", p.awsSig)
+	}
+	var rest []model.KeyValue
+	for _, h := range headers {
+		switch {
+		case strings.EqualFold(h.Key, "X-Amz-Security-Token"):
+			w.SessionToken = h.Value
+		case strings.EqualFold(h.Key, "X-Amz-Content-Sha256") && h.Value == "UNSIGNED-PAYLOAD":
+			w.UnsignedPayload = true
+		default:
+			rest = append(rest, h)
+		}
+	}
+	return rest, model.Auth{Type: model.AuthAWSV4, AWSV4: w}
+}
+
 func authFromHeader(headers []model.KeyValue, a model.Auth) ([]model.KeyValue, model.Auth) {
 	idx := -1
 	for i, h := range headers {

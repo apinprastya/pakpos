@@ -3,6 +3,7 @@ module pakpos
 go 1.26.0
 
 require (
+	github.com/Azure/go-ntlmssp v0.1.1
 	github.com/andybalholm/brotli v1.2.7
 	github.com/dop251/goja v0.0.0-20261031103838-cf2ff0ec0b31
 	github.com/fsnotify/fsnotify v1.9.0

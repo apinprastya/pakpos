@@ -1,0 +1,7 @@
+const response = await fetch("https://intranet.example.com/");
+
+console.log(response.status);
+console.log(await response.text());
+
+# warnings:
+# NTLM auth needs the server's challenge, which this code doesn't answer, so it sends no auth. Add it with an HTTP library that supports NTLM.

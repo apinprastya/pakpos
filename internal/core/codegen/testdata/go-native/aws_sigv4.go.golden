@@ -1,0 +1,38 @@
+package main
+
+import (
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"strings"
+)
+
+func main() {
+	body := strings.NewReader(`{"a":1}`)
+
+	req, err := http.NewRequest(http.MethodPost, "https://example.amazonaws.com/", body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	req.Header.Set("X-Amz-Date", "20150830T123600Z")
+	req.Header.Set("X-Amz-Security-Token", "token")
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token, Signature=765af1e8f55bb22b2ecdc914616f1cbf1889ff08004fc774a0f640c4eecab8a5")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(resp.Status)
+	fmt.Println(string(data))
+}
+
+# warnings:
+# The AWS signature in this code was computed now and is valid for about 5 minutes.

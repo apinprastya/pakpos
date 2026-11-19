@@ -1,5 +1,5 @@
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-import type { Response } from "@/lib/model";
+import { statusName, type Response } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { formatBytes, formatDuration, statusTextClass } from "./format";
 
@@ -12,7 +12,7 @@ export function ResponseMeta({ response }: { response: Response }) {
     { label: "TLS handshake", ms: t.tls },
     { label: "Waiting for first byte", ms: t.ttfb },
   ];
-  const statusLabel = response.statusText || String(response.statusCode);
+  const statusLabel = statusName(response.statusCode, response.statusText);
 
   return (
     <div className="flex items-center gap-3 text-xs">

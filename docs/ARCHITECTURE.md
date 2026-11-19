@@ -32,7 +32,7 @@ A desktop REST API client (Postman-style), REST only.
 │  Go services (thin, bound to Wails)                          │
 │   WorkspaceService  RequestService  EnvService  HistoryService│
 │   SettingsService   ExampleService  CookieService            │
-│   RunnerService                                              │
+│   RunnerService     AuthService     UIStateService           │
 ├──────────────────────────────────────────────────────────────┤
 │  runner (collection runs: order, iterations, data files,     │
 │  setNextRequest; report: JSON/HTML export; no Wails)         │
@@ -41,8 +41,8 @@ A desktop REST API client (Postman-style), REST only.
 │  bookkeeping; no Wails)                                      │
 ├──────────────────────────────────────────────────────────────┤
 │  Core (pure Go, no Wails import → reusable by future CLI)    │
-│   model · vars (resolve {{x}}) · inherit · auth · httpexec   │
-│   cookies (jar)                                              │
+│   model · vars (resolve {{x}}) · inherit · httpexec          │
+│   auth (+ oauth2, digest, awsv4, hawk) · jwtx · cookies (jar)│
 │   curl (import/export) · codegen · script (goja)             │
 │   store/fsstore (YAML) · store/sqlite · secrets              │
 └──────────────────────────────────────────────────────────────┘
@@ -66,15 +66,22 @@ pakpos/
 │   │   ├── model/              # Request, Auth, Body, Variable, Response…
 │   │   ├── vars/               # variable scopes + {{var}} / {{$dynamic}} resolution
 │   │   ├── inherit/            # auth and headers from collection and folders
-│   │   ├── auth/               # Basic, Bearer, API Key; auth/oauth2: grants, PKCE, loopback callback
+│   │   ├── auth/               # Basic, Bearer, API Key, JWT; signing at the end of Build; Materialize for code
+│   │   │   ├── oauth2/         # grants, PKCE, loopback callback
+│   │   │   ├── digest/         # RFC 7616 challenge parsing and answers
+│   │   │   ├── awsv4/          # AWS Signature Version 4 signer
+│   │   │   └── hawk/           # Hawk header MACs and payload hashes
+│   │   ├── jwtx/               # JWS sign/verify (HS/RS/PS/ES/EdDSA), shared with the tools plan
 │   │   ├── httpexec/           # build http.Request, execute, timing, cancel, decode gzip/deflate/br
 │   │   ├── curl/               # parse/generate cURL
 │   │   ├── codegen/            # code generators (golden files)
-│   │   └── script/             # (Tier 3) goja sandbox + pm-like API
+│   │   ├── cookies/            # the app's cookie jar
+│   │   └── script/             # goja sandbox + pm-like API
 │   ├── store/
 │   │   ├── fsstore/            # YAML workspace read/write + file watcher
 │   │   └── sqlite/             # history, settings, recent workspaces, workspace state, cookies, runs (migrations)
-│   └── secrets/                # Store interface: keychain, encrypted file, fake for tests
+│   ├── secrets/                # Store interface: keychain, encrypted file, fake for tests
+│   └── testnet/                # test-only: CA, proxy, verifying Digest/NTLM/SigV4/Hawk/JWT servers
 ├── frontend/
 │   ├── src/
 │   │   ├── components/ui/      # shadcn components
@@ -96,8 +103,9 @@ collection secret).
 This build reads up to **version 3** (`fsstore.FormatVersion`), reserved
 for Tier 3 data (scripts, the new auth types, per-request settings). It is
 additive like v2: a v1 or v2 manifest is rewritten to v3 only by the first
-v3-only write (`upgradeManifestLocked(FormatVersion)`); none exists yet, but
-new workspaces are created at v3. `fsstore.Open` refuses a manifest newer
+v3-only write (`upgradeManifestLocked(FormatVersion)`: scripts, request
+settings, or any Tier 3 auth type or settings block, `Auth.IsV3`); new
+workspaces are created at v3. `fsstore.Open` refuses a manifest newer
 than it knows (`ErrUnsupported`; the app says "This workspace was made with
 a newer version of Pakpos. Update Pakpos to open it." and offers an update
 check), so an older build never drops fields it doesn't know on save.
@@ -269,8 +277,12 @@ Request (as written) + parentId + selected environment
     browser flow. No usable token fails the send (`error.kind = "auth"`).
     The token becomes a bearer header or a query parameter and is masked
     (`[secret:oauth2AccessToken]`) from then on
-  → apply auth, build http.Request (body encoding, multipart files,
-    Content-Type, User-Agent, Accept-Encoding: gzip, deflate, br)
+  → build http.Request (body encoding, multipart files, Content-Type,
+    User-Agent, Accept-Encoding: gzip, deflate, br), then apply auth last:
+    basic/bearer/API key; JWT signed now; AWS SigV4 and Hawk computed over
+    the final request (body buffered for the payload hash)
+  → Digest: sent without auth, a 401 Digest challenge is answered once;
+    NTLM: NEGOTIATE → CHALLENGE → AUTHENTICATE on a dedicated connection
   → execute with httptrace (DNS / connect / TLS / TTFB / total), cancellable
   → decode the body (gzip, deflate, br), cap it inline at 10 MB (the rest
     spills to a file)
@@ -295,6 +307,36 @@ Request (as written) + parentId + selected environment
   without values. Code generation writes the token as
   `{{oauth2AccessToken}}` unless secrets are revealed; examples, hops,
   console and runner reports mask it like a secret variable.
+- Other auth (Tier 3 M7), all own code except NTLM:
+  - **Digest** (`core/auth/digest`): MD5, MD5-sess, SHA-256, SHA-256-sess;
+    qop auth or auth-int; userhash when the server asks. `httpexec.send`
+    rebuilds the request (so any body replays) and retries once, only when
+    the 401 came from the URL sent. Both exchanges are hops.
+  - **AWS Signature v4** (`core/auth/awsv4`): signs host, Content-Type,
+    Content-MD5 and every `X-Amz-*` header; the path is normalized and
+    encoded twice except for S3; `X-Amz-Content-Sha256` for S3 and
+    UNSIGNED-PAYLOAD. Tested with the AWS test-suite signatures.
+  - **JWT** (`core/jwtx` + `auth.JWTToken`): HS/RS/PS/ES 256–512 and EdDSA;
+    header extra fields and payload JSON resolved like raw JSON bodies; iat,
+    exp (now + lifetime) and jti added unless set; header or query placement;
+    a fresh token per send.
+  - **Hawk** (`core/auth/hawk`): sha256/sha1, ext, app/dlg, optional payload
+    hash, a new timestamp and nonce per send (README vectors).
+  - **NTLM** (`Azure/go-ntlmssp`, MIT, NTLMv2 only): the handshake runs on a
+    per-send transport (HTTP/1.1, one connection per host, closed after the
+    send), outside the `Transports` cache, so no pooled connection is
+    authenticated for other sends.
+  - The user's own `Authorization` header always wins. Signing failures and
+    unanswerable NTLM challenges are `error.kind = "auth"`. Resolved
+    secret-bearing fields (Digest/NTLM passwords, AWS secret key and session
+    token, JWT key, Hawk key) join the send's masks (`pipeline.AuthSecrets`),
+    so even literal values read `[secret:<field>]` in hops and console.
+  - Code generation (`auth.MaterializeWith`): cURL keeps Digest, NTLM and
+    SigV4 as `--digest`/`--ntlm`/`--aws-sigv4`; Python keeps Digest
+    (`HTTPDigestAuth`), PHP Digest and NTLM (`CURLAUTH_*`). Elsewhere SigV4,
+    JWT and Hawk become headers computed now (with an expiry warning; skipped
+    with a warning while a field is still a `{{reference}}`), and Digest/NTLM
+    are left out with a warning. cURL import maps the same options.
 - A variable cycle or too-deep nesting fails the send (`error.kind =
   "variables"`) before anything goes on the wire.
 - The same preparation feeds the editor (`Preview`, `VisibleVariables`:
@@ -396,7 +438,7 @@ Request (as written) + parentId + selected environment
 - State: **Zustand** (tabs, active workspace, env selection); server data via bound service calls.
 - Layout: resizable panes (`react-resizable-panels`), sidebar (collections / history / environments), tabbed editors.
 - CodeMirror extensions: `{{var}}` highlight + hover tooltip + autocomplete (Mod+I from the keyboard), in the URL bar, bodies and every value cell (a cell is static text until focused, so large tables stay fast).
-- Code splitting: every editor language (JSON, XML, HTML, JavaScript and the generated-code ones) is its own chunk, loaded on first use (plain text until then); the settings, code, import-cURL dialogs and the command palette load on first open.
+- Code splitting: every editor language (JSON, XML, HTML, JavaScript and the generated-code ones) is its own chunk, loaded on first use (plain text until then); the settings, code, import-cURL, cookie manager dialogs, the command palette, the Scripts section, the console drawer, the runner tab and the Digest/AWS/JWT/Hawk/NTLM auth fields load on first open (preloaded when idle).
 - Theme: light/dark/system via CSS variables (shadcn tokens); command palette (`cmdk`), keyboard shortcuts.
 - Drag & drop in tree: `dnd-kit`.
 - Scripting UI (Tier 3 M4): a lazy **Scripts** tab (Pre-request / Tests) in request, collection and folder editors with `pm` completions from a static API description (`features/scripts/pmApi.ts`), snippets and a read-only view of the inherited scripts; a **Tests** tab in the response pane; a **console drawer** below the editors (lazy, Mod+J or the status bar), fed live by `script:console` and reconciled with `SendResult.console` per send, kept in memory only (`stores/console.ts`, 2000 lines); "Set by script" badges with Reset / Persist in variable tables (`EnvService.OverlayValues/ResetOverlay/PersistOverlay`), refreshed after every send.

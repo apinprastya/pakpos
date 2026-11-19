@@ -1,4 +1,4 @@
-import { emptyAuth, emptyBody, emptyRequest } from "@/lib/model";
+import { emptyAuth, emptyAWSV4, emptyBody, emptyJWT, emptyRequest } from "@/lib/model";
 import { autoHeaders } from "./autoHeaders";
 
 const names = (r: ReturnType<typeof autoHeaders>) => r.map((h) => `${h.name}: ${h.value}`);
@@ -28,6 +28,19 @@ describe("autoHeaders", () => {
     expect(auth({ type: "bearer" })).toEqual([]);
     expect(auth({ type: "apikey", apiKey: "X-Key" })).toEqual(["X-Key: …"]);
     expect(auth({ type: "apikey", apiKey: "k", apiIn: "query" })).toEqual([]);
+    expect(auth({ type: "jwt" })).toEqual(["Authorization: Bearer …"]);
+    expect(auth({ type: "jwt", jwt: { ...emptyJWT(), headerPrefix: "JWT" } })).toEqual([
+      "Authorization: JWT …",
+    ]);
+    expect(auth({ type: "jwt", jwt: { ...emptyJWT(), placement: "query" } })).toEqual([]);
+    expect(auth({ type: "hawk" })).toEqual(["Authorization: Hawk …"]);
+    expect(auth({ type: "awsv4", awsv4: { ...emptyAWSV4(), sessionToken: "t" } })).toEqual([
+      "Authorization: AWS4-HMAC-SHA256 …",
+      "X-Amz-Date: …",
+      "X-Amz-Security-Token: …",
+    ]);
+    expect(auth({ type: "digest" })).toEqual(["Authorization: Digest … (after a 401)"]);
+    expect(auth({ type: "ntlm" })).toEqual(["Authorization: NTLM …"]);
   });
 
   it("marks headers the user overrides", () => {

@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/httptrace"
 	"os"
 	"sync"
 	"time"
@@ -209,16 +208,15 @@ func (e *Executor) Execute(ctx context.Context, id string, req model.Request) (*
 		defer e.unregister(id)
 	}
 
-	httpReq, err := e.Build(ctx, req)
-	if err != nil {
-		return nil, Classify(err)
+	if req.Auth.Type == model.AuthNTLM {
+		var release func()
+		ctx, release = withDedicated(ctx)
+		defer release()
 	}
 
 	tr := &tracer{}
-	httpReq = httpReq.WithContext(httptrace.WithClientTrace(ctx, tr.clientTrace()))
-
 	tr.start = time.Now()
-	resp, err := e.client.Do(httpReq)
+	resp, err := e.send(ctx, req, tr)
 	if err != nil {
 		return nil, Classify(err)
 	}

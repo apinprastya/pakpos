@@ -1,0 +1,11 @@
+import requests
+
+url = "https://intranet.example.com/"
+
+response = requests.get(url)
+
+print(response.status_code)
+print(response.text)
+
+# warnings:
+# NTLM auth needs the server's challenge, which this code doesn't answer, so it sends no auth. Add it with an HTTP library that supports NTLM.

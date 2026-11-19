@@ -425,7 +425,11 @@ type routeTransport struct{ e *Executor }
 func (r routeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	o := optionsFrom(req.Context(), r.e.settings)
 	n := r.e.settings.Network
-	tr, err := r.e.settings.Transports.get(n, o.insecure, n.certFor(req.URL.Hostname()))
+	get := r.e.settings.Transports.get
+	if d := dedicatedFrom(req.Context()); d != nil {
+		get = d.get
+	}
+	tr, err := get(n, o.insecure, n.certFor(req.URL.Hostname()))
 	if err != nil {
 		if req.Body != nil {
 			_ = req.Body.Close()

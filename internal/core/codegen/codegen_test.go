@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"pakpos/internal/core/auth"
 	"pakpos/internal/core/model"
 )
 
@@ -66,6 +68,19 @@ var cases = []struct {
 			kv("X-Api-Key", "set")},
 		Auth: model.Auth{Type: model.AuthAPIKey, APIKey: "X-Api-Key", APIValue: "ignored"}}},
 	{"delete_no_body", model.Request{Method: "DELETE", URL: "https://example.com/items/7"}},
+	{"digest", model.Request{Method: "GET", URL: "https://example.com/dir/index.html",
+		Auth: model.Auth{Type: model.AuthDigest, Digest: &model.Digest{Username: "Mufasa", Password: "{{password}}"}}}},
+	{"ntlm", model.Request{Method: "GET", URL: "https://intranet.example.com/",
+		Auth: model.Auth{Type: model.AuthNTLM, NTLM: &model.NTLM{Domain: "CORP", Username: "jane", Password: "{{password}}"}}}},
+	{"aws_sigv4", model.Request{Method: "POST", URL: "https://example.amazonaws.com/",
+		Body: model.Body{Type: model.BodyRaw, Language: model.LangJSON, Raw: `{"a":1}`},
+		Auth: model.Auth{Type: model.AuthAWSV4, AWSV4: &model.AWSV4{AccessKey: "AKIDEXAMPLE", SecretKey: "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+			SessionToken: "token", Region: "us-east-1", Service: "service"}}}},
+}
+
+// Signed auth is computed at a fixed moment so the golden files are stable.
+func init() {
+	auth.Now = func() time.Time { return time.Date(2015, 8, 30, 12, 36, 0, 0, time.UTC) }
 }
 
 var extensions = map[string]string{

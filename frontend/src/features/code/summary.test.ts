@@ -1,4 +1,4 @@
-import { emptyAuth, emptyRequest, type Body } from "@/lib/model";
+import { emptyAuth, emptyAWSV4, emptyDigest, emptyNTLM, emptyRequest, type Body } from "@/lib/model";
 import { addedHeadersNote, authSummary, bodySummary, codeNotes, looksLikeCurl } from "./summary";
 
 const body = (patch: Partial<Body>): Body => ({ ...emptyRequest().body, ...patch });
@@ -41,6 +41,18 @@ describe("summaries", () => {
     expect(authSummary({ ...a, type: "basic" })).toBe("Basic auth");
     expect(authSummary({ ...a, type: "bearer", token: "t" })).toBe("Bearer token");
     expect(authSummary({ ...a, type: "apikey", apiKey: "X-Key" })).toBe("API key X-Key");
+    expect(authSummary({ ...a, type: "digest" })).toBe("Digest auth");
+    expect(authSummary({ ...a, type: "digest", digest: { ...emptyDigest(), username: "ann" } })).toBe(
+      "Digest auth as ann",
+    );
+    expect(authSummary({ ...a, type: "ntlm" })).toBe("NTLM");
+    expect(authSummary({ ...a, type: "ntlm", ntlm: { ...emptyNTLM(), username: "bob" } })).toBe(
+      "NTLM as bob",
+    );
+    expect(authSummary({ ...a, type: "awsv4" })).toBe("AWS Signature v4");
+    expect(
+      authSummary({ ...a, type: "awsv4", awsv4: { ...emptyAWSV4(), region: "eu-west-1", service: "s3" } }),
+    ).toBe("AWS Signature v4 (eu-west-1, s3)");
   });
 
   it("notes masked secrets, locked secrets and unresolved names", () => {

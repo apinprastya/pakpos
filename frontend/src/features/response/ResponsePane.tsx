@@ -8,7 +8,7 @@ import type { Hop, ScriptErrorInfo, SendError, SendResult } from "@/lib/model";
 import { openRequestScripts, openScriptSource } from "@/features/scripts/open";
 import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore } from "@/stores/settings";
-import { useActiveTab, useTabSection } from "@/stores/tabs";
+import { useActiveTab, useTabSection, useTabsStore } from "@/stores/tabs";
 import { useExamplesStore } from "@/stores/examples";
 import { ExampleView } from "@/features/examples/ExampleView";
 import { SaveExampleButton } from "@/features/examples/SaveExampleButton";
@@ -52,6 +52,11 @@ export function ResponsePane() {
         hops={result.hops}
         scriptError={result.scriptError}
         onOpenScript={(source) => openScriptSource(tab.id, source)}
+        onOpenAuth={() => {
+          const tabs = useTabsStore.getState();
+          tabs.activate(tab.id);
+          tabs.setSection(tab.id, "request", "auth");
+        }}
       />
     );
   } else if (result?.skipped) {
@@ -202,11 +207,13 @@ function ErrorState({
   hops,
   scriptError,
   onOpenScript,
+  onOpenAuth,
 }: {
   error: SendError;
   hops: Hop[];
   scriptError: ScriptErrorInfo | null;
   onOpenScript: (source: ScriptErrorInfo["source"]) => void;
+  onOpenAuth: () => void;
 }) {
   const copy = errorCopy(error.kind);
   const cancelled = error.kind === "canceled";
@@ -238,6 +245,11 @@ function ErrorState({
       {error.kind === "script" && scriptError && (
         <Button variant="outline" size="sm" onClick={() => onOpenScript(scriptError.source)}>
           Open the {scriptName(scriptError)}
+        </Button>
+      )}
+      {error.kind === "auth" && (
+        <Button variant="outline" size="sm" onClick={onOpenAuth}>
+          Open the Auth tab
         </Button>
       )}
       {copy.settings && (

@@ -34,7 +34,18 @@ export interface Body {
   binaryPath: string;
 }
 
-export type AuthType = "none" | "inherit" | "basic" | "bearer" | "apikey" | "oauth2";
+export type AuthType =
+  | "none"
+  | "inherit"
+  | "basic"
+  | "bearer"
+  | "apikey"
+  | "oauth2"
+  | "digest"
+  | "awsv4"
+  | "jwt"
+  | "hawk"
+  | "ntlm";
 export type APIKeyLocation = "header" | "query";
 
 export type OAuth2Grant = "authorization_code" | "client_credentials" | "password" | "implicit";
@@ -111,6 +122,133 @@ export function normalizeOAuth2(input: unknown): OAuth2 {
   };
 }
 
+/** HTTP Digest settings (Go model.Digest). Empty algorithm/qop: the server's choice. */
+export interface Digest {
+  username: string;
+  password: string;
+  algorithm: "" | "MD5" | "MD5-sess" | "SHA-256" | "SHA-256-sess";
+  qop: "" | "auth-int";
+}
+
+/** AWS Signature v4 settings (Go model.AWSV4). */
+export interface AWSV4 {
+  accessKey: string;
+  secretKey: string;
+  sessionToken: string;
+  region: string;
+  service: string;
+  unsignedPayload: boolean;
+}
+
+export type JWTAlgorithm =
+  | "HS256"
+  | "HS384"
+  | "HS512"
+  | "RS256"
+  | "RS384"
+  | "RS512"
+  | "PS256"
+  | "PS384"
+  | "PS512"
+  | "ES256"
+  | "ES384"
+  | "ES512"
+  | "EdDSA";
+
+/** JWT generator settings (Go model.JWT). Empty algorithm = HS256. */
+export interface JWT {
+  algorithm: JWTAlgorithm | "";
+  /** HMAC secret or PEM private key. */
+  secret: string;
+  secretBase64: boolean;
+  /** Extra header fields as a JSON object. */
+  header: string;
+  /** Claims as a JSON object. */
+  payload: string;
+  disableIssuedAt: boolean;
+  lifetimeSeconds: number;
+  addJti: boolean;
+  placement: "header" | "query" | "";
+  headerPrefix: string;
+  queryParam: string;
+}
+
+/** Hawk settings (Go model.Hawk). Empty algorithm = sha256. */
+export interface Hawk {
+  id: string;
+  key: string;
+  algorithm: "" | "sha256" | "sha1";
+  ext: string;
+  app: string;
+  dlg: string;
+  payloadHash: boolean;
+}
+
+/** NTLM settings (Go model.NTLM). */
+export interface NTLM {
+  username: string;
+  password: string;
+  domain: string;
+  workstation: string;
+}
+
+export const emptyDigest = (): Digest => ({ username: "", password: "", algorithm: "", qop: "" });
+export const emptyAWSV4 = (): AWSV4 => ({
+  accessKey: "",
+  secretKey: "",
+  sessionToken: "",
+  region: "",
+  service: "",
+  unsignedPayload: false,
+});
+export const emptyJWT = (): JWT => ({
+  algorithm: "",
+  secret: "",
+  secretBase64: false,
+  header: "",
+  payload: "",
+  disableIssuedAt: false,
+  lifetimeSeconds: 0,
+  addJti: false,
+  placement: "",
+  headerPrefix: "",
+  queryParam: "",
+});
+export const emptyHawk = (): Hawk => ({
+  id: "",
+  key: "",
+  algorithm: "",
+  ext: "",
+  app: "",
+  dlg: "",
+  payloadHash: false,
+});
+export const emptyNTLM = (): NTLM => ({ username: "", password: "", domain: "", workstation: "" });
+
+/** Fills the missing fields of a settings block from Go with the empty block's. */
+function fill<T extends object>(empty: T, input: unknown): T {
+  const out = { ...empty } as Record<string, unknown>;
+  const src = (input ?? {}) as Record<string, unknown>;
+  for (const k of Object.keys(out)) {
+    if (src[k] !== undefined && src[k] !== null) out[k] = src[k];
+  }
+  return out as T;
+}
+
+/** The settings blocks of the Tier 3 auth types other than OAuth 2.0, by type. */
+export const AUTH_BLOCKS = {
+  digest: emptyDigest,
+  awsv4: emptyAWSV4,
+  jwt: emptyJWT,
+  hawk: emptyHawk,
+  ntlm: emptyNTLM,
+} as const;
+export type BlockAuthType = keyof typeof AUTH_BLOCKS;
+
+export function isBlockAuthType(t: AuthType): t is BlockAuthType {
+  return t in AUTH_BLOCKS;
+}
+
 /** What Go knows about a stored OAuth 2.0 token, never its values (AuthService). */
 export interface OAuth2Status {
   hasToken: boolean;
@@ -150,6 +288,12 @@ export interface Auth {
   apiIn: APIKeyLocation;
   /** OAuth 2.0 settings; only present once set (Go omits it otherwise). */
   oauth2?: OAuth2;
+  /** Settings of the other Tier 3 types; each only present once set. */
+  digest?: Digest;
+  awsv4?: AWSV4;
+  jwt?: JWT;
+  hawk?: Hawk;
+  ntlm?: NTLM;
 }
 
 /**
@@ -583,6 +727,11 @@ export function normalizeRequest(input: unknown): Request {
       apiValue: a.apiValue ?? "",
       apiIn: a.apiIn || "header",
       ...(a.oauth2 ? { oauth2: normalizeOAuth2(a.oauth2) } : {}),
+      ...(a.digest ? { digest: fill(emptyDigest(), a.digest) } : {}),
+      ...(a.awsv4 ? { awsv4: fill(emptyAWSV4(), a.awsv4) } : {}),
+      ...(a.jwt ? { jwt: fill(emptyJWT(), a.jwt) } : {}),
+      ...(a.hawk ? { hawk: fill(emptyHawk(), a.hawk) } : {}),
+      ...(a.ntlm ? { ntlm: fill(emptyNTLM(), a.ntlm) } : {}),
     },
     settings: normalizeRequestSettings(r.settings),
     scripts: normalizeScripts(r.scripts),

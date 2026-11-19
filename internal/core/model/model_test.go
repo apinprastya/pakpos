@@ -198,3 +198,40 @@ func TestAuthOAuth2YAML(t *testing.T) {
 		t.Errorf("round trip: %+v", back.OAuth2)
 	}
 }
+
+func TestOtherAuthYAML(t *testing.T) {
+	for _, a := range []Auth{
+		{Type: AuthDigest}, {Type: AuthAWSV4}, {Type: AuthJWT}, {Type: AuthHawk}, {Type: AuthNTLM},
+		{Type: AuthBasic, Digest: &Digest{}}, {Type: AuthBasic, AWSV4: &AWSV4{}}, {Type: AuthBasic, JWT: &JWT{}},
+		{Type: AuthBasic, Hawk: &Hawk{}}, {Type: AuthBasic, NTLM: &NTLM{}},
+	} {
+		if !a.IsV3() {
+			t.Errorf("%+v should be v3", a)
+		}
+	}
+	in := Auth{
+		Type:   AuthJWT,
+		Digest: &Digest{Username: "u", Password: "{{p}}", Algorithm: "SHA-256"},
+		AWSV4:  &AWSV4{AccessKey: "AK", SecretKey: "{{sk}}", Region: "us-east-1", Service: "s3", UnsignedPayload: true},
+		JWT:    &JWT{Algorithm: "RS256", Secret: "{{key}}", Payload: `{"sub":"x"}`, LifetimeSeconds: 300},
+		Hawk:   &Hawk{ID: "id", Key: "{{hk}}", PayloadHash: true},
+		NTLM:   &NTLM{Username: "u", Password: "{{np}}", Domain: "CORP"},
+	}
+	y, err := yaml.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"qop", "sessionToken", "secretBase64", "disableIssuedAt", "addJti", "placement", "workstation", "dlg"} {
+		if strings.Contains(string(y), absent) {
+			t.Errorf("%s should be omitted:\n%s", absent, y)
+		}
+	}
+	var back Auth
+	if err := yaml.Unmarshal(y, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Digest.Password != "{{p}}" || !back.AWSV4.UnsignedPayload || back.JWT.LifetimeSeconds != 300 ||
+		!back.Hawk.PayloadHash || back.NTLM.Domain != "CORP" {
+		t.Errorf("round trip: %+v", back)
+	}
+}

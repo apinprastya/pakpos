@@ -1,13 +1,33 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { VarInput } from "@/components/editor/VarInput";
-import { emptyOAuth2, type APIKeyLocation, type Auth, type AuthType } from "@/lib/model";
+import {
+  AUTH_BLOCKS,
+  emptyOAuth2,
+  isBlockAuthType,
+  type APIKeyLocation,
+  type Auth,
+  type AuthType,
+} from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { AUTH_LABELS, isLiteralSecret, secretFieldValue, type SecretField } from "./auth";
 import { Field, LiteralHint, SecretInput, fieldClass } from "./authFields";
 import { OAuth2Fields } from "./OAuth2Fields";
 import { OAuth2Token } from "./OAuth2Token";
+import { OtherAuthFields } from "./otherAuthLazy";
 
-const ORDER: AuthType[] = ["none", "inherit", "basic", "bearer", "apikey", "oauth2"];
+const ORDER: AuthType[] = [
+  "none",
+  "inherit",
+  "basic",
+  "bearer",
+  "apikey",
+  "oauth2",
+  "digest",
+  "awsv4",
+  "jwt",
+  "hawk",
+  "ntlm",
+];
 
 export interface AuthEditorProps {
   auth: Auth;
@@ -39,7 +59,12 @@ export function AuthEditor({
 }: AuthEditorProps) {
   const set = (patch: Partial<Auth>) => onChange((a) => ({ ...a, ...patch }));
   const setType = (type: AuthType) =>
-    onChange((a) => ({ ...a, type, ...(type === "oauth2" && !a.oauth2 ? { oauth2: emptyOAuth2() } : {}) }));
+    onChange((a) => ({
+      ...a,
+      type,
+      ...(type === "oauth2" && !a.oauth2 ? { oauth2: emptyOAuth2() } : {}),
+      ...(isBlockAuthType(type) && !a[type] ? { [type]: AUTH_BLOCKS[type]() } : {}),
+    }));
   const types = ORDER.filter((t) => allowInherit || t !== "inherit");
   const hint = (field: SecretField) => {
     const value = secretFieldValue(auth, field);
@@ -157,6 +182,7 @@ export function AuthEditor({
           )}
         </>
       )}
+      {isBlockAuthType(auth.type) && <OtherAuthFields auth={auth} onChange={onChange} hint={hint} />}
       {auth.type !== "none" && auth.type !== "inherit" && (
         <p className="text-xs text-muted-foreground">
           A header or query parameter you add yourself with the same name takes priority.

@@ -51,7 +51,7 @@ func TestMaterialize(t *testing.T) {
 			query: []model.KeyValue{hdr("key", "mine")}, wantAuth: model.AuthNone, wantQuery: []model.KeyValue{hdr("key", "mine")}},
 		{name: "api key without name", auth: model.Auth{Type: model.AuthAPIKey}, wantAuth: model.AuthNone, wantErr: ErrMissingAPIKeyName},
 		{name: "api key bad location", auth: model.Auth{Type: model.AuthAPIKey, APIKey: "k", APIIn: "cookie"}, wantAuth: model.AuthNone, wantErr: errAny},
-		{name: "unknown type", auth: model.Auth{Type: "digest"}, wantAuth: model.AuthNone, wantErr: errAny},
+		{name: "unknown type", auth: model.Auth{Type: "kerberos"}, wantAuth: model.AuthNone, wantErr: errAny},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -132,6 +132,15 @@ describe("script outcomes in the response pane", () => {
     expect(useTabsStore.getState().tabs).toHaveLength(2);
   });
 
+  it("opens the Auth tab from an auth error", async () => {
+    const user = userEvent.setup();
+    show(
+      makeResult({ error: { kind: "auth", message: "The auth couldn't be applied. Check the Auth tab." } }),
+    );
+    await user.click(screen.getByRole("button", { name: "Open the Auth tab" }));
+    expect(activeTab().sections).toMatchObject({ request: "auth" });
+  });
+
   it("opens the request's own script from its error", async () => {
     const user = userEvent.setup();
     show(

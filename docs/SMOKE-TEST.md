@@ -195,6 +195,20 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir and a real provider (e.g. an Auth0,
 - [ ] Generate code / Copy as cURL show `{{oauth2AccessToken}}`; with "Reveal secrets" the code holds the token. History, the workspace files, saved examples (the save dialog names `oauth2AccessToken` if the API echoes it) and runner exports never contain the token or the client secret.
 - [ ] Deleting the request, folder or collection removes its token from the keychain (check with the OS keychain tool); a duplicated request starts without a token.
 
+## Tier 3: other auth
+
+Use `XDG_CONFIG_HOME` pointing at a temp dir. Test servers: httpbin (`/digest-auth/auth/user/passwd/MD5` and `/SHA-256`), an AWS endpoint you own (e.g. `sts.amazonaws.com/?Action=GetCallerIdentity&Version=2011-06-15`, region `us-east-1`, service `sts`, and an S3 `GET` on a test bucket), any JWT-verifying API (or jwt.io to check the token from the Debug tab), a Hawk server (`hawk` npm example server) and an IIS/Windows site with Windows authentication (NTLM). Keep every password and key in a secret variable.
+
+- [ ] Auth tab: Digest auth, AWS Signature v4, JWT bearer, Hawk and NTLM are offered on requests, folders and collections; their fields load (briefly "Loading…" the first time) and each has help text; a literal password, secret key, session token, JWT key or Hawk key is masked with "Move to secret variable"; light and dark look right.
+- [ ] Digest: the httpbin MD5 and SHA-256 endpoints answer 200; the Debug tab shows two exchanges (401 with the challenge, then the Digest header); a wrong password ends with the server's 401; "Hash the body too" works against a server offering auth-int.
+- [ ] AWS SigV4: STS GetCallerIdentity answers 200 with your account; with temporary credentials the session token is sent (`X-Amz-Security-Token` reads `[secret:…]` in Debug); S3 GET works, and a PUT with "Don't sign the body" works too; a wrong secret key gives AWS's `SignatureDoesNotMatch`.
+- [ ] JWT: HS256 with a text secret and with a base64 secret, RS256/ES256 with a pasted PEM (one line is fine) verify at the server or on jwt.io; iat/exp/jti appear as set; query placement sends `?token=` (or the chosen name); a broken payload JSON fails with "The auth couldn't be applied… Check the Auth tab." and the "Open the Auth tab" button opens the tab.
+- [ ] Hawk: the example server accepts the request, with and without a payload hash; each send has a new nonce.
+- [ ] NTLM: the IIS site answers 200 with `DOMAIN` + user + password; Debug shows two exchanges on the same connection (the second "reused"); two sends at once both succeed; a wrong password ends with 401.
+- [ ] Inheritance: each type set on a collection is used by an inheriting request.
+- [ ] Copy as cURL writes `--digest`, `--ntlm` or `--aws-sigv4 aws:amz:<region>:<service>` with `-u` (secrets as `{{name}}` unless revealed) and runs with real curl once revealed; Python shows `HTTPDigestAuth`, PHP `CURLAUTH_DIGEST`/`CURLAUTH_NTLM`; other languages show computed SigV4/JWT/Hawk headers with a "valid for about 5 minutes"/"signed now" warning, or a warning that Digest/NTLM was left out. Importing those cURL commands gives the matching auth type.
+- [ ] No password, key or token appears in the workspace files (secret variables used), history, `pakpos.db`, runner exports or the Debug tab.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

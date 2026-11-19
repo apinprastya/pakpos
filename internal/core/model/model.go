@@ -203,6 +203,19 @@ const (
 	// holds the settings). The send pipeline loads the stored token and
 	// turns it into a bearer header or a query parameter before sending.
 	AuthOAuth2 AuthType = "oauth2"
+	// AuthDigest is HTTP Digest auth (RFC 7616, Auth.Digest): the request
+	// goes out without auth and is sent again once with the answer to the
+	// server's 401 challenge.
+	AuthDigest AuthType = "digest"
+	// AuthAWSV4 signs the request with AWS Signature Version 4 (Auth.AWSV4).
+	AuthAWSV4 AuthType = "awsv4"
+	// AuthJWT sends a JSON Web Token signed for each send (Auth.JWT).
+	AuthJWT AuthType = "jwt"
+	// AuthHawk is Hawk auth (Auth.Hawk): a MAC over the request with a
+	// fresh timestamp and nonce per send.
+	AuthHawk AuthType = "hawk"
+	// AuthNTLM is the NTLM handshake (Auth.NTLM) on a connection of its own.
+	AuthNTLM AuthType = "ntlm"
 )
 
 // APIKeyLocation says where an API key is sent.
@@ -226,11 +239,99 @@ type Auth struct {
 	APIIn    APIKeyLocation `json:"apiIn" yaml:"apiIn,omitempty"`
 	// OAuth2 holds the OAuth 2.0 settings (Tier 3, a v3-only field).
 	OAuth2 *OAuth2 `json:"oauth2,omitempty" yaml:"oauth2,omitempty"`
+	// The settings of the other Tier 3 auth types (v3-only fields).
+	Digest *Digest `json:"digest,omitempty" yaml:"digest,omitempty"`
+	AWSV4  *AWSV4  `json:"awsv4,omitempty" yaml:"awsv4,omitempty"`
+	JWT    *JWT    `json:"jwt,omitempty" yaml:"jwt,omitempty"`
+	Hawk   *Hawk   `json:"hawk,omitempty" yaml:"hawk,omitempty"`
+	NTLM   *NTLM   `json:"ntlm,omitempty" yaml:"ntlm,omitempty"`
 }
 
-// IsV3 reports whether the auth uses a field older builds don't know
-// (OAuth 2.0), so writing it upgrades the workspace format.
-func (a Auth) IsV3() bool { return a.Type == AuthOAuth2 || a.OAuth2 != nil }
+// IsV3 reports whether the auth uses a type or field older builds don't
+// know (OAuth 2.0, Digest, AWS Signature v4, JWT, Hawk, NTLM), so writing
+// it upgrades the workspace format.
+func (a Auth) IsV3() bool {
+	switch a.Type {
+	case AuthOAuth2, AuthDigest, AuthAWSV4, AuthJWT, AuthHawk, AuthNTLM:
+		return true
+	}
+	return a.OAuth2 != nil || a.Digest != nil || a.AWSV4 != nil || a.JWT != nil || a.Hawk != nil || a.NTLM != nil
+}
+
+// Digest configures HTTP Digest auth (RFC 7616). Password usually holds a
+// secret. Algorithm and Qop are preferences for when the server offers
+// several; the server's challenge decides otherwise.
+type Digest struct {
+	Username string `json:"username" yaml:"username,omitempty"`
+	Password string `json:"password" yaml:"password,omitempty"`
+	// Algorithm is "" (the strongest the server offers), MD5, MD5-sess,
+	// SHA-256 or SHA-256-sess.
+	Algorithm string `json:"algorithm" yaml:"algorithm,omitempty"`
+	// Qop is "" (auth when offered) or auth-int (the body is hashed too).
+	Qop string `json:"qop" yaml:"qop,omitempty"`
+}
+
+// AWSV4 configures AWS Signature Version 4. SecretKey and SessionToken
+// usually hold secrets.
+type AWSV4 struct {
+	AccessKey    string `json:"accessKey" yaml:"accessKey,omitempty"`
+	SecretKey    string `json:"secretKey" yaml:"secretKey,omitempty"`
+	SessionToken string `json:"sessionToken" yaml:"sessionToken,omitempty"`
+	Region       string `json:"region" yaml:"region,omitempty"`
+	Service      string `json:"service" yaml:"service,omitempty"`
+	// UnsignedPayload signs UNSIGNED-PAYLOAD instead of the body's hash
+	// (S3 accepts it; most other services don't).
+	UnsignedPayload bool `json:"unsignedPayload" yaml:"unsignedPayload,omitempty"`
+}
+
+// JWT configures a JSON Web Token signed for every send. Secret holds the
+// HMAC secret or a PEM private key and usually is a secret.
+type JWT struct {
+	// Algorithm is HS256 ("" too), HS384, HS512, RS256/384/512,
+	// PS256/384/512, ES256/384/512 or EdDSA.
+	Algorithm string `json:"algorithm" yaml:"algorithm,omitempty"`
+	Secret    string `json:"secret" yaml:"secret,omitempty"`
+	// SecretBase64 says the HMAC secret is base64 encoded.
+	SecretBase64 bool `json:"secretBase64" yaml:"secretBase64,omitempty"`
+	// Header is a JSON object of extra header fields (kid, typ...); alg is
+	// always the Algorithm's.
+	Header string `json:"header" yaml:"header,omitempty"`
+	// Payload is the claims as a JSON object; {{variables}} in its string
+	// literals are JSON-escaped.
+	Payload string `json:"payload" yaml:"payload,omitempty"`
+	// DisableIssuedAt leaves out the automatic iat claim. LifetimeSeconds
+	// > 0 adds exp = now + lifetime. AddJTI adds a random jti. A claim the
+	// payload sets itself is never replaced.
+	DisableIssuedAt bool `json:"disableIssuedAt" yaml:"disableIssuedAt,omitempty"`
+	LifetimeSeconds int  `json:"lifetimeSeconds" yaml:"lifetimeSeconds,omitempty"`
+	AddJTI          bool `json:"addJti" yaml:"addJti,omitempty"`
+	// Placement: header ("" too) with HeaderPrefix ("" = Bearer), or query
+	// with QueryParam ("" = token).
+	Placement    OAuth2Placement `json:"placement" yaml:"placement,omitempty"`
+	HeaderPrefix string          `json:"headerPrefix" yaml:"headerPrefix,omitempty"`
+	QueryParam   string          `json:"queryParam" yaml:"queryParam,omitempty"`
+}
+
+// Hawk configures Hawk auth. Key usually holds a secret.
+type Hawk struct {
+	ID  string `json:"id" yaml:"id,omitempty"`
+	Key string `json:"key" yaml:"key,omitempty"`
+	// Algorithm is sha256 ("" too) or sha1.
+	Algorithm string `json:"algorithm" yaml:"algorithm,omitempty"`
+	Ext       string `json:"ext" yaml:"ext,omitempty"`
+	App       string `json:"app" yaml:"app,omitempty"`
+	Dlg       string `json:"dlg" yaml:"dlg,omitempty"`
+	// PayloadHash adds the hash of the body and its content type.
+	PayloadHash bool `json:"payloadHash" yaml:"payloadHash,omitempty"`
+}
+
+// NTLM configures the NTLM handshake. Password usually holds a secret.
+type NTLM struct {
+	Username    string `json:"username" yaml:"username,omitempty"`
+	Password    string `json:"password" yaml:"password,omitempty"`
+	Domain      string `json:"domain" yaml:"domain,omitempty"`
+	Workstation string `json:"workstation" yaml:"workstation,omitempty"`
+}
 
 // OAuth2Grant is an OAuth 2.0 grant type.
 type OAuth2Grant string

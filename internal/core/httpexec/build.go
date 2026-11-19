@@ -74,6 +74,9 @@ func (e *Executor) Build(ctx context.Context, req model.Request) (*http.Request,
 
 	if err := auth.Apply(r, req.Auth); err != nil {
 		closeBody(r)
+		if auth.Signed(req.Auth.Type) {
+			return nil, newError(KindAuth, err, "The auth couldn't be applied: %s. Check the Auth tab.", err.Error())
+		}
 		return nil, newError(KindInvalidRequest, err, "Authorization settings are incomplete")
 	}
 	return r, nil

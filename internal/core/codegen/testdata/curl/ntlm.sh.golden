@@ -1,0 +1,3 @@
+curl https://intranet.example.com/ \
+  --ntlm \
+  -u 'CORP\jane:{{password}}'

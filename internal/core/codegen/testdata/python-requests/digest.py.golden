@@ -1,0 +1,9 @@
+import requests
+from requests.auth import HTTPDigestAuth
+
+url = "https://example.com/dir/index.html"
+
+response = requests.get(url, auth=HTTPDigestAuth("Mufasa", "{{password}}"))
+
+print(response.status_code)
+print(response.text)

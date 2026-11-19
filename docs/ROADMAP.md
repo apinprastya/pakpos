@@ -7,7 +7,7 @@ tier gets its own plan document (`docs/PLAN-TIER<N>.md`) before work starts.
 |---|---|---|
 | 1 | MVP: build, send, save, history | **Done** ([plan](PLAN-TIER1.md); see its carry-over lists) |
 | 2 | Core productivity: collections, environments, variables | **Done** ([plan](PLAN-TIER2.md); see its "Definition of Done — what's left" and carry-over lists) |
-| 3 | Power features: scripting, runner, advanced auth & network | **In progress** ([plan](PLAN-TIER3.md); M1 carry-overs done) |
+| 3 | Power features: scripting, runner, advanced auth & network | **Done in code** ([plan](PLAN-TIER3.md)); left: the first release run, smoke tests on Linux/macOS/Windows, signing (see its "Definition of Done — what's left") |
 | 4 | Nice-to-have | Later |
 
 In-app updates (signed `SHA256SUMS`, as in Lontar) were pulled forward from
@@ -71,7 +71,7 @@ Out of scope for now: importing Postman collections. Non-REST protocols
 - CI on GitHub for Linux, macOS and Windows (the first release run is still to do).
 - Code-split CodeMirror languages and rarely used dialogs.
 
-## Tier 3 — Power features (in progress)
+## Tier 3 — Power features ✅ (code; release run and smoke tests pending)
 
 Carried over from Tier 2 (see PLAN-TIER2.md for the full lists):
 - Pruning orphaned secret values (e.g. after edits made while the store was locked).
@@ -104,6 +104,13 @@ Carried over from Tier 2 (see PLAN-TIER2.md for the full lists):
 - Per-request overrides for timeout, redirects and TLS verification.
 
 ## Tier 4 — Nice-to-have
+
+Moved here from Tier 3 (see PLAN-TIER3.md for the reasons):
+- `pm.sendRequest`, `pm.cookies`, `pm.request.auth`, bundled script libraries.
+- OAuth 2.0 device code, client assertion (private_key_jwt), OpenID discovery, token revocation.
+- OS proxy settings (macOS/Windows system proxy, PAC files); encrypted PEM keys.
+- Showing OAuth 2.0 token endpoint exchanges in the Debug tab.
+- Hawk server authorization (response `Server-Authorization` check); NTLMv1 and Kerberos/Negotiate.
 
 - Headless CLI runner (`pakpos run`) for CI, with JUnit and HTML reports. The
   core packages are already free of Wails code so it can reuse them.

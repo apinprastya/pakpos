@@ -247,3 +247,32 @@ func TestScanAndMaskEchoedBasicAuth(t *testing.T) {
 		t.Fatalf("masked = %q err=%v", masked.Response.Body, err)
 	}
 }
+
+func TestAuthSecretsAndCopy(t *testing.T) {
+	tests := []struct {
+		a    model.Auth
+		want []string
+	}{
+		{model.Auth{Type: model.AuthDigest, Digest: &model.Digest{Password: "digest-pw"}}, []string{"digestPassword"}},
+		{model.Auth{Type: model.AuthAWSV4, AWSV4: &model.AWSV4{SecretKey: "aws-secret", SessionToken: "aws-token"}}, []string{"awsSecretKey", "awsSessionToken"}},
+		{model.Auth{Type: model.AuthJWT, JWT: &model.JWT{Secret: "jwt-secret"}}, []string{"jwtSecret"}},
+		{model.Auth{Type: model.AuthHawk, Hawk: &model.Hawk{Key: "hawk-key"}}, []string{"hawkKey"}},
+		{model.Auth{Type: model.AuthNTLM, NTLM: &model.NTLM{Password: "ntlm-pw"}}, []string{"ntlmPassword"}},
+		{model.Auth{Type: model.AuthNTLM, NTLM: &model.NTLM{Password: "pw"}}, nil},
+		{model.Auth{Type: model.AuthBasic, Digest: &model.Digest{Password: "inactive"}}, nil},
+	}
+	for _, tt := range tests {
+		var got []string
+		for _, v := range AuthSecrets(tt.a) {
+			got = append(got, v.Name)
+		}
+		if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+			t.Errorf("%s: %v", tt.a.Type, got)
+		}
+	}
+	in := model.Auth{OAuth2: &model.OAuth2{}, Digest: &model.Digest{}, AWSV4: &model.AWSV4{}, JWT: &model.JWT{}, Hawk: &model.Hawk{}, NTLM: &model.NTLM{}}
+	out := copyAuth(in)
+	if out.OAuth2 == in.OAuth2 || out.Digest == in.Digest || out.AWSV4 == in.AWSV4 || out.JWT == in.JWT || out.Hawk == in.Hawk || out.NTLM == in.NTLM {
+		t.Error("copyAuth shares a block")
+	}
+}

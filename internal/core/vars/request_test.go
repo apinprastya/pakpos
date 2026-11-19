@@ -264,3 +264,54 @@ func TestResolveRequestOAuth2(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+func TestResolveRequestOtherAuth(t *testing.T) {
+	sc := append(reqScopes(), scope(ScopeLocal, v("quote", `a"b`)))
+	tests := []struct {
+		name  string
+		auth  model.Auth
+		check func(model.Auth) bool
+	}{
+		{"digest", model.Auth{Type: model.AuthDigest, Digest: &model.Digest{Username: "{{user}}", Password: "{{pw}}"}},
+			func(a model.Auth) bool { return a.Digest.Username == "ann" && a.Digest.Password == "pa55" }},
+		{"aws", model.Auth{Type: model.AuthAWSV4, AWSV4: &model.AWSV4{AccessKey: "{{user}}", SecretKey: "{{pw}}", SessionToken: "{{pw}}", Region: "{{id}}", Service: "s3"}},
+			func(a model.Auth) bool {
+				w := a.AWSV4
+				return w.AccessKey == "ann" && w.SecretKey == "pa55" && w.SessionToken == "pa55" && w.Region == "42"
+			}},
+		{"jwt", model.Auth{Type: model.AuthJWT, JWT: &model.JWT{Secret: "{{pw}}", Header: `{"kid":"{{quote}}"}`, Payload: `{"sub":"{{quote}}","n":{{id}}}`, HeaderPrefix: "{{user}}"}},
+			func(a model.Auth) bool {
+				j := a.JWT
+				return j.Secret == "pa55" && j.Header == `{"kid":"a\"b"}` && j.Payload == `{"sub":"a\"b","n":42}` && j.HeaderPrefix == "ann"
+			}},
+		{"hawk", model.Auth{Type: model.AuthHawk, Hawk: &model.Hawk{ID: "{{user}}", Key: "{{pw}}", Ext: "{{id}}"}},
+			func(a model.Auth) bool { return a.Hawk.ID == "ann" && a.Hawk.Key == "pa55" && a.Hawk.Ext == "42" }},
+		{"ntlm", model.Auth{Type: model.AuthNTLM, NTLM: &model.NTLM{Username: "{{user}}", Password: "{{pw}}", Domain: "{{id}}"}},
+			func(a model.Auth) bool {
+				return a.NTLM.Username == "ann" && a.NTLM.Password == "pa55" && a.NTLM.Domain == "42"
+			}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, unresolved, err := ResolveRequest(model.Request{URL: "x", Auth: tt.auth}, sc)
+			if err != nil || len(unresolved) != 0 {
+				t.Fatalf("err = %v, unresolved = %v", err, unresolved)
+			}
+			if !tt.check(got.Auth) {
+				t.Errorf("got %+v", got.Auth)
+			}
+			if tt.check(tt.auth) {
+				t.Error("the input must not change")
+			}
+			// Without settings nothing happens.
+			if _, _, err := ResolveRequest(model.Request{Auth: model.Auth{Type: tt.auth.Type}}, sc); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	cyc := []Scope{scope(ScopeEnvironment, v("a", "{{a}}"))}
+	bad := model.Request{Auth: model.Auth{Type: model.AuthJWT, JWT: &model.JWT{Payload: `{"a":"{{a}}"}`}}}
+	if _, _, err := ResolveRequest(bad, cyc); !errors.Is(err, ErrCycle) {
+		t.Errorf("err = %v", err)
+	}
+}
