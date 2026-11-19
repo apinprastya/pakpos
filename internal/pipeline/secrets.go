@@ -161,17 +161,20 @@ func (s *Session) saveCollection(id string, settings fsstore.CollectionSettings,
 	return c.Variables, nil
 }
 
-// DeleteCollection deletes a collection with everything in it, and the
-// stored values of its secret variables.
+// DeleteCollection deletes a collection with everything in it, the stored
+// values of its secret variables and the OAuth 2.0 tokens of the
+// collection and what was in it.
 func (s *Session) DeleteCollection(id string) error {
 	c, err := s.ws.GetCollection(id)
 	if err != nil {
 		return err
 	}
+	ids := subtree(s.ws.Tree().Collections, id, false)
 	if err := s.ws.DeleteCollection(id); err != nil {
 		return err
 	}
 	s.cleanup(c.ID, secrets.SecretKeys(c.Variables))
+	s.forgetTokens(ids)
 	return nil
 }
 

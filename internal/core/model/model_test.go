@@ -168,3 +168,33 @@ func TestScriptsYAML(t *testing.T) {
 		t.Errorf("request yaml = %s, %v", out, err)
 	}
 }
+
+func TestAuthOAuth2YAML(t *testing.T) {
+	if (Auth{Type: AuthBearer}).IsV3() || !(Auth{Type: AuthOAuth2}).IsV3() || !(Auth{Type: AuthNone, OAuth2: &OAuth2{}}).IsV3() {
+		t.Error("IsV3")
+	}
+	y, err := yaml.Marshal(Auth{Type: AuthBearer})
+	if err != nil || strings.Contains(string(y), "oauth2") {
+		t.Fatalf("an unset oauth2 block must be omitted: %s %v", y, err)
+	}
+	in := Auth{Type: AuthOAuth2, OAuth2: &OAuth2{
+		Grant: GrantAuthorizationCode, AuthURL: "https://a/auth", TokenURL: "https://a/token", ClientID: "id",
+		ClientSecret: "{{secret}}", Scope: "read", ExtraParams: []KeyValue{{Key: "audience", Value: "api", Enabled: true}},
+	}}
+	y, err = yaml.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, absent := range []string{"disablePkce", "placement", "redirectUrl", "username"} {
+		if strings.Contains(string(y), absent) {
+			t.Errorf("%s should be omitted:\n%s", absent, y)
+		}
+	}
+	var back Auth
+	if err := yaml.Unmarshal(y, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.OAuth2 == nil || back.OAuth2.ClientSecret != "{{secret}}" || back.OAuth2.ExtraParams[0].Key != "audience" {
+		t.Errorf("round trip: %+v", back.OAuth2)
+	}
+}

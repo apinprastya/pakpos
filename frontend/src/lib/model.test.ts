@@ -8,6 +8,9 @@ import {
   normalizePreview,
   normalizeVisible,
   normalizeRequest,
+  normalizeOAuth2,
+  normalizeOAuth2Status,
+  emptyOAuth2,
   normalizeSecretsStatus,
   normalizeSendResult,
   normalizeVariables,
@@ -433,6 +436,32 @@ describe("collection and folder settings", () => {
       id: "f",
       auth: { type: "none" },
       headers: [{ key: "a", value: "", enabled: false }],
+    });
+  });
+});
+
+describe("OAuth 2.0 normalizers", () => {
+  it("keeps oauth2 only when Go sends it and fills its defaults", () => {
+    expect(normalizeRequest({ auth: { type: "bearer" } }).auth).not.toHaveProperty("oauth2");
+    const r = normalizeRequest({ auth: { type: "oauth2", oauth2: { clientId: "pk", extraParams: null } } });
+    expect(r.auth.oauth2).toEqual({ ...emptyOAuth2(), grant: "", clientId: "pk" });
+    expect(normalizeOAuth2(null).extraParams).toEqual([]);
+  });
+
+  it("fills a token status", () => {
+    expect(normalizeOAuth2Status(null)).toEqual({
+      hasToken: false,
+      locked: false,
+      tokenType: "",
+      scope: "",
+      expiresAt: 0,
+      obtainedAt: 0,
+      hasRefreshToken: false,
+      hasIdToken: false,
+    });
+    expect(normalizeOAuth2Status({ hasToken: true, expiresAt: 5 })).toMatchObject({
+      hasToken: true,
+      expiresAt: 5,
     });
   });
 });

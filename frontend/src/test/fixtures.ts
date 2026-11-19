@@ -29,6 +29,7 @@ import type {
   OverlayValue,
   ScriptSource,
   TestResult,
+  OAuth2Status,
 } from "@/lib/model";
 
 /** A send result with no response, error or variable notes; patch what the test needs. */
@@ -354,6 +355,20 @@ export function makeDataPreview(patch: Partial<DataPreview> = {}): DataPreview {
       ["ana", "a1"],
       ["bo", "b2"],
     ],
+    ...patch,
+  };
+}
+
+export function makeOAuth2Status(patch: Partial<OAuth2Status> = {}): OAuth2Status {
+  return {
+    hasToken: true,
+    locked: false,
+    tokenType: "Bearer",
+    scope: "read",
+    expiresAt: 0,
+    obtainedAt: 0,
+    hasRefreshToken: true,
+    hasIdToken: false,
     ...patch,
   };
 }

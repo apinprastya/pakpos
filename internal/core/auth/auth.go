@@ -19,6 +19,41 @@ import (
 // ErrMissingAPIKeyName is returned when API key auth has no key name.
 var ErrMissingAPIKeyName = errors.New("API key auth needs a key name")
 
+// ErrOAuth2Token is returned by Apply for OAuth 2.0 auth: the send pipeline
+// must first turn it into the token's header or query parameter (TokenAuth).
+var ErrOAuth2Token = errors.New("OAuth 2.0 auth needs an access token; get one in the Auth tab")
+
+// TokenName is the placeholder an OAuth 2.0 access token is shown as where
+// a request is written out (generated code, masked text): {{oauth2AccessToken}}.
+const TokenName = "oauth2AccessToken"
+
+// TokenPlaceholder is TokenName as a {{reference}}.
+const TokenPlaceholder = "{{" + TokenName + "}}"
+
+// Defaults of the OAuth 2.0 token placement.
+const (
+	DefaultTokenPrefix = "Bearer"
+	DefaultTokenParam  = "access_token"
+)
+
+// TokenAuth returns the auth that sends an OAuth 2.0 access token the way o
+// places it: a bearer header with o's prefix (default Bearer), or a query
+// parameter (default access_token). o may be nil (header, Bearer).
+func TokenAuth(o *model.OAuth2, token string) model.Auth {
+	if o != nil && o.Placement == model.PlaceQuery {
+		name := strings.TrimSpace(o.QueryParam)
+		if name == "" {
+			name = DefaultTokenParam
+		}
+		return model.Auth{Type: model.AuthAPIKey, APIKey: name, APIValue: token, APIIn: model.APIKeyInQuery}
+	}
+	prefix := DefaultTokenPrefix
+	if o != nil && strings.TrimSpace(o.HeaderPrefix) != "" {
+		prefix = strings.TrimSpace(o.HeaderPrefix)
+	}
+	return model.Auth{Type: model.AuthBearer, Token: token, Prefix: prefix}
+}
+
 // Apply adds the authorization described by a to r.
 // AuthNone, AuthInherit (resolved upstream in later tiers) and an empty type are no-ops.
 func Apply(r *http.Request, a model.Auth) error {
@@ -41,6 +76,8 @@ func Apply(r *http.Request, a model.Auth) error {
 		return nil
 	case model.AuthAPIKey:
 		return applyAPIKey(r, a)
+	case model.AuthOAuth2:
+		return ErrOAuth2Token
 	default:
 		return fmt.Errorf("unsupported auth type %q", a.Type)
 	}
@@ -88,6 +125,9 @@ func applyAPIKey(r *http.Request, a model.Auth) error {
 // req is not modified; Headers and Query are copied when they change.
 func Materialize(req model.Request, keepBasic bool) (model.Request, error) {
 	a := req.Auth
+	if a.Type == model.AuthOAuth2 {
+		a = TokenAuth(a.OAuth2, TokenPlaceholder)
+	}
 	out := req
 	out.Auth = model.Auth{Type: model.AuthNone}
 	switch a.Type {

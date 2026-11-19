@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { VarScopeContext } from "@/components/editor/varScopeContext";
 import { AuthEditor } from "@/features/request/AuthEditor";
-import { SUGGESTED_NAMES, type SecretField } from "@/features/request/auth";
+import { SUGGESTED_NAMES, withSecretField, type SecretField } from "@/features/request/auth";
 import { InheritedAuth } from "@/features/request/Inherited";
 import { KeyValueTable } from "@/features/request/KeyValueTable";
 import { usePreview } from "@/features/request/usePreview";
@@ -384,6 +384,7 @@ function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
               : "Requests that inherit auth send none."
           }
           onMoveToSecret={(field, value) => setMoving({ field, value })}
+          tokenOwner={{ ownerId: doc.targetId, parentId: "" }}
         />
         <MoveToSecretDialog
           value={moving?.value ?? null}
@@ -391,7 +392,7 @@ function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
           collectionId={collectionIdOf(collections, doc.targetId)}
           onMoved={(name) => {
             const field = moving!.field;
-            tabs().updateDoc(tab.id, (d) => ({ ...d, auth: { ...d.auth, [field]: `{{${name}}}` } }));
+            tabs().updateDoc(tab.id, (d) => ({ ...d, auth: withSecretField(d.auth, field, `{{${name}}}`) }));
           }}
           onClose={() => setMoving(null)}
         />

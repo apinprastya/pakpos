@@ -109,7 +109,7 @@ func (s *Session) liveSecrets() (live map[string]map[string]bool, ok bool) {
 
 // PruneSecrets deletes stored secret values the workspace no longer refers
 // to: their scope (environment, collection, globals) or secret variable is
-// gone, e.g. removed while the store was locked, by hand-editing a file, or
+// gone (or, for an OAuth 2.0 token, its owner or the owner's OAuth 2.0 auth), e.g. removed while the store was locked, by hand-editing a file, or
 // a value set on a secret row that was never saved. Only keys in the index
 // written before `before` are candidates, so values of unsaved rows in the
 // running session survive; callers pass the time the app started.
@@ -146,6 +146,9 @@ func (s *Session) PruneSecrets(before time.Time) (int, error) {
 	for _, r := range indexed {
 		if live[r.ScopeID][r.Key] || r.WrittenAt.Unix() >= before.Unix() {
 			continue
+		}
+		if r.Key == OAuth2TokenKey && s.hasOAuth2(r.ScopeID) {
+			continue // the token of a request, folder or collection using OAuth 2.0
 		}
 		err := s.sec.Delete(secrets.Key(wsID, r.ScopeID, r.Key)) // forgets the key too
 		switch {

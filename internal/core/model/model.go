@@ -199,6 +199,10 @@ const (
 	AuthBasic   AuthType = "basic"
 	AuthBearer  AuthType = "bearer"
 	AuthAPIKey  AuthType = "apikey"
+	// AuthOAuth2 sends an access token obtained with OAuth 2.0 (Auth.OAuth2
+	// holds the settings). The send pipeline loads the stored token and
+	// turns it into a bearer header or a query parameter before sending.
+	AuthOAuth2 AuthType = "oauth2"
 )
 
 // APIKeyLocation says where an API key is sent.
@@ -220,6 +224,83 @@ type Auth struct {
 	APIKey   string         `json:"apiKey" yaml:"apiKey,omitempty"`
 	APIValue string         `json:"apiValue" yaml:"apiValue,omitempty"`
 	APIIn    APIKeyLocation `json:"apiIn" yaml:"apiIn,omitempty"`
+	// OAuth2 holds the OAuth 2.0 settings (Tier 3, a v3-only field).
+	OAuth2 *OAuth2 `json:"oauth2,omitempty" yaml:"oauth2,omitempty"`
+}
+
+// IsV3 reports whether the auth uses a field older builds don't know
+// (OAuth 2.0), so writing it upgrades the workspace format.
+func (a Auth) IsV3() bool { return a.Type == AuthOAuth2 || a.OAuth2 != nil }
+
+// OAuth2Grant is an OAuth 2.0 grant type.
+type OAuth2Grant string
+
+const (
+	GrantAuthorizationCode OAuth2Grant = "authorization_code"
+	GrantClientCredentials OAuth2Grant = "client_credentials"
+	GrantPassword          OAuth2Grant = "password"
+	GrantImplicit          OAuth2Grant = "implicit"
+)
+
+// OAuth2ClientAuth says how the client id and secret reach the token endpoint.
+type OAuth2ClientAuth string
+
+const (
+	// ClientAuthBasic sends them in an Authorization: Basic header (default).
+	ClientAuthBasic OAuth2ClientAuth = "basic"
+	// ClientAuthBody sends client_id and client_secret as form fields.
+	ClientAuthBody OAuth2ClientAuth = "body"
+)
+
+// OAuth2Placement says where the access token goes on a request.
+type OAuth2Placement string
+
+const (
+	// PlaceHeader sends "Authorization: <prefix> <token>" (default).
+	PlaceHeader OAuth2Placement = "header"
+	// PlaceQuery sends the token as a query parameter.
+	PlaceQuery OAuth2Placement = "query"
+)
+
+// PKCE challenge methods.
+const (
+	PKCES256  = "S256"
+	PKCEPlain = "plain"
+)
+
+// OAuth2 configures OAuth 2.0 auth. Every string field may hold
+// {{variables}}. ClientSecret and Password usually hold secrets; the UI
+// masks literal values and offers to move them to a secret variable.
+// Tokens are never stored here (they live in the secret store).
+type OAuth2 struct {
+	Grant    OAuth2Grant `json:"grant" yaml:"grant,omitempty"`
+	AuthURL  string      `json:"authUrl" yaml:"authUrl,omitempty"`
+	TokenURL string      `json:"tokenUrl" yaml:"tokenUrl,omitempty"`
+	// RedirectURL is the callback of the browser grants: "" means a
+	// loopback server on 127.0.0.1 with a random port; otherwise a fixed
+	// http://127.0.0.1:<port>/<path> or http://localhost:<port>/<path>.
+	RedirectURL  string           `json:"redirectUrl" yaml:"redirectUrl,omitempty"`
+	ClientID     string           `json:"clientId" yaml:"clientId,omitempty"`
+	ClientSecret string           `json:"clientSecret" yaml:"clientSecret,omitempty"`
+	ClientAuth   OAuth2ClientAuth `json:"clientAuth" yaml:"clientAuth,omitempty"`
+	Scope        string           `json:"scope" yaml:"scope,omitempty"`
+	// Username and Password are the resource owner's (password grant).
+	Username string `json:"username" yaml:"username,omitempty"`
+	Password string `json:"password" yaml:"password,omitempty"`
+	// DisablePKCE turns PKCE off for the authorization code grant (on by
+	// default). PKCEMethod is S256 ("" too) or plain.
+	DisablePKCE bool   `json:"disablePkce" yaml:"disablePkce,omitempty"`
+	PKCEMethod  string `json:"pkceMethod" yaml:"pkceMethod,omitempty"`
+	// Placement of the access token: header ("" too) with HeaderPrefix
+	// ("" = Bearer), or query with QueryParam ("" = access_token).
+	Placement    OAuth2Placement `json:"placement" yaml:"placement,omitempty"`
+	HeaderPrefix string          `json:"headerPrefix" yaml:"headerPrefix,omitempty"`
+	QueryParam   string          `json:"queryParam" yaml:"queryParam,omitempty"`
+	// DisableAutoRefresh stops sends from refreshing an expiring token.
+	DisableAutoRefresh bool `json:"disableAutoRefresh" yaml:"disableAutoRefresh,omitempty"`
+	// ExtraParams are added to the authorization request and every token
+	// request (audience, resource...). Disabled rows are skipped.
+	ExtraParams []KeyValue `json:"extraParams" yaml:"extraParams,omitempty"`
 }
 
 var rawContentTypes = map[RawLanguage]string{

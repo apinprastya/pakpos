@@ -220,3 +220,47 @@ func TestResolveRequestErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveRequestOAuth2(t *testing.T) {
+	in := &model.OAuth2{
+		Grant: model.GrantPassword, AuthURL: "https://{{host}}/authorize", TokenURL: "https://{{host}}/token",
+		RedirectURL: "http://127.0.0.1:{{id}}/callback", ClientID: "{{user}}", ClientSecret: "{{pw}}",
+		Scope: "read {{nope}}", Username: "{{user}}", Password: "{{pw}}", HeaderPrefix: "{{ct}}", QueryParam: "{{hk}}",
+		ExtraParams: []model.KeyValue{kv("audience", "{{host}}"), {Key: "off", Value: "{{offParam}}"}},
+	}
+	req := model.Request{URL: "x", Auth: model.Auth{Type: model.AuthOAuth2, OAuth2: in}}
+	got, unresolved, err := ResolveRequest(req, reqScopes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := got.Auth.OAuth2
+	if o == in || in.ClientID != "{{user}}" || in.ExtraParams[0].Value != "{{host}}" {
+		t.Fatal("the input must not change")
+	}
+	want := model.OAuth2{
+		Grant: model.GrantPassword, AuthURL: "https://api.example.com/authorize", TokenURL: "https://api.example.com/token",
+		RedirectURL: "http://127.0.0.1:42/callback", ClientID: "ann", ClientSecret: "pa55", Scope: "read {{nope}}",
+		Username: "ann", Password: "pa55", HeaderPrefix: "text/plain", QueryParam: "X-Trace",
+		ExtraParams: []model.KeyValue{kv("audience", "api.example.com"), {Key: "off", Value: "{{offParam}}"}},
+	}
+	if !reflect.DeepEqual(*o, want) {
+		t.Errorf("got %+v", *o)
+	}
+	if !reflect.DeepEqual(unresolved, []string{"nope"}) {
+		t.Errorf("unresolved = %v", unresolved)
+	}
+
+	// No settings, or another auth type: left alone.
+	if got, _, _ := ResolveRequest(model.Request{Auth: model.Auth{Type: model.AuthOAuth2}}, nil); got.Auth.OAuth2 != nil {
+		t.Error("nil settings")
+	}
+	other := model.Request{Auth: model.Auth{Type: model.AuthBearer, OAuth2: in}}
+	if got, _, _ := ResolveRequest(other, reqScopes()); got.Auth.OAuth2 != in {
+		t.Error("inactive settings are copied unchanged")
+	}
+	cyc := []Scope{scope(ScopeEnvironment, v("a", "{{a}}"))}
+	bad := model.Request{Auth: model.Auth{Type: model.AuthOAuth2, OAuth2: &model.OAuth2{ClientSecret: "{{a}}"}}}
+	if _, _, err := ResolveRequest(bad, cyc); !errors.Is(err, ErrCycle) {
+		t.Errorf("err = %v", err)
+	}
+}

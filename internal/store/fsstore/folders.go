@@ -414,7 +414,7 @@ func (w *Workspace) SaveFolder(id string, s FolderSettings) (Folder, error) {
 	}
 	// A hand-made folder in a v1 workspace: its settings are v2 data.
 	to := VersionV2
-	if !meta.Scripts.IsZero() {
+	if !meta.Scripts.IsZero() || meta.Auth.IsV3() {
 		to = FormatVersion
 	}
 	if err := w.upgradeManifestLocked(to); err != nil {

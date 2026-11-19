@@ -81,6 +81,13 @@ func (r *Resolver) ResolveRequest(req model.Request) (model.Request, []string, e
 	case model.AuthAPIKey:
 		rr.field("API key name", &a.APIKey)
 		rr.field("API key value", &a.APIValue)
+	case model.AuthOAuth2:
+		if a.OAuth2 != nil {
+			o := *a.OAuth2
+			o.ExtraParams = cloneKV(o.ExtraParams)
+			rr.oauth2(&o)
+			a.OAuth2 = &o
+		}
 	}
 
 	if rr.err != nil {
@@ -92,6 +99,29 @@ func (r *Resolver) ResolveRequest(req model.Request) (model.Request, []string, e
 	}
 	sort.Strings(names)
 	return out, names, nil
+}
+
+// oauth2 resolves the OAuth 2.0 settings that reach the authorization
+// server or the request (not the enums, which are never variables).
+func (rr *requestResolver) oauth2(o *model.OAuth2) {
+	for _, f := range []struct {
+		what string
+		p    *string
+	}{
+		{"OAuth 2.0 auth URL", &o.AuthURL},
+		{"OAuth 2.0 token URL", &o.TokenURL},
+		{"OAuth 2.0 callback URL", &o.RedirectURL},
+		{"OAuth 2.0 client ID", &o.ClientID},
+		{"OAuth 2.0 client secret", &o.ClientSecret},
+		{"OAuth 2.0 scope", &o.Scope},
+		{"OAuth 2.0 username", &o.Username},
+		{"OAuth 2.0 password", &o.Password},
+		{"OAuth 2.0 header prefix", &o.HeaderPrefix},
+		{"OAuth 2.0 query parameter", &o.QueryParam},
+	} {
+		rr.field(f.what, f.p)
+	}
+	rr.rows("OAuth 2.0 parameter", o.ExtraParams)
 }
 
 // requestResolver resolves fields in place, keeping the first error.

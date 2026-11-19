@@ -34,8 +34,110 @@ export interface Body {
   binaryPath: string;
 }
 
-export type AuthType = "none" | "inherit" | "basic" | "bearer" | "apikey";
+export type AuthType = "none" | "inherit" | "basic" | "bearer" | "apikey" | "oauth2";
 export type APIKeyLocation = "header" | "query";
+
+export type OAuth2Grant = "authorization_code" | "client_credentials" | "password" | "implicit";
+
+/**
+ * OAuth 2.0 settings (Go model.OAuth2). Empty enums mean the default:
+ * grant authorization_code, clientAuth basic, placement header, pkceMethod S256.
+ * Tokens are never here: they live in the secret store (AuthService).
+ */
+export interface OAuth2 {
+  grant: OAuth2Grant | "";
+  authUrl: string;
+  tokenUrl: string;
+  /** "" = loopback on 127.0.0.1 with a random port; else a fixed http://127.0.0.1|localhost:<port>/<path>. */
+  redirectUrl: string;
+  clientId: string;
+  clientSecret: string;
+  clientAuth: "basic" | "body" | "";
+  scope: string;
+  username: string;
+  password: string;
+  disablePkce: boolean;
+  pkceMethod: "S256" | "plain" | "";
+  placement: "header" | "query" | "";
+  headerPrefix: string;
+  queryParam: string;
+  disableAutoRefresh: boolean;
+  /** Added to the authorization and token requests (audience, resource…). */
+  extraParams: KeyValue[];
+}
+
+export function emptyOAuth2(): OAuth2 {
+  return {
+    grant: "authorization_code",
+    authUrl: "",
+    tokenUrl: "",
+    redirectUrl: "",
+    clientId: "",
+    clientSecret: "",
+    clientAuth: "",
+    scope: "",
+    username: "",
+    password: "",
+    disablePkce: false,
+    pkceMethod: "",
+    placement: "",
+    headerPrefix: "",
+    queryParam: "",
+    disableAutoRefresh: false,
+    extraParams: [],
+  };
+}
+
+export function normalizeOAuth2(input: unknown): OAuth2 {
+  const o = (input ?? {}) as Loose<OAuth2>;
+  return {
+    grant: o.grant ?? "",
+    authUrl: o.authUrl ?? "",
+    tokenUrl: o.tokenUrl ?? "",
+    redirectUrl: o.redirectUrl ?? "",
+    clientId: o.clientId ?? "",
+    clientSecret: o.clientSecret ?? "",
+    clientAuth: o.clientAuth ?? "",
+    scope: o.scope ?? "",
+    username: o.username ?? "",
+    password: o.password ?? "",
+    disablePkce: o.disablePkce ?? false,
+    pkceMethod: o.pkceMethod ?? "",
+    placement: o.placement ?? "",
+    headerPrefix: o.headerPrefix ?? "",
+    queryParam: o.queryParam ?? "",
+    disableAutoRefresh: o.disableAutoRefresh ?? false,
+    extraParams: kvList(o.extraParams),
+  };
+}
+
+/** What Go knows about a stored OAuth 2.0 token, never its values (AuthService). */
+export interface OAuth2Status {
+  hasToken: boolean;
+  /** The secret store is locked, so nothing is known. */
+  locked: boolean;
+  tokenType: string;
+  scope: string;
+  /** Unix ms; 0 when the server gave no expiry. */
+  expiresAt: number;
+  obtainedAt: number;
+  hasRefreshToken: boolean;
+  hasIdToken: boolean;
+}
+
+export function normalizeOAuth2Status(input: unknown): OAuth2Status {
+  const s = (input ?? {}) as Loose<OAuth2Status>;
+  return {
+    hasToken: s.hasToken ?? false,
+    locked: s.locked ?? false,
+    tokenType: s.tokenType ?? "",
+    scope: s.scope ?? "",
+    expiresAt: s.expiresAt ?? 0,
+    obtainedAt: s.obtainedAt ?? 0,
+    hasRefreshToken: s.hasRefreshToken ?? false,
+    hasIdToken: s.hasIdToken ?? false,
+  };
+}
 
 export interface Auth {
   type: AuthType;
@@ -46,6 +148,8 @@ export interface Auth {
   apiKey: string;
   apiValue: string;
   apiIn: APIKeyLocation;
+  /** OAuth 2.0 settings; only present once set (Go omits it otherwise). */
+  oauth2?: OAuth2;
 }
 
 /**
@@ -143,7 +247,9 @@ export type SendErrorKind =
   /** {{variables}} couldn't be resolved (a loop, or nested too deeply). */
   | "variables"
   /** A pre-request script failed (an exception, a syntax error or a timeout); nothing was sent. */
-  | "script";
+  | "script"
+  /** No usable OAuth 2.0 access token (none, expired, or getting/refreshing one failed); nothing was sent. */
+  | "auth";
 
 /**
  * One HTTP exchange of a send as it went over the wire: the request, then one
@@ -476,6 +582,7 @@ export function normalizeRequest(input: unknown): Request {
       apiKey: a.apiKey ?? "",
       apiValue: a.apiValue ?? "",
       apiIn: a.apiIn || "header",
+      ...(a.oauth2 ? { oauth2: normalizeOAuth2(a.oauth2) } : {}),
     },
     settings: normalizeRequestSettings(r.settings),
     scripts: normalizeScripts(r.scripts),

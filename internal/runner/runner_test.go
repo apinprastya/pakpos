@@ -362,6 +362,21 @@ func TestRunScenarios(t *testing.T) {
 			},
 		},
 		{
+			name: "oauth2 auth error",
+			setup: func(f *fixture, c *Config) {
+				c.RequestIDs = []string{f.list.ID}
+				f.list.Auth = model.Auth{Type: model.AuthOAuth2, OAuth2: &model.OAuth2{Grant: model.GrantClientCredentials}}
+				must(f.ws.SaveRequest(f.list))
+			},
+			want:    []string{"0:List"},
+			outcome: OutcomeFailed,
+			check: func(t *testing.T, f *fixture, rep Report) {
+				if e := rep.Results[0].Error; e == nil || e.Kind != httpexec.KindAuth {
+					t.Errorf("error = %+v", e)
+				}
+			},
+		},
+		{
 			name: "secrets are masked",
 			setup: func(f *fixture, c *Config) {
 				c.RequestIDs = []string{f.list.ID}

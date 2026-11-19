@@ -66,7 +66,7 @@ pakpos/
 │   │   ├── model/              # Request, Auth, Body, Variable, Response…
 │   │   ├── vars/               # variable scopes + {{var}} / {{$dynamic}} resolution
 │   │   ├── inherit/            # auth and headers from collection and folders
-│   │   ├── auth/               # Basic, Bearer, API Key (OAuth2 later)
+│   │   ├── auth/               # Basic, Bearer, API Key; auth/oauth2: grants, PKCE, loopback callback
 │   │   ├── httpexec/           # build http.Request, execute, timing, cancel, decode gzip/deflate/br
 │   │   ├── curl/               # parse/generate cURL
 │   │   ├── codegen/            # code generators (golden files)
@@ -230,6 +230,16 @@ an applied one is never edited.
   with load problems is skipped (a typo must not cost values), and the keys
   of current secret variables are adopted first, so values stored before the
   index existed become prunable too. Failures are logged, never fatal.
+- **OAuth 2.0 tokens** live under `pakpos/<workspaceId>/<ownerId>/{oauth2}`,
+  where the owner is the request, folder or collection whose auth got the
+  token. The value is JSON (access and refresh token, token type, scope, ID
+  token, expiry, obtained-at). The braces can't appear in a `{{variable}}`
+  name, so the key never collides with a collection's secret variable (a
+  collection id is also its variable scope id). Writes go through the
+  session, so the secret index records them; pruning keeps a token while its
+  owner exists and still uses OAuth 2.0 auth. Deleting a request, folder or
+  collection deletes the tokens of everything deleted; duplicates start
+  without one. Tokens leave Go only through `AuthService.RevealOAuth2Token`.
 
 ## 6. Request execution pipeline
 
@@ -252,6 +262,13 @@ Request (as written) + parentId + selected environment
   → resolve {{vars}} (core/vars): nesting up to 10 levels, cycles are errors,
     dynamic {{$guid}} {{$timestamp}}… fresh per occurrence; unresolved names
     are sent as written and reported
+  → OAuth 2.0 (`Send.Authorize`): when the effective auth is OAuth 2.0, load
+    the owner's token; refresh it first when it expires within 30 s (refresh
+    token + auto refresh on; serialised per owner), or, for the client
+    credentials and password grants, fetch one when there is none; never a
+    browser flow. No usable token fails the send (`error.kind = "auth"`).
+    The token becomes a bearer header or a query parameter and is masked
+    (`[secret:oauth2AccessToken]`) from then on
   → apply auth, build http.Request (body encoding, multipart files,
     Content-Type, User-Agent, Accept-Encoding: gzip, deflate, br)
   → execute with httptrace (DNS / connect / TLS / TTFB / total), cancellable
@@ -263,6 +280,21 @@ Request (as written) + parentId + selected environment
 ```
 
 - Each send has an ID; `RequestService.Cancel(id)` cancels its context.
+- OAuth 2.0 (`core/auth/oauth2`, standard library only): the authorization
+  code grant (PKCE S256 by default, plain allowed), implicit, client
+  credentials, password and refresh. Token requests go through
+  `Executor.HTTPClient()`, i.e. the same cached transports as sends (proxy,
+  CA, client certificates, TLS verification), without cookies or hops. The
+  browser grants open the authorization URL through `AppControl.OpenURL`
+  and wait on a single-use loopback server (`127.0.0.1`, random port and
+  `/callback` by default, or a fixed `http://127.0.0.1|localhost:<port>/…`)
+  that checks `state`, serves a small page (the implicit grant's page posts
+  the URL fragment back to the same origin) and times out after 5 minutes
+  (`AuthService.CancelOAuth2` stops it sooner). `AuthService` gets,
+  refreshes, clears and (on request) reveals tokens and reports their status
+  without values. Code generation writes the token as
+  `{{oauth2AccessToken}}` unless secrets are revealed; examples, hops,
+  console and runner reports mask it like a secret variable.
 - A variable cycle or too-deep nesting fails the send (`error.kind =
   "variables"`) before anything goes on the wire.
 - The same preparation feeds the editor (`Preview`, `VisibleVariables`:
@@ -372,7 +404,7 @@ Request (as written) + parentId + selected environment
 ## 9. Backend ↔ frontend contract
 
 - Wails v3 services → generated TS bindings (`wails3 generate bindings`).
-- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars), `update:progress`, `script:console` (`{sendId, entries}`, one per script run that logged, masked), `runner:progress` (`{runId, workspaceId, event}` with a `runner.Event`: started with the run's configuration and order, request started/finished with the masked result, iteration finished, finished with the outcome and summary after the run is stored). Planned: `request:progress`.
+- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars), `update:progress`, `script:console` (`{sendId, entries}`, one per script run that logged, masked), `runner:progress` (`{runId, workspaceId, event}` with a `runner.Event`: started with the run's configuration and order, request started/finished with the masked result, iteration finished, finished with the outcome and summary after the run is stored), `oauth2:flow` (`{flowId, stage: "browser", authUrl}` once the authorization URL is opened, so the UI can offer to copy it). Planned: `request:progress`.
 - DTOs are plain structs with JSON tags in `internal/core/model`.
 
 ## 10. Testing & quality

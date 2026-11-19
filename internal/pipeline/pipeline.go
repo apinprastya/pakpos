@@ -40,6 +40,9 @@ type Session struct {
 	opts []vars.Option
 	// overlay holds values set by scripts (see WithOverlay); nil without one.
 	overlay *Overlay
+	// oauth gets and refreshes OAuth 2.0 tokens (see WithOAuth2); nil
+	// without it.
+	oauth *OAuth2
 }
 
 // New returns a Session. log may be nil.

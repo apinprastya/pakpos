@@ -538,7 +538,7 @@ func (w *Workspace) SaveCollection(id string, s CollectionSettings) (Collection,
 	if s.Scripts != nil {
 		meta.Scripts = *s.Scripts
 	}
-	if !meta.Scripts.IsZero() {
+	if !meta.Scripts.IsZero() || meta.Auth.IsV3() {
 		if err := w.upgradeManifestLocked(FormatVersion); err != nil {
 			return Collection{}, err
 		}
@@ -709,9 +709,10 @@ func (w *Workspace) SaveRequest(req model.Request) (model.Request, error) {
 }
 
 // upgradeForRequestLocked lifts the manifest to FormatVersion before a
-// request with v3-only fields (per-request settings, scripts) is written.
+// request with v3-only fields (per-request settings, scripts, OAuth 2.0
+// auth) is written.
 func (w *Workspace) upgradeForRequestLocked(req model.Request) error {
-	if req.Settings.IsZero() && req.Scripts.IsZero() {
+	if req.Settings.IsZero() && req.Scripts.IsZero() && !req.Auth.IsV3() {
 		return nil
 	}
 	return w.upgradeManifestLocked(FormatVersion)

@@ -6,6 +6,7 @@
 import { Events } from "@wailsio/runtime";
 import {
   AppService,
+  AuthService,
   CookieService,
   EnvService,
   ExampleService,
@@ -20,6 +21,7 @@ import {
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
 import type * as bc from "../../bindings/pakpos/internal/core/cookies/models";
 import {
+  Oauth2Flow,
   RunnerProgress,
   ScriptConsole,
   UpdateProgress as UpdateProgressEvent,
@@ -53,6 +55,9 @@ import {
   type UpdateInfo,
   type UpdateProgress,
   normalizeHistoryEntry,
+  normalizeOAuth2Status,
+  type Auth,
+  type OAuth2Status,
   normalizeRequest,
   normalizeSendResult,
   normalizeTree,
@@ -564,6 +569,42 @@ export const api = {
   onRunnerProgress(cb: (p: RunProgress) => void): () => void {
     return Events.On(RunnerProgress, (ev) => {
       cb({ runId: ev.data.runId, workspaceId: ev.data.workspaceId, event: normalizeRunEvent(ev.data.event) });
+    });
+  },
+
+  /**
+   * Gets a new OAuth 2.0 token for the owner (request, folder or collection id) with the auth as
+   * edited, and stores it. Browser grants open the authorization URL and wait until
+   * `cancelOAuth2(flowId)` or 5 minutes. Rejects with a message for the user.
+   */
+  async startOAuth2(flowId: string, ownerId: string, parentId: string, auth: Auth): Promise<OAuth2Status> {
+    return normalizeOAuth2Status(
+      await AuthService.StartOAuth2(flowId, ownerId, parentId, auth as unknown as bm.Auth),
+    );
+  },
+  async cancelOAuth2(flowId: string): Promise<boolean> {
+    return AuthService.CancelOAuth2(flowId);
+  },
+  /** The owner's stored token, described without its values. */
+  async oauth2TokenStatus(ownerId: string): Promise<OAuth2Status> {
+    return normalizeOAuth2Status(await AuthService.OAuth2TokenStatus(ownerId));
+  },
+  /** The access token itself: only on an explicit "Reveal". Never keep it beyond showing it. */
+  async revealOAuth2Token(ownerId: string): Promise<string> {
+    return AuthService.RevealOAuth2Token(ownerId);
+  },
+  async refreshOAuth2(ownerId: string, parentId: string, auth: Auth): Promise<OAuth2Status> {
+    return normalizeOAuth2Status(
+      await AuthService.RefreshOAuth2(ownerId, parentId, auth as unknown as bm.Auth),
+    );
+  },
+  async clearOAuth2Token(ownerId: string): Promise<void> {
+    return AuthService.ClearOAuth2Token(ownerId);
+  },
+  /** Browser flow progress: the authorization URL that was opened. */
+  onOAuth2Flow(cb: (ev: { flowId: string; stage: string; authUrl: string }) => void): () => void {
+    return Events.On(Oauth2Flow, (ev) => {
+      cb({ flowId: ev.data.flowId, stage: ev.data.stage, authUrl: ev.data.authUrl });
     });
   },
 };

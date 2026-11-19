@@ -1,5 +1,5 @@
 import { api } from "@/lib/api";
-import { emptyRequest, type SecretsStatus } from "@/lib/model";
+import { emptyOAuth2, emptyRequest, type SecretsStatus } from "@/lib/model";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useHistoryStore } from "@/stores/history";
@@ -12,7 +12,7 @@ import { useTreeStore } from "@/stores/tree";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { col, req } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
-import { ACTIONS, availableActions, type ActionContext } from "./actions";
+import { ACTIONS, availableActions, oauth2Target, type ActionContext } from "./actions";
 import { useConsoleStore } from "@/stores/console";
 import { toast } from "sonner";
 import { makeEnv } from "@/test/fixtures";
@@ -294,5 +294,45 @@ describe("script actions", () => {
     await vi.waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith("Couldn't reset the script values", { description: "x" }),
     );
+  });
+});
+
+describe("OAuth 2.0 action", () => {
+  const oauthAuth = { ...emptyRequest().auth, type: "oauth2" as const, oauth2: emptyOAuth2() };
+
+  it("gets a token for a saved request with its own OAuth 2.0 auth", async () => {
+    const r = { ...savedReq, auth: oauthAuth };
+    const c = ctx({}, resetTabs(r, { saved: r, parentId: "c1", workspaceId: "w1" }));
+    expect(ids(c)).toContain("get-oauth2-token");
+    action("get-oauth2-token").run(c);
+    expect(useTabsStore.getState().tabs[0].sections.request).toBe("auth");
+    await vi.waitFor(() =>
+      expect(api.startOAuth2).toHaveBeenCalledWith(expect.any(String), "r1", "c1", oauthAuth),
+    );
+  });
+
+  it("works from collection and folder settings tabs", async () => {
+    const tab = resetTabs(emptyRequest());
+    const draft = { auth: oauthAuth, headers: [], variables: [], scripts: { preRequest: "", test: "" } };
+    const doc = { kind: "folder" as const, targetId: "f1", name: "F", draft, saved: draft, missing: false };
+    const c = ctx({}, { ...tab, doc });
+    expect(oauth2Target(c.tab)).toMatchObject({ ownerId: "f1", pane: "settings" });
+    useTabsStore.setState({ tabs: [c.tab], activeId: c.tab.id });
+    action("get-oauth2-token").run(c);
+    await vi.waitFor(() =>
+      expect(api.startOAuth2).toHaveBeenCalledWith(expect.any(String), "f1", "", oauthAuth),
+    );
+    expect(oauth2Target({ ...tab, doc: { ...doc, kind: "environment" } })).toBeNull();
+    expect(
+      oauth2Target({ ...tab, doc: { ...doc, draft: { ...draft, auth: emptyRequest().auth } } }),
+    ).toBeNull();
+  });
+
+  it("is off for other auth, unsaved requests and without a workspace", () => {
+    expect(ids(ctx())).not.toContain("get-oauth2-token");
+    const unsaved = resetTabs({ ...emptyRequest(), auth: oauthAuth });
+    expect(ids(ctx({}, unsaved))).not.toContain("get-oauth2-token");
+    const r = { ...savedReq, auth: oauthAuth };
+    expect(ids(ctx({ workspace: null }, resetTabs(r, { saved: r })))).not.toContain("get-oauth2-token");
   });
 });

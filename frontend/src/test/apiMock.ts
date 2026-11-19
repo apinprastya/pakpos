@@ -2,6 +2,19 @@ import { vi } from "vitest";
 import type { Api } from "@/lib/api";
 import { DEFAULT_SETTINGS } from "@/lib/model";
 
+function noToken() {
+  return {
+    hasToken: false,
+    locked: false,
+    tokenType: "",
+    scope: "",
+    expiresAt: 0,
+    obtainedAt: 0,
+    hasRefreshToken: false,
+    hasIdToken: false,
+  };
+}
+
 /** Fresh vi.fn() stubs for every api method, with harmless defaults. */
 export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } {
   return {
@@ -173,5 +186,12 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     pickDataFile: vi.fn().mockResolvedValue(""),
     previewData: vi.fn(),
     onRunnerProgress: vi.fn().mockReturnValue(() => {}),
+    startOAuth2: vi.fn().mockResolvedValue(noToken()),
+    cancelOAuth2: vi.fn().mockResolvedValue(true),
+    oauth2TokenStatus: vi.fn().mockResolvedValue(noToken()),
+    revealOAuth2Token: vi.fn().mockResolvedValue(""),
+    refreshOAuth2: vi.fn().mockResolvedValue(noToken()),
+    clearOAuth2Token: vi.fn().mockResolvedValue(undefined),
+    onOAuth2Flow: vi.fn().mockReturnValue(() => {}),
   };
 }

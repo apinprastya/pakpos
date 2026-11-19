@@ -16,6 +16,7 @@ import type { SecretsStatus, WorkspaceInfo } from "@/lib/model";
 import { modKeyLabel } from "@/lib/platform";
 import { destinations } from "@/lib/tree";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { useOAuth2Store } from "@/stores/oauth2";
 import { useCookiesStore } from "@/stores/cookies";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useHistoryStore } from "@/stores/history";
@@ -62,6 +63,21 @@ const usesFileStore = (ctx: ActionContext) => ctx.secrets?.backend === "file";
 /** A request tab, or a collection or folder settings tab: the tabs with scripts. */
 const hasScriptsTab = (ctx: ActionContext) =>
   !ctx.tab.doc || ctx.tab.doc.kind === "collection" || ctx.tab.doc.kind === "folder";
+
+/**
+ * The OAuth 2.0 token the active tab can get: a saved request with its own
+ * OAuth 2.0 auth, or a collection or folder settings tab set to OAuth 2.0.
+ */
+export function oauth2Target(tab: Tab) {
+  const doc = tab.doc;
+  if (doc) {
+    if ((doc.kind !== "collection" && doc.kind !== "folder") || doc.draft?.auth.type !== "oauth2")
+      return null;
+    return { ownerId: doc.targetId, parentId: "", auth: doc.draft.auth, pane: "settings" as const };
+  }
+  if (tab.request.auth.type !== "oauth2" || !tab.saved?.id) return null;
+  return { ownerId: tab.saved.id, parentId: tab.parentId, auth: tab.request.auth, pane: "request" as const };
+}
 
 function openScripts(tab: Tab, event: "prerequest" | "test") {
   const doc = tab.doc;
@@ -178,6 +194,18 @@ export const ACTIONS: PaletteAction[] = [
     group: "Scripts",
     enabled: hasScriptsTab,
     run: (ctx) => openScripts(ctx.tab, "test"),
+  },
+  {
+    id: "get-oauth2-token",
+    label: "Get new OAuth 2.0 token",
+    keywords: ["oauth", "access token", "authorize", "sign in", "login"],
+    group: "Requests",
+    enabled: (ctx) => !!ctx.workspace && oauth2Target(ctx.tab) !== null,
+    run: (ctx) => {
+      const t = oauth2Target(ctx.tab)!;
+      useTabsStore.getState().setSection(ctx.tab.id, t.pane, "auth");
+      void useOAuth2Store.getState().start(t.ownerId, t.parentId, t.auth);
+    },
   },
   {
     id: "toggle-console",

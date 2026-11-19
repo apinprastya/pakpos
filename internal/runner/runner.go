@@ -562,6 +562,15 @@ func (r *Runner) send(ctx context.Context, it, idx int, row map[string]string, l
 		r.record(info, nil, res.Error, started)
 		return res, next, false
 	}
+	if aerr := sd.Authorize(ctx, &prepared); aerr != nil {
+		if ctx.Err() != nil {
+			return res, nil, true
+		}
+		res.SecretsLocked = res.SecretsLocked || sd.SecretsLocked()
+		res.Error = &httpexec.Error{Kind: httpexec.KindAuth, Message: aerr.Error()}
+		r.record(info, nil, res.Error, started)
+		return res, next, false
+	}
 
 	resp, err := r.cfg.Executor.Execute(ctx, "", prepared.Request)
 	if sendErr := httpexec.Classify(err); sendErr != nil {

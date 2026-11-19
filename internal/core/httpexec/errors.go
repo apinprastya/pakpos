@@ -36,6 +36,10 @@ const (
 	// KindScript means a pre-request script failed (an exception, a syntax
 	// error or a timeout), so nothing was sent. Set by the send pipeline.
 	KindScript ErrorKind = "script"
+	// KindAuth means the request's auth couldn't be applied: no usable
+	// OAuth 2.0 access token, or getting or refreshing one failed. Set by
+	// the send pipeline.
+	KindAuth ErrorKind = "auth"
 )
 
 // Error is a classified send failure. Message is written for end users.
