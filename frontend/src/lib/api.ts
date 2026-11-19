@@ -14,6 +14,7 @@ import {
   RequestService,
   RunnerService,
   SettingsService,
+  ToolService,
   UIStateService,
   UpdateService,
   WorkspaceService,
@@ -31,6 +32,7 @@ import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
 import type * as bsvc from "../../bindings/pakpos/internal/service/models";
+import { normalizeHashResult, type HashRequest, type HashResult } from "./toolModel";
 import {
   normalizeDataPreview,
   normalizeRunEvent,
@@ -561,6 +563,14 @@ export const api = {
   /** Asks for a CSV or JSON data file; "" when cancelled. */
   async pickDataFile(): Promise<string> {
     return RunnerService.PickDataFile();
+  },
+  /** Digests text or a file (streamed in Go). Rejects with a sentence for the user. */
+  async hash(req: HashRequest): Promise<HashResult> {
+    return normalizeHashResult(await ToolService.Hash(req));
+  },
+  /** Asks for a file to hash; "" when cancelled. */
+  async pickHashFile(): Promise<string> {
+    return ToolService.PickFile();
   },
   async previewData(path: string): Promise<DataPreview> {
     return normalizeDataPreview(await RunnerService.PreviewData(path));
