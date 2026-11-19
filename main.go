@@ -77,6 +77,7 @@ func main() {
 			application.NewService(service.NewCookieService(core)),
 			application.NewService(service.NewRunnerService(core)),
 			application.NewService(service.NewAuthService(core, control)),
+			application.NewService(service.NewToolService(core)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{

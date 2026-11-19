@@ -1,6 +1,7 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
-import { Braces, KeyRound, Link, type LucideIcon } from "lucide-react";
-import { loadJsonTool, loadJwtTool, loadUrlTool } from "@/features/shell/dialogChunks";
+import { Braces, Hash, KeyRound, Link, type LucideIcon } from "lucide-react";
+import { loadHashTool, loadJsonTool, loadJwtTool, loadUrlTool } from "@/features/shell/dialogChunks";
+import { hashInitialState, hashWithInput, restoreHashState, type HashToolState } from "./hash/state";
 import {
   restoreUrlState,
   serializeUrlState,
@@ -107,6 +108,18 @@ export const TOOLS: readonly ToolDef[] = [
     withInput: urlWithInput,
     restore: restoreUrlState,
     serialize: serializeUrlState,
+  }),
+  defineTool<HashToolState>({
+    id: "hash",
+    label: "Hash and HMAC",
+    description: "MD5 or SHA digests and HMACs of text or a file.",
+    icon: Hash,
+    keywords: ["hash", "hmac", "digest", "checksum", "md5", "sha1", "sha256", "sha512", "signature"],
+    persist: false,
+    component: lazy(() => loadHashTool().then((m) => ({ default: m.HashTool }))),
+    initialState: (input) => hashInitialState(input),
+    withInput: hashWithInput,
+    restore: restoreHashState,
   }),
 ];
 

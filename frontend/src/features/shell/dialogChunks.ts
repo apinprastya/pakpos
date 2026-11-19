@@ -13,6 +13,7 @@ export const loadOtherAuth = () => import("@/features/request/OtherAuthFields");
 export const loadJwtTool = () => import("@/features/tools/jwt/JwtTool");
 export const loadJsonTool = () => import("@/features/tools/json/JsonTool");
 export const loadUrlTool = () => import("@/features/tools/url/UrlTool");
+export const loadHashTool = () => import("@/features/tools/hash/HashTool");
 
 /** The palette first: it's the one opened most and expected to be instant. */
 export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
@@ -28,6 +29,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadJwtTool,
   loadJsonTool,
   loadUrlTool,
+  loadHashTool,
   loadUpdate,
 ];
 

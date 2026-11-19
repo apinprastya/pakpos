@@ -137,6 +137,22 @@ describe("tabs store: tool tabs", () => {
     expect(stored().state.tabs[1].tool?.state).toEqual({ input: "", mode: "form", direction: "decode" });
   });
 
+  it("never writes the hash tool's text or key to localStorage", async () => {
+    const id = s().openTool("hash", "my text");
+    s().updateToolState(id, (st) => ({
+      ...(st as object),
+      hmac: true,
+      key: "hmac-key",
+      revealed: { k: "rv" },
+    }));
+    const raw = localStorage.getItem("pakpos-tabs")!;
+    for (const secret of ["my text", "hmac-key", '"rv"']) expect(raw).not.toContain(secret);
+    resetTabs({}, { id: "other" });
+    localStorage.setItem("pakpos-tabs", raw);
+    await useTabsStore.persist.rehydrate();
+    expect(s().tabs[1].tool?.state).toMatchObject({ text: "", key: "", hmac: false, revealed: {} });
+  });
+
   it("restores unknown tools by id and drops malformed entries", async () => {
     const tabs = [
       {
