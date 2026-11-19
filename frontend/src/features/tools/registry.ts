@@ -1,6 +1,13 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
-import { Braces, KeyRound, type LucideIcon } from "lucide-react";
-import { loadJsonTool, loadJwtTool } from "@/features/shell/dialogChunks";
+import { Braces, KeyRound, Link, type LucideIcon } from "lucide-react";
+import { loadJsonTool, loadJwtTool, loadUrlTool } from "@/features/shell/dialogChunks";
+import {
+  restoreUrlState,
+  serializeUrlState,
+  urlInitialState,
+  urlWithInput,
+  type UrlToolState,
+} from "./url/state";
 import {
   jsonInitialState,
   jsonWithInput,
@@ -87,6 +94,19 @@ export const TOOLS: readonly ToolDef[] = [
     withInput: jsonWithInput,
     restore: restoreJsonState,
     serialize: serializeJsonState,
+  }),
+  defineTool<UrlToolState>({
+    id: "url",
+    label: "URL encoder",
+    description: "Encode or decode URL text, and read a URL's parts.",
+    icon: Link,
+    keywords: ["url", "uri", "encode", "decode", "percent", "escape", "query", "form", "parse"],
+    persist: true,
+    component: lazy(() => loadUrlTool().then((m) => ({ default: m.UrlTool }))),
+    initialState: (input) => urlInitialState(input),
+    withInput: urlWithInput,
+    restore: restoreUrlState,
+    serialize: serializeUrlState,
   }),
 ];
 

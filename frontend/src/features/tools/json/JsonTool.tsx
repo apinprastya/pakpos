@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { EditorView } from "@codemirror/view";
 import { ArrowLeftToLine, Braces, Copy, X } from "lucide-react";
 import { toast } from "sonner";
@@ -12,15 +12,13 @@ import { CodeEditor } from "@/components/editor/CodeEditor";
 import { usePanelLayout } from "@/hooks/usePanelLayout";
 import { cn } from "@/lib/utils";
 import type { ToolProps } from "../registry";
+import { MAX_TOOL_INPUT, useSettled } from "../useSettled";
 import { errorMarks, setErrorMark } from "./errorMark";
 import { transformJson, type Indent, type JsonMode, type JsonResult } from "./json";
 import type { JsonToolState } from "./state";
 
 /** Text tools stop at 10 MiB instead of freezing the UI. */
-export const MAX_JSON_INPUT = 10 * 1024 * 1024;
-/** Inputs at least this long are processed after typing pauses, not on every keystroke. */
-export const DEBOUNCE_FROM = 200_000;
-export const DEBOUNCE_MS = 250;
+export const MAX_JSON_INPUT = MAX_TOOL_INPUT;
 
 const MODES: { id: JsonMode; label: string }[] = [
   { id: "format", label: "Format" },
@@ -35,18 +33,6 @@ const INPUT_HINT: Record<JsonMode, string> = {
   escape: "Paste text (e.g. JSON) to turn it into a JSON string",
   unescape: 'Paste a JSON string, e.g. "{\\"id\\": 1}", to read its text',
 };
-
-/** `input`, or for large inputs its value once typing has paused. */
-function useSettled(input: string): string {
-  const [settled, setSettled] = useState(input);
-  const large = input.length >= DEBOUNCE_FROM;
-  useEffect(() => {
-    if (!large) return;
-    const timer = setTimeout(() => setSettled(input), DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [input, large]);
-  return large ? settled : input;
-}
 
 /** The JSON tool: input on the left, the result on the right, the mode and options above. */
 export function JsonTool({ tabId, state, update }: ToolProps<JsonToolState>) {
