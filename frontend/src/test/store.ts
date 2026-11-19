@@ -66,6 +66,7 @@ export function resetTabs(request: Partial<Request> = {}, tab: Partial<Tab> = {}
     sections: {},
     ...tab,
     doc: tab.doc ?? null,
+    tool: tab.tool ?? null,
   };
   useTabsStore.setState({ tabs: [t], activeId: t.id, pendingCloseId: null, saveDialog: null });
   return t;

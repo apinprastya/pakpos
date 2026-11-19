@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { compactRequest, isUntouchedAuth, type Request, type SendResult } from "@/lib/model";
 import { useHistoryStore } from "@/stores/history";
 import { useSecretsStore } from "@/stores/secrets";
-import { useTabsStore } from "@/stores/tabs";
+import { isRequestTab, useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useExamplesStore } from "@/stores/examples";
 import { saveDocTab } from "@/features/scopes/docActions";
@@ -23,7 +23,7 @@ function errorMessage(e: unknown): string {
 export async function sendTab(tabId: string): Promise<void> {
   const store = useTabsStore.getState();
   const tab = store.tabs.find((t) => t.id === tabId);
-  if (!tab || tab.doc || tab.sendId || !tab.request.url.trim()) return;
+  if (!tab || !isRequestTab(tab) || tab.sendId || !tab.request.url.trim()) return;
 
   const sendId = newSendId();
   // A new response replaces an example the tab was showing.
@@ -78,7 +78,8 @@ export async function cancelTab(tabId: string): Promise<void> {
 export async function saveTab(tabId: string, closeAfter = false): Promise<boolean> {
   const store = useTabsStore.getState();
   const tab = store.tabs.find((t) => t.id === tabId);
-  if (!tab) return false;
+  // Tool tabs have nothing to save.
+  if (!tab || tab.tool) return false;
   if (tab.doc) return saveDocTab(tabId, closeAfter);
   if (!tab.saved || !tab.request.id) {
     store.openSaveDialog(tabId, closeAfter);

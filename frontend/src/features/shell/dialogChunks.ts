@@ -1,4 +1,4 @@
-// Dynamic imports of the rarely opened dialogs and panes (scripts, console, runner),
+// Dynamic imports of the rarely opened dialogs and panes (scripts, console, runner, tools),
 // shared by their React.lazy wrappers and the idle-time preloader below.
 export const loadSettings = () => import("@/features/settings/SettingsDialog");
 export const loadImportCurl = () => import("@/features/code/ImportCurlDialog");
@@ -10,6 +10,7 @@ export const loadScripts = () => import("@/features/scripts/ScriptsSection");
 export const loadConsole = () => import("@/features/console/ConsoleDrawer");
 export const loadRunner = () => import("@/features/runner/RunnerView");
 export const loadOtherAuth = () => import("@/features/request/OtherAuthFields");
+export const loadJwtTool = () => import("@/features/tools/jwt/JwtTool");
 
 /** The palette first: it's the one opened most and expected to be instant. */
 export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
@@ -22,6 +23,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadConsole,
   loadRunner,
   loadOtherAuth,
+  loadJwtTool,
   loadUpdate,
 ];
 

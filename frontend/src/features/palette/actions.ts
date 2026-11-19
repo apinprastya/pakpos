@@ -23,7 +23,8 @@ import { useHistoryStore } from "@/stores/history";
 import { useLayoutStore } from "@/stores/layout";
 import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore, type SettingsSection } from "@/stores/settings";
-import { useTabsStore, type Tab } from "@/stores/tabs";
+import { isRequestTab as isRequest, useTabsStore, type Tab } from "@/stores/tabs";
+import { TOOLS } from "@/features/tools/registry";
 import { resolveTheme, useThemeStore } from "@/stores/theme";
 import { useTreeStore } from "@/stores/tree";
 import { useUpdateStore } from "@/stores/update";
@@ -57,18 +58,19 @@ export interface PaletteAction {
 }
 
 const mod = (key: string) => () => `${modKeyLabel()}+${key}`;
-const isRequestTab = (ctx: ActionContext) => !ctx.tab.doc;
-const savedRequest = (ctx: ActionContext) => !ctx.tab.doc && !!ctx.tab.saved?.id && !!ctx.workspace;
+const isRequestTab = (ctx: ActionContext) => isRequest(ctx.tab);
+const savedRequest = (ctx: ActionContext) => isRequestTab(ctx) && !!ctx.tab.saved?.id && !!ctx.workspace;
 const usesFileStore = (ctx: ActionContext) => ctx.secrets?.backend === "file";
 /** A request tab, or a collection or folder settings tab: the tabs with scripts. */
 const hasScriptsTab = (ctx: ActionContext) =>
-  !ctx.tab.doc || ctx.tab.doc.kind === "collection" || ctx.tab.doc.kind === "folder";
+  isRequestTab(ctx) || ctx.tab.doc?.kind === "collection" || ctx.tab.doc?.kind === "folder";
 
 /**
  * The OAuth 2.0 token the active tab can get: a saved request with its own
  * OAuth 2.0 auth, or a collection or folder settings tab set to OAuth 2.0.
  */
 export function oauth2Target(tab: Tab) {
+  if (tab.tool) return null;
   const doc = tab.doc;
   if (doc) {
     if ((doc.kind !== "collection" && doc.kind !== "folder") || doc.draft?.auth.type !== "oauth2")
@@ -135,7 +137,7 @@ export const ACTIONS: PaletteAction[] = [
     label: "Save",
     group: "Requests",
     shortcut: mod("S"),
-    enabled: () => true,
+    enabled: (ctx) => !ctx.tab.tool,
     run: (ctx) => void saveTab(ctx.tab.id),
   },
   {
@@ -435,6 +437,14 @@ export const ACTIONS: PaletteAction[] = [
     group: "View",
     enabled: () => true,
     run: () => useSettingsStore.getState().openDialog(s.id),
+  })),
+  ...TOOLS.map((t): PaletteAction => ({
+    id: `open-tool-${t.id}`,
+    label: `Open ${t.label}`,
+    keywords: ["tools", ...t.keywords],
+    group: "Tools",
+    enabled: () => true,
+    run: () => void useTabsStore.getState().openTool(t.id),
   })),
   {
     id: "check-for-updates",

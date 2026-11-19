@@ -17,6 +17,7 @@ const requestTab: Tab = {
   sendId: null,
   result: null,
   doc: null,
+  tool: null,
   sections: {},
 };
 

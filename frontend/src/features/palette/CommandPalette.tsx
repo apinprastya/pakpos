@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/command";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DocKindIcon } from "@/features/scopes/DocKindIcon";
+import { ToolIcon } from "@/features/tools/ToolIcon";
 import { ConfirmDeleteDialog } from "@/features/sidebar/ConfirmDeleteDialog";
 import { statusTextClass } from "@/features/response/format";
 import { methodShortLabel, methodTextClass } from "@/lib/http";
@@ -606,7 +607,9 @@ function ExampleIcon() {
 }
 
 function TabDocIcon({ id }: { id: string }) {
-  const kind = useTabsStore((s) => s.tabs.find((t) => t.id === id)?.doc?.kind);
+  const tab = useTabsStore((s) => s.tabs.find((t) => t.id === id));
+  if (tab?.tool) return <ToolIcon id={tab.tool.id} className="size-4" />;
+  const kind = tab?.doc?.kind;
   return kind ? <DocKindIcon kind={kind} className="size-4" /> : <KindIcon icon={Layers} />;
 }
 

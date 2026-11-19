@@ -1,7 +1,7 @@
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { compactRequest, type Request } from "@/lib/model";
-import { useTabsStore } from "@/stores/tabs";
+import { isRequestTab, useTabsStore } from "@/stores/tabs";
 import { createElement } from "react";
 import { dismissOnDialog } from "@/lib/dialogToasts";
 import { codeNotes } from "./summary";
@@ -38,7 +38,7 @@ export async function importCurlIntoTab(tabId: string, text: string): Promise<vo
     return;
   }
   const tab = useTabsStore.getState().tabs.find((t) => t.id === tabId);
-  if (!tab || tab.doc) return;
+  if (!tab || !isRequestTab(tab)) return;
   const previous = tab.request;
   const { request, warnings } = imported;
   useTabsStore.getState().updateRequest(tabId, () => ({
