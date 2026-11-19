@@ -111,6 +111,24 @@ describe("tabs store: tool tabs", () => {
     expect(s().tabs[1].tool).toEqual({ id: "notes", state: { text: "keep me" } });
   });
 
+  it("keeps the JSON tool's state across restarts, but not a large input", async () => {
+    const id = s().openTool("json", '{"a":1}');
+    s().updateToolState(id, (st) => ({ ...(st as object), sortKeys: true }));
+    let raw = localStorage.getItem("pakpos-tabs")!;
+    resetTabs({}, { id: "other" });
+    localStorage.setItem("pakpos-tabs", raw);
+    await useTabsStore.persist.rehydrate();
+    expect(s().tabs[1].tool).toEqual({
+      id: "json",
+      state: { input: '{"a":1}', mode: "format", indent: "2", sortKeys: true },
+    });
+
+    s().updateToolState(s().tabs[1].id, (st) => ({ ...(st as object), input: "x".repeat(200_000) }));
+    raw = localStorage.getItem("pakpos-tabs")!;
+    expect(raw.length).toBeLessThan(10_000);
+    expect(stored().state.tabs[1].tool?.state).toMatchObject({ input: "", sortKeys: true });
+  });
+
   it("restores unknown tools by id and drops malformed entries", async () => {
     const tabs = [
       {

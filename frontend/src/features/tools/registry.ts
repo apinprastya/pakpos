@@ -1,6 +1,13 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
-import { KeyRound, type LucideIcon } from "lucide-react";
-import { loadJwtTool } from "@/features/shell/dialogChunks";
+import { Braces, KeyRound, type LucideIcon } from "lucide-react";
+import { loadJsonTool, loadJwtTool } from "@/features/shell/dialogChunks";
+import {
+  jsonInitialState,
+  jsonWithInput,
+  restoreJsonState,
+  serializeJsonState,
+  type JsonToolState,
+} from "./json/state";
 import { jwtInitialState, restoreJwtState, type JwtState } from "./jwt/state";
 
 /** What a tool's component gets: its tab, its state, and a way to change the state. */
@@ -36,6 +43,8 @@ export interface ToolDef<S = unknown> {
   withInput: (state: S, input: string) => S;
   /** Cleans state read back from localStorage (it may be anything). */
   restore: (raw: unknown) => S;
+  /** What of the state goes to localStorage (with `persist`); all of it when absent. */
+  serialize?: (state: S) => unknown;
 }
 
 /** Keeps a tool's own state type inside the registry while the list stays uniform. */
@@ -55,6 +64,29 @@ export const TOOLS: readonly ToolDef[] = [
     initialState: (input) => jwtInitialState(input),
     withInput: (state, input) => ({ ...state, token: input, revealed: {} }),
     restore: restoreJwtState,
+  }),
+  defineTool<JsonToolState>({
+    id: "json",
+    label: "JSON formatter",
+    description: "Format, minify or sort JSON, and escape it into a string.",
+    icon: Braces,
+    keywords: [
+      "json",
+      "format",
+      "pretty",
+      "beautify",
+      "minify",
+      "sort keys",
+      "escape",
+      "unescape",
+      "validate",
+    ],
+    persist: true,
+    component: lazy(() => loadJsonTool().then((m) => ({ default: m.JsonTool }))),
+    initialState: (input) => jsonInitialState(input),
+    withInput: jsonWithInput,
+    restore: restoreJsonState,
+    serialize: serializeJsonState,
   }),
 ];
 

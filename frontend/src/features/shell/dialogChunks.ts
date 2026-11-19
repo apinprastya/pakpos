@@ -11,6 +11,7 @@ export const loadConsole = () => import("@/features/console/ConsoleDrawer");
 export const loadRunner = () => import("@/features/runner/RunnerView");
 export const loadOtherAuth = () => import("@/features/request/OtherAuthFields");
 export const loadJwtTool = () => import("@/features/tools/jwt/JwtTool");
+export const loadJsonTool = () => import("@/features/tools/json/JsonTool");
 
 /** The palette first: it's the one opened most and expected to be instant. */
 export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
@@ -24,6 +25,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadRunner,
   loadOtherAuth,
   loadJwtTool,
+  loadJsonTool,
   loadUpdate,
 ];
 
