@@ -5,6 +5,9 @@
  */
 import { copyAsCurl } from "@/features/code/actions";
 import { saveTab } from "@/features/request/actions";
+import { openContainerScripts, openRequestScripts } from "@/features/scripts/open";
+import { resetAllScriptValues } from "@/features/scripts/overlay";
+import { useConsoleStore } from "@/stores/console";
 import type { DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 import type { SecretsStatus, WorkspaceInfo } from "@/lib/model";
 import { modKeyLabel } from "@/lib/platform";
@@ -52,6 +55,18 @@ const mod = (key: string) => () => `${modKeyLabel()}+${key}`;
 const isRequestTab = (ctx: ActionContext) => !ctx.tab.doc;
 const savedRequest = (ctx: ActionContext) => !ctx.tab.doc && !!ctx.tab.saved?.id && !!ctx.workspace;
 const usesFileStore = (ctx: ActionContext) => ctx.secrets?.backend === "file";
+/** A request tab, or a collection or folder settings tab: the tabs with scripts. */
+const hasScriptsTab = (ctx: ActionContext) =>
+  !ctx.tab.doc || ctx.tab.doc.kind === "collection" || ctx.tab.doc.kind === "folder";
+
+function openScripts(tab: Tab, event: "prerequest" | "test") {
+  const doc = tab.doc;
+  if (doc && (doc.kind === "collection" || doc.kind === "folder")) {
+    openContainerScripts({ kind: doc.kind, id: doc.targetId, name: doc.name }, event);
+  } else {
+    openRequestScripts(tab.id, event);
+  }
+}
 
 const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Appearance" },
@@ -120,6 +135,47 @@ export const ACTIONS: PaletteAction[] = [
     shortcut: mod("Shift+C"),
     enabled: isRequestTab,
     run: (ctx) => useCodeDialogsStore.getState().openCode(ctx.tab.id),
+  },
+  {
+    id: "open-prerequest-script",
+    label: "Open pre-request script",
+    keywords: ["scripts", "javascript", "pm"],
+    group: "Scripts",
+    enabled: hasScriptsTab,
+    run: (ctx) => openScripts(ctx.tab, "prerequest"),
+  },
+  {
+    id: "open-tests",
+    label: "Open tests",
+    keywords: ["scripts", "test script", "assertions", "pm.test"],
+    group: "Scripts",
+    enabled: hasScriptsTab,
+    run: (ctx) => openScripts(ctx.tab, "test"),
+  },
+  {
+    id: "toggle-console",
+    label: "Toggle console",
+    keywords: ["log", "output", "scripts", "drawer"],
+    group: "Scripts",
+    shortcut: mod("J"),
+    enabled: () => true,
+    run: () => useConsoleStore.getState().toggle(),
+  },
+  {
+    id: "clear-console",
+    label: "Clear console",
+    keywords: ["log", "output"],
+    group: "Scripts",
+    enabled: () => useConsoleStore.getState().groups.length > 0,
+    run: () => useConsoleStore.getState().clear(),
+  },
+  {
+    id: "reset-script-values",
+    label: "Reset script values",
+    keywords: ["overlay", "variables", "set by script", "pm.environment"],
+    group: "Scripts",
+    enabled: (ctx) => !!ctx.workspace,
+    run: () => void resetAllScriptValues(),
   },
   {
     id: "reveal-request",

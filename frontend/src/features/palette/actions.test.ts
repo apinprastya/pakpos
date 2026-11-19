@@ -13,6 +13,9 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { col, req } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
 import { ACTIONS, availableActions, type ActionContext } from "./actions";
+import { useConsoleStore } from "@/stores/console";
+import { toast } from "sonner";
+import { makeEnv } from "@/test/fixtures";
 
 vi.mock("sonner", async (orig) => {
   const actual = await orig<typeof import("sonner")>();
@@ -238,5 +241,58 @@ describe("palette actions", () => {
     expect(useSecretsStore.getState().dialog).toBe("unlock");
     action("change-master-password").run(c);
     expect(useSecretsStore.getState().dialog).toBe("change-password");
+  });
+});
+
+describe("script actions", () => {
+  it("open the request's scripts, or a collection's or folder's", () => {
+    const c = ctx();
+    expect(ids(c)).toEqual(
+      expect.arrayContaining(["open-prerequest-script", "open-tests", "toggle-console"]),
+    );
+    action("open-tests").run(c);
+    expect(useTabsStore.getState().tabs[0].sections).toMatchObject({ request: "scripts", scripts: "test" });
+
+    const docId = useTabsStore.getState().openDoc("folder", "f1", "Admin", "w1");
+    const doc = useTabsStore.getState().tabs.find((t) => t.id === docId)!;
+    action("open-prerequest-script").run(ctx({}, doc));
+    const after = useTabsStore.getState().tabs.find((t) => t.id === docId)!;
+    expect(after.sections).toMatchObject({ settings: "scripts", scripts: "prerequest" });
+
+    const envId = useTabsStore.getState().openDoc("environment", "e1", "Dev", "w1");
+    const env = useTabsStore.getState().tabs.find((t) => t.id === envId)!;
+    expect(ids(ctx({}, env))).not.toContain("open-tests");
+  });
+
+  it("toggle and clear the console", () => {
+    const c = ctx();
+    expect(action("toggle-console").shortcut!()).toMatch(/\+J$/);
+    expect(ids(c)).not.toContain("clear-console");
+    action("toggle-console").run(c);
+    expect(useConsoleStore.getState().open).toBe(true);
+    useConsoleStore.getState().begin("s", { method: "GET", name: "x" });
+    expect(ids(c)).toContain("clear-console");
+    action("clear-console").run(c);
+    expect(useConsoleStore.getState().groups).toEqual([]);
+  });
+
+  it("reset every script value in the workspace", async () => {
+    useEnvironmentsStore.setState({ environments: [makeEnv("e1", "Dev")] });
+    expect(ids(ctx({ workspace: null }))).not.toContain("reset-script-values");
+    const version = useEnvironmentsStore.getState().version;
+    action("reset-script-values").run(ctx());
+    await vi.waitFor(() => expect(useEnvironmentsStore.getState().version).toBe(version + 1));
+    expect(vi.mocked(api.resetOverlay).mock.calls).toEqual([
+      [{ kind: "global", id: "" }, ""],
+      [{ kind: "environment", id: "e1" }, ""],
+      [{ kind: "collection", id: "c1" }, ""],
+    ]);
+    expect(toast.success).toHaveBeenCalledWith("Script values reset", expect.anything());
+
+    vi.mocked(api.resetOverlay).mockRejectedValue(new Error("x"));
+    action("reset-script-values").run(ctx());
+    await vi.waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Couldn't reset the script values", { description: "x" }),
+    );
   });
 });

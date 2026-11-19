@@ -1,5 +1,11 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { closeBrackets, closeBracketsKeymap, completionStatus } from "@codemirror/autocomplete";
+import {
+  autocompletion,
+  closeBrackets,
+  closeBracketsKeymap,
+  completionStatus,
+  type CompletionSource,
+} from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, foldGutter, foldKeymap, indentOnInput } from "@codemirror/language";
 import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
@@ -52,6 +58,11 @@ export interface CodeEditorProps {
    * to handle the paste yourself (the editor then inserts nothing).
    */
   onPaste?: (text: string) => boolean;
+  /**
+   * Extra completion sources (decided at mount), offered alongside the
+   * language's own (e.g. `pm` members in scripts).
+   */
+  completions?: CompletionSource[];
 }
 
 export function CodeEditor({
@@ -71,6 +82,7 @@ export function CodeEditor({
   initialCursor,
   onBlur,
   onPaste,
+  completions,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -116,6 +128,12 @@ export function CodeEditor({
     ];
     if (placeholder) exts.push(placeholderExt(placeholder));
     if (variables) exts.push(variablesExt(variables));
+    if (completions?.length) {
+      exts.push(
+        autocompletion({ icons: false }),
+        EditorState.languageData.of(() => completions.map((autocomplete) => ({ autocomplete }))),
+      );
+    }
     if (singleLine) {
       exts.push(
         singleLineFilter,

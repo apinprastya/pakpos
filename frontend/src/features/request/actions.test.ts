@@ -12,7 +12,10 @@ import {
   saveTabAs,
   sendTab,
 } from "./actions";
-import { makeResult } from "@/test/fixtures";
+import { makeConsoleEntry, makeResult } from "@/test/fixtures";
+import { useConsoleStore } from "@/stores/console";
+import { useEnvironmentsStore } from "@/stores/environments";
+import { useWorkspaceStore } from "@/stores/workspace";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
@@ -31,6 +34,22 @@ describe("request actions", () => {
     expect(req.headers).toEqual([]);
     expect(activeTab().result?.historyId).toBe(7);
     expect(activeTab().sendId).toBeNull();
+  });
+
+  it("logs the send's script output in the console and refreshes variables", async () => {
+    useWorkspaceStore.setState({ workspace: { id: "w", name: "W", path: "/w" } });
+    const version = useEnvironmentsStore.getState().version;
+    vi.mocked(api.send).mockImplementation(async (sendId) => {
+      // Live output arrives while the send runs.
+      useConsoleStore.getState().append(sendId, [makeConsoleEntry("live")]);
+      return makeResult({ console: [makeConsoleEntry("live"), makeConsoleEntry("final")] });
+    });
+    useTabsStore.getState().updateRequest("t1", (r) => ({ ...r, method: "POST" }));
+    await sendTab("t1");
+    const [group] = useConsoleStore.getState().groups;
+    expect(group).toMatchObject({ method: "POST", name: "Untitled request", done: true });
+    expect(group.lines.map((l) => l.text)).toEqual(["live", "final"]);
+    expect(useEnvironmentsStore.getState().version).toBe(version + 1);
   });
 
   it("does not send without a URL, while sending, or for unknown tabs", async () => {

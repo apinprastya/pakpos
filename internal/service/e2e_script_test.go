@@ -292,6 +292,9 @@ pm.request.headers.add({key: "X-Signed", value: "sig-" + pm.variables.get("q")})
 	if res.HistoryID == 0 {
 		t.Error("script error not recorded")
 	}
+	if se := res.ScriptError; se == nil || se.Source.Kind != script.LevelRequest || se.Source.Event != script.PreRequest || se.Line != 2 || se.Column != 11 {
+		t.Errorf("scriptError = %+v", res.ScriptError)
+	}
 
 	// A timeout.
 	st := h.set.Get()
@@ -303,6 +306,9 @@ pm.request.headers.add({key: "X-Signed", value: "sig-" + pm.variables.get("q")})
 	res, err = h.req.Send(ctx, "loop", draft, col.ID)
 	if err != nil || res.Error == nil || res.Error.Kind != httpexec.KindScript || !strings.HasSuffix(res.Error.Message, "Script took longer than 1 s") {
 		t.Fatalf("timeout: %+v %v", res.Error, err)
+	}
+	if res.ScriptError == nil || res.ScriptError.Line != 0 {
+		t.Errorf("timeout scriptError = %+v", res.ScriptError)
 	}
 
 	// skipRequest: nothing is sent or recorded.

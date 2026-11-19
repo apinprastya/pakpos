@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { CircleAlert, Loader2, LockOpen, TriangleAlert } from "lucide-react";
+import { CircleAlert, CircleSlash, Loader2, LockOpen, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cancelTab } from "@/features/request/actions";
 import { modKeyLabel } from "@/lib/platform";
-import type { Hop, SendError, SendResult } from "@/lib/model";
+import type { Hop, ScriptErrorInfo, SendError, SendResult } from "@/lib/model";
+import { openRequestScripts, openScriptSource } from "@/features/scripts/open";
 import { useSecretsStore } from "@/stores/secrets";
 import { useSettingsStore } from "@/stores/settings";
 import { useActiveTab, useTabSection } from "@/stores/tabs";
@@ -17,8 +18,9 @@ import { DebugView } from "./DebugView";
 import { ResponseBody } from "./ResponseBody";
 import { ResponseMeta } from "./ResponseMeta";
 import { CookiesTable, HeadersTable } from "./ResponseTables";
+import { TestsCount, TestsView } from "./TestsView";
 
-const SECTIONS = ["body", "headers", "cookies", "debug"] as const;
+const SECTIONS = ["body", "headers", "cookies", "tests", "debug"] as const;
 
 export function ResponsePane() {
   const tab = useActiveTab();
@@ -43,7 +45,28 @@ export function ResponsePane() {
       </Centered>
     );
   } else if (result?.error) {
-    content = <ErrorState key={`${tab.id}:${result.historyId}`} error={result.error} hops={result.hops} />;
+    content = (
+      <ErrorState
+        key={`${tab.id}:${result.historyId}`}
+        error={result.error}
+        hops={result.hops}
+        scriptError={result.scriptError}
+        onOpenScript={(source) => openScriptSource(tab.id, source)}
+      />
+    );
+  } else if (result?.skipped) {
+    content = (
+      <Centered>
+        <CircleSlash aria-hidden className="size-5 text-muted-foreground" />
+        <h2 className="font-semibold">Skipped by a pre-request script (pm.execution.skipRequest)</h2>
+        <p className="max-w-md text-xs text-muted-foreground">
+          Nothing was sent. Remove the call or its condition to send this request.
+        </p>
+        <Button variant="outline" size="sm" onClick={() => openRequestScripts(tab.id, "prerequest")}>
+          Open pre-request script
+        </Button>
+      </Centered>
+    );
   } else if (response) {
     content = (
       <Tabs
@@ -63,6 +86,9 @@ export function ResponsePane() {
             <TabsTrigger value="cookies" className="flex-none px-2">
               Cookies <Count n={response.cookies.length} />
             </TabsTrigger>
+            <TabsTrigger value="tests" className="flex-none px-2">
+              Tests <TestsCount tests={result?.tests ?? []} />
+            </TabsTrigger>
             <TabsTrigger value="debug" className="flex-none px-2">
               Debug
             </TabsTrigger>
@@ -80,6 +106,9 @@ export function ResponsePane() {
         </TabsContent>
         <TabsContent value="cookies" className="min-h-0 flex-1 overflow-auto">
           <CookiesTable cookies={response.cookies} url={response.url} />
+        </TabsContent>
+        <TabsContent value="tests" className="min-h-0 flex-1">
+          <TestsView tabId={tab.id} tests={result?.tests ?? []} />
         </TabsContent>
         <TabsContent value="debug" className="min-h-0 flex-1">
           <DebugView hops={result?.hops ?? []} />
@@ -162,7 +191,23 @@ function EmptyResponse() {
   );
 }
 
-function ErrorState({ error, hops }: { error: SendError; hops: Hop[] }) {
+/** "the pre-request script of folder Auth", for the error's button. */
+function scriptName(info: ScriptErrorInfo): string {
+  const src = info.source;
+  return src.kind === "request" ? "pre-request script" : `pre-request script of ${src.kind} ${src.name}`;
+}
+
+function ErrorState({
+  error,
+  hops,
+  scriptError,
+  onOpenScript,
+}: {
+  error: SendError;
+  hops: Hop[];
+  scriptError: ScriptErrorInfo | null;
+  onOpenScript: (source: ScriptErrorInfo["source"]) => void;
+}) {
   const copy = errorCopy(error.kind);
   const cancelled = error.kind === "canceled";
   const [debug, setDebug] = useState(false);
@@ -190,6 +235,11 @@ function ErrorState({ error, hops }: { error: SendError; hops: Hop[] }) {
         </p>
       )}
       {copy.hint && <p className="max-w-md text-xs text-muted-foreground">{copy.hint}</p>}
+      {error.kind === "script" && scriptError && (
+        <Button variant="outline" size="sm" onClick={() => onOpenScript(scriptError.source)}>
+          Open the {scriptName(scriptError)}
+        </Button>
+      )}
       {copy.settings && (
         <Button
           variant="outline"

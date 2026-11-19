@@ -1,4 +1,7 @@
-import { ArrowDownToLine, Columns2, Folder, Layers, RotateCw, Rows2 } from "lucide-react";
+import { ArrowDownToLine, Columns2, Folder, Layers, RotateCw, Rows2, SquareTerminal } from "lucide-react";
+import { modKeyLabel } from "@/lib/platform";
+import { cn } from "@/lib/utils";
+import { useConsoleStore } from "@/stores/console";
 import { LockIndicator } from "@/features/secrets/SecretsControls";
 import { useSelectedEnvironment } from "@/stores/environments";
 import { useLayoutStore } from "@/stores/layout";
@@ -36,6 +39,7 @@ export function StatusBar() {
         )}
         <UpdateIndicator />
         <LockIndicator />
+        <ConsoleToggle />
         <button
           type="button"
           onClick={toggle}
@@ -66,6 +70,35 @@ function UpdateIndicator() {
     >
       <Icon aria-hidden className="size-3 shrink-0" />
       {label}
+    </button>
+  );
+}
+
+/** Shows or hides the console drawer; counts lines logged while it's hidden. */
+function ConsoleToggle() {
+  const open = useConsoleStore((s) => s.open);
+  const unread = useConsoleStore((s) => s.unread);
+  const action = open ? "Hide console" : "Show console";
+  const label = !open && unread > 0 ? `${action} (${unread} new ${unread === 1 ? "line" : "lines"})` : action;
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={open}
+      title={`${action} (${modKeyLabel()}+J)`}
+      onClick={() => useConsoleStore.getState().toggle()}
+      className={cn(
+        "flex items-center gap-1 rounded px-1 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+        open && "text-foreground",
+      )}
+    >
+      <SquareTerminal aria-hidden className="size-3.5" />
+      Console
+      {!open && unread > 0 && (
+        <span className="rounded-sm bg-primary px-1 text-[10px] text-primary-foreground tabular-nums">
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
     </button>
   );
 }

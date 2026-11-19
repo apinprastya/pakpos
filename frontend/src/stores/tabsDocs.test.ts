@@ -1,4 +1,3 @@
-import { emptyAuth } from "@/lib/model";
 import { makeVar } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
 import {
@@ -83,7 +82,7 @@ describe("tabs store: environment and settings tabs", () => {
   });
 
   it("compares drafts without blank rows", () => {
-    const a = { auth: emptyAuth(), headers: [{ key: "", value: "", enabled: true }], variables: [] };
+    const a = { ...emptyDocDraft(), headers: [{ key: "", value: "", enabled: true }] };
     expect(compactDraft(a).headers).toEqual([]);
     const renamed = {
       ...emptyDocDraft(),
@@ -137,7 +136,7 @@ describe("tabs store: environment and settings tabs", () => {
     localStorage.setItem("pakpos-tabs", JSON.stringify(raw));
     await useTabsStore.persist.rehydrate();
     const restored = s().tabs.find((x) => x.doc)!.doc!;
-    expect(restored.draft).toEqual({ auth: emptyAuth(), headers: [], variables: [] });
+    expect(restored.draft).toEqual(emptyDocDraft());
     expect(restored.saved!.auth.type).toBe("basic");
   });
 });

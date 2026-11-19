@@ -100,6 +100,22 @@ PLAN-TOOLS stays a separate plan.
 | Script timeout setting | `settings.ScriptTimeoutMs` (default 5000, 1000–60000; `Normalize` turns a missing 0 into the default so older stored settings stay valid). The Settings dialog's Requests section has "Script timeout" in whole seconds. |
 | Event | `script:console` (`service.EventScriptConsole`, payload `ScriptConsoleEvent{sendId, entries}`), one event per script run that logged something; `api.onScriptConsole` subscribes. |
 
+### Decisions made in M4
+
+| Topic | Decision |
+|---|---|
+| Script error location | `SendResult.scriptError {source, line, column}` (Go `service.ScriptErrorInfo`, nil unless a pre-request script failed; line 0 for a timeout) so the error state can open that level's Scripts tab without parsing the message. History entries don't carry it (the button only shows for live results). |
+| Scripts tab | Request section `scripts` (between Auth and Settings) and a `scripts` section in collection and folder settings; the Pre-request/Tests sub-tab is the tab's own `scripts` pane section, so it is remembered per tab. A dot marks the tab when either script is non-empty. The section is a lazy chunk (`loadScripts`, preloaded on idle with the dialogs). |
+| Completions | A static description of the `pm` API (`features/scripts/pmApi.ts`) with per-event validity; members valid only in the other script are left out (e.g. no `pm.response` in pre-request, no `headers.upsert` in tests). Added as CodeMirror language data next to lang-javascript's own completions (`CodeEditor` `completions` prop). The receiver path is parsed backwards through names and balanced calls (`pm.expect(x).to.` → assertion words). No hover docs: completion info shows the one-line doc. |
+| Snippets | Seven snippets (status 200, response time, JSON property, env var from JSON, set a header, set a variable, log the response); those valid in one script are disabled in the other with the reason under the label. Inserted at the cursor on a line of their own. |
+| Inherited scripts | A collapsed "Runs before this request's/folder's script: Collection X, Folder Y" line (only levels with a script for the open event), expanding to read-only editors with "Open … settings". Read through `getCollection`/`getFolder` per level (no new Go API), re-read on `environments.version`. |
+| Doc tab scripts | `DocDraft.scripts`; saving a collection/folder passes `scripts` only when they differ from the saved copy, so a settings tab persisted before M4 (restored with empty scripts) never clears scripts on disk. |
+| Tests tab | `passed/total` where skipped tests don't count; colour `text-status-ok` when all pass, `text-status-client` otherwise; filter All/Passed/Failed (skipped only under All). Each row links to its script ("test script of collection X"). |
+| Console | Bottom drawer inside the workspace pane (below request/response or the settings editor), not across the sidebar. Toggle: status bar "Console" button (with unread count while closed), palette "Toggle console" and **Mod+J** (free; VS Code's panel toggle). Lines per send under a header (time, method, name, status); a send that logged nothing leaves no header. Live events append; the final `SendResult.console` replaces the group's lines (no duplicates), and later events for a finished send are ignored. A pre-request script error is added as an `error` line. Cap 2000 lines, oldest dropped. Not persisted; open state is not persisted either. |
+| Drawer layout | The editors panel keeps its position in a vertical panel group and the console panel is added only while open, so editors (and their undo history) never remount; the height is saved under `panels.console` only while the console is open. |
+| Overlay refresh | `sendTab` bumps `environments.version` after every send in a workspace (scripts may have set values), which re-runs previews, `VisibleVariables` and the tables' `OverlayValues`. |
+| Overlay UI | Under the applying row's value: "Set by script" + value (masked for secrets) + Reset + "Persist to file"; a value only scripts define is a virtual row "New, set by script" above the blank row; an `unset` entry shows "Unset by script". "Reset all script values" above the table. The palette's "Reset script values" resets globals, every environment and every collection. `overlayDraft` keeps a set/new overlay value winning over edited rows of the same name; hover sources read "… · set by script". |
+
 ## Workspace on disk (v3)
 
 ```
@@ -250,9 +266,30 @@ M3 ─ M4 ─ M5 ────────────────────┘
   - Docs: AGENTS.md (stack, layout, Scripts conventions, frontend script results), ARCHITECTURE.md (§6 pipeline with scripts, §7 scripting, §9 events).
   - Gates: `wails3 task lint` 0 issues; `wails3 task coverage`: Go 96.3% (script 94.9%, pipeline 98.2%, service 97.5%, model 100%, fsstore 93.8%, settings 100%), frontend 98.66% statements / 94.51% branches / 98.46% functions / 99.18% lines (837 tests, 1 opt-in bench skipped). `GOOS=windows go vet ./internal/...` clean.
 
+- **M4 — Scripting UI: items 1–5 done.**
+  - **Scripts tab**: `features/scripts/` (`ScriptsSection.tsx`, `lazy.tsx`, `hasScripts.ts`, `pmApi.ts`, `snippets.ts`, `useInheritedScripts.ts`, `open.ts`), `CodeEditor` `completions` prop, `RequestPane` and `DocEditor` (collection/folder) sections, `DocDraft.scripts` + `scriptsChanged` (`stores/tabs.ts`, `docActions.ts`). Tests: `pmApi.test.ts` (paths, members per event, completions, snippets), `Scripts.test.tsx` (editing and dirty state, sub-tabs, help text, snippets incl. disabled reasons, inherited line and opening settings, collection/folder save with and without script edits, `levelsAbove`).
+  - **Tests tab and outcomes**: `features/response/TestsView.tsx`, `tests.ts`, `ResponsePane` (skipped state, script error with "Open the … script"). Go: `SendResult.ScriptError` (`e2e_script_test.go` asserts source/line/column and the timeout's line 0). Tests: `Tests.test.tsx`.
+  - **Console**: `stores/console.ts`, `features/console/` (`ConsolePanel`, lazy `ConsoleDrawer`, `consoleFilter.ts`, `useConsoleSync`), status bar toggle, Mod+J in `useShortcuts`, `sendTab` begin/finish. Tests: `console.test.ts` (grouping, reconcile, late events, cap, unread, status text), `Console.test.tsx` (drawer filters/search/copy/clear/close, status bar with unread count, Mod+J, live events), `actions.test.ts` (send → console + version bump).
+  - **Overlay**: `features/scopes/useOverlayValues.ts`, `ScriptValues.tsx`, `scriptValueActions.ts`, `VariablesTable`; `overlayDraft`/`describeVar` (`lib/variables.ts`). Tests: `ScriptValues.test.tsx` (badges, virtual rows, reset, reset all, persist plain/new/unset/secret with unlock, failures), `variables.test.ts` (script value beats edited rows, "set by script" source).
+  - **Palette**: "Open pre-request script", "Open tests", "Toggle console" (Mod+J), "Clear console", "Reset script values" (`features/scripts/overlay.ts`); `actions.test.ts`.
+  - Fixtures: `makeScriptSource`, `makeTestResult`, `makeConsoleEntry`, `makeOverlayValue`; `apiMock` `send` returns a full result and `saveCollection`/`saveFolder` keep scripts like Go.
+  - Visual check: `scripts/screenshot.mjs` with an M4 scenario in light and dark (Scripts tab with inherited line and help text, completions, snippets menu, Tests tab with the console open, overlay badges in an environment).
+  - Bundle: `ScriptsSection` (~15 kB, with `pmApi`/snippets) and `ConsoleDrawer` (~6 kB) are separate lazy chunks; the startup bundle only gains the small wrappers, the Tests tab, the overlay notes and the console store.
+  - Docs: AGENTS.md (scripts UI, Tests tab, console store/drawer, overlay UI, Mod+J, palette actions, fixtures), ARCHITECTURE.md §7–§8, SMOKE-TEST.md "Tier 3: scripting".
+  - Gates: `wails3 task lint` 0 issues; `wails3 task coverage`: Go 96.3% (service 97.5%), frontend 98.65% statements / 94.55% branches / 98.45% functions / 99.14% lines (889 tests, 1 opt-in bench skipped).
+
+### Carried over from M4
+
+- **History and script results**: a history entry has no tests, console or `scriptError` (never stored), so a script error opened from history has no "Open the script" button.
+- **Hover docs** for `pm` members (completion info only), and no `pm` completions on local variables holding API objects (`const res = pm.response; res.` offers nothing).
+- **Inherited scripts** are read per level on each change; the runner (M5) may want them in the preview instead.
+- **Console** isn't per tab and not exportable; the runner (M5) needs its own grouping (per iteration) on the same store.
+- **Settings tabs restored from before M4** show empty scripts until reloaded (saving won't clear the disk's scripts, see the decision).
+- **Smoke test** "Tier 3: scripting" on Linux, macOS and Windows.
+
 ### Carried over from M3
 
-- **M4 needs**: the Scripts tab (request/folder/collection; `saveFolder`/`saveCollection` already take `scripts`), the Tests tab and console drawer (`SendResult.tests/console`, `api.onScriptConsole`), overlay badges from `PreviewVariable.overlay` / `api.overlayValues` with Reset and Persist. `overlayDraft` (`lib/variables.ts`) treats draft rows as file values; a settings tab should keep showing a script value as winning over an edited file row.
+- ~~**M4 needs**~~: done in M4 (Scripts tab, Tests tab, console drawer, overlay badges; `overlayDraft` keeps script values winning).
 - **Postman compatibility gaps**: no `pm.cookies`, `pm.visualizer`, `pm.sendRequest` (Tier 4), `require` of bundled libraries (lodash, moment, CryptoJS…), the legacy `tests[...]`/`responseBody`/`postman.setEnvironmentVariable` globals, `pm.request.auth`, typed variable values, async tests.
 - **Memory**: goja has no heap limit; a script allocating fast within the timeout can use a lot of memory.
 - **Short secrets** (under 4 characters) aren't masked in script output (same rule as examples).

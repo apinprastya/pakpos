@@ -203,6 +203,16 @@ export interface SendResult {
   console: ConsoleEntry[];
   /** A pre-request script called pm.execution.skipRequest(): nothing was sent. */
   skipped: boolean;
+  /** Where a pre-request script failed (error kind "script"); null otherwise. */
+  scriptError: ScriptErrorInfo | null;
+}
+
+/** The script and position of a pre-request script error (Go service.ScriptErrorInfo). */
+export interface ScriptErrorInfo {
+  source: ScriptSource;
+  /** 1-based; 0 when unknown (a timeout). */
+  line: number;
+  column: number;
 }
 
 export type ScriptEvent = "prerequest" | "test";
@@ -517,7 +527,13 @@ export function normalizeSendResult(input: unknown): SendResult {
     tests: (r.tests ?? []).map(normalizeTestResult),
     console: (r.console ?? []).map(normalizeConsoleEntry),
     skipped: r.skipped ?? false,
+    scriptError: normalizeScriptError(r.scriptError),
   };
+}
+
+function normalizeScriptError(input: Loose<ScriptErrorInfo> | null | undefined): ScriptErrorInfo | null {
+  if (!input) return null;
+  return { source: normalizeSource(input.source), line: input.line ?? 0, column: input.column ?? 0 };
 }
 
 export function normalizeHop(input: unknown): Hop {
@@ -592,6 +608,7 @@ export function historyToResult(entry: HistoryEntry): SendResult {
     tests: [],
     console: [],
     skipped: false,
+    scriptError: null,
   };
 }
 

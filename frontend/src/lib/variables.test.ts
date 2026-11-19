@@ -62,6 +62,13 @@ describe("describeVar", () => {
     });
     expect(describeVar("empty", scope)).toMatchObject({ value: "", note: "Empty value" });
     expect(describeVar("g", scope).source).toBe("Globals");
+    const scripted = makeScope(
+      [makePreviewVar("t", "v", { overlay: "set" }), makePreviewVar("n", "1", { overlay: "new" })],
+      null,
+      true,
+    );
+    expect(describeVar("t", scripted).source).toBe("Environment: Dev · set by script");
+    expect(describeVar("n", scripted).source).toBe("Environment: Dev · set by script");
   });
 
   it("masks secrets and says when one isn't set", () => {
@@ -157,6 +164,25 @@ describe("overlayDraft", () => {
     expect(out.map((v) => v.key)).toEqual(["g", "host", "kept"]);
     expect(byKey.host).toMatchObject({ value: "col", scope: "collection", scopeName: "Users" });
     expect(byKey.kept).toMatchObject({ value: "draft", scope: "environment" });
+  });
+
+  it("keeps a script value winning over the scope's edited rows", () => {
+    const visible = [
+      makePreviewVar("token", "from-script", { overlay: "set" }),
+      makePreviewVar("id", "42", { overlay: "new" }),
+      makePreviewVar("plain", "file"),
+    ];
+    const out = overlayDraft(visible, target, [
+      makeVar("token", "edited"),
+      makeVar("plain", "edited"),
+      makeVar("added", "x"),
+    ]);
+    expect(out.map((v) => [v.key, v.value, v.overlay])).toEqual([
+      ["added", "x", ""],
+      ["id", "42", "new"],
+      ["plain", "edited", ""],
+      ["token", "from-script", "set"],
+    ]);
   });
 
   it("matches the globals scope whatever its id", () => {

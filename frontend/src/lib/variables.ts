@@ -177,7 +177,8 @@ export function describeVar(name: string, scope: VarScope): VarInfo {
       hint,
     };
   }
-  const source = scopeLabel(v.scope, v.scopeName);
+  const source =
+    scopeLabel(v.scope, v.scopeName) + (v.overlay === "set" || v.overlay === "new" ? " · set by script" : "");
   if (v.secret) {
     return v.set
       ? { kind: "resolved", name, value: MASK, note: "", source: `${source} · secret`, hint: "" }
@@ -210,7 +211,9 @@ const RANK: Record<ScopeKind, number> = { global: 0, collection: 1, environment:
  * to a higher scope's definition of the same name. Secret rows never carry
  * a value; their `set` flag is kept from disk (false for new ones). When a
  * saved row is removed (or disabled) in the draft, the best definition from
- * another scope in `shadowed` (Go's `Visible.shadowed`) takes its place.
+ * another scope in `shadowed` (Go's `Visible.shadowed`) takes its place. A
+ * value a script set this session (`overlay` "set" or "new") keeps winning
+ * over the scope's draft rows, as it does when sending.
  */
 export function overlayDraft(
   visible: readonly PreviewVariable[],
@@ -229,13 +232,21 @@ export function overlayDraft(
   }
   // The edited scope's saved definitions lose to the draft: what's left
   // without them is the first shadowed definition from another scope.
-  for (const key of ownSaved.keys()) {
-    const next = shadowed.find((v) => v.key === key && !isOwn(v));
+  // A value a script set this session wins over the file, edited or not (Go lays
+  // the overlay over the file's rows), so it stays.
+  const scripted = new Set<string>();
+  for (const [key, v] of ownSaved) {
+    if (v.overlay === "set" || v.overlay === "new") {
+      scripted.add(key);
+      byKey.set(key, v);
+      continue;
+    }
+    const next = shadowed.find((s) => s.key === key && !isOwn(s));
     if (next) byKey.set(key, next);
   }
   for (const row of draft) {
     const key = row.key.trim();
-    if (!row.enabled || !key) continue;
+    if (!row.enabled || !key || scripted.has(key)) continue;
     const other = byKey.get(key);
     if (other && RANK[other.scope] > RANK[target.kind]) continue;
     const saved = ownSaved.get(key);
@@ -247,7 +258,7 @@ export function overlayDraft(
       scopeId: target.id,
       scopeName: target.name,
       set: row.secret ? Boolean(saved?.secret && saved.set) : true,
-      // A draft row is the file's value; script values are M4's concern.
+      // A draft row is the file's value (script values were kept above).
       overlay: "",
     });
   }

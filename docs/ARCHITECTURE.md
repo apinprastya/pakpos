@@ -304,8 +304,9 @@ Request (as written) + parentId + selected environment
   `EnvService.PersistOverlay`), or the secret store when the target is a
   secret variable.
 - Errors carry the level (collection, folder, request), line and column. A
-  pre-request error stops the send (`error.kind = "script"`); a test-script
-  error becomes a failed test.
+  pre-request error stops the send (`error.kind = "script"`, with
+  `SendResult.scriptError {source, line, column}` so the UI can open that
+  script); a test-script error becomes a failed test.
 - Console lines, test names, errors and hops are masked (`[secret:name]`)
   with the send's secret values plus those scripts wrote. Console output also
   streams to the UI as `script:console` events; it is never persisted.
@@ -318,6 +319,7 @@ Request (as written) + parentId + selected environment
 - Code splitting: every editor language (JSON, XML, HTML, JavaScript and the generated-code ones) is its own chunk, loaded on first use (plain text until then); the settings, code, import-cURL dialogs and the command palette load on first open.
 - Theme: light/dark/system via CSS variables (shadcn tokens); command palette (`cmdk`), keyboard shortcuts.
 - Drag & drop in tree: `dnd-kit`.
+- Scripting UI (Tier 3 M4): a lazy **Scripts** tab (Pre-request / Tests) in request, collection and folder editors with `pm` completions from a static API description (`features/scripts/pmApi.ts`), snippets and a read-only view of the inherited scripts; a **Tests** tab in the response pane; a **console drawer** below the editors (lazy, Mod+J or the status bar), fed live by `script:console` and reconciled with `SendResult.console` per send, kept in memory only (`stores/console.ts`, 2000 lines); "Set by script" badges with Reset / Persist in variable tables (`EnvService.OverlayValues/ResetOverlay/PersistOverlay`), refreshed after every send.
 
 ## 9. Backend ↔ frontend contract
 

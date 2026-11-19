@@ -34,6 +34,9 @@ import { docScope, loadDocTab, saveDocTab } from "./docActions";
 import { MoveToSecretDialog } from "./MoveToSecretDialog";
 import { DocKindIcon } from "./DocKindIcon";
 import { VariablesTable } from "./VariablesTable";
+import { ScriptsSection } from "@/features/scripts/lazy";
+import { hasScripts } from "@/features/scripts/hasScripts";
+import { useInheritedScripts } from "@/features/scripts/useInheritedScripts";
 
 /** The thing a doc tab renames (globals can't be renamed). */
 const RENAME_NOUNS: Partial<Record<DocKind, string>> = {
@@ -309,8 +312,9 @@ function VariablesBody({ tab, doc }: { tab: Tab; doc: DocState }) {
   );
 }
 
-const COLLECTION_SECTIONS = ["auth", "headers", "variables"] as const;
-const FOLDER_SECTIONS = ["auth", "headers"] as const;
+const COLLECTION_SECTIONS = ["auth", "headers", "variables", "scripts"] as const;
+const FOLDER_SECTIONS = ["auth", "headers", "scripts"] as const;
+const SCRIPT_EVENTS = ["prerequest", "test"] as const;
 
 function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
   const tabs = useTabsStore.getState;
@@ -333,6 +337,8 @@ function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
     isFolder ? FOLDER_SECTIONS : COLLECTION_SECTIONS,
     "auth",
   );
+  const [scriptEvent, setScriptEvent] = useTabSection(tab, "scripts", SCRIPT_EVENTS, "prerequest");
+  const inherited = useInheritedScripts({ kind: doc.kind as "collection" | "folder", id: doc.targetId });
 
   return (
     <Tabs value={section} onValueChange={setSection} className="flex min-h-0 flex-1 flex-col gap-0">
@@ -348,6 +354,12 @@ function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
             Variables
           </TabsTrigger>
         )}
+        <TabsTrigger value="scripts" className="flex-none px-2">
+          Scripts
+          {hasScripts(draft.scripts) && (
+            <span aria-label="has scripts" className="size-1.5 rounded-full bg-primary" />
+          )}
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="auth" className="min-h-0 flex-1 overflow-auto p-4">
         <p className="mb-4 max-w-xl text-xs text-muted-foreground">
@@ -390,6 +402,17 @@ function ContainerBody({ tab, doc }: { tab: Tab; doc: DocState }) {
             onChange={(rows) => tabs().updateDoc(tab.id, (d) => ({ ...d, headers: rows }))}
           />
         </div>
+      </TabsContent>
+      <TabsContent value="scripts" className="min-h-0 flex-1">
+        <ScriptsSection
+          tabKey={tab.id}
+          owner={isFolder ? "folder" : "collection"}
+          scripts={draft.scripts}
+          onChange={(update) => tabs().updateDoc(tab.id, (d) => ({ ...d, scripts: update(d.scripts) }))}
+          inherited={inherited}
+          event={scriptEvent}
+          onEventChange={setScriptEvent}
+        />
       </TabsContent>
       {!isFolder && (
         <TabsContent value="variables" className="min-h-0 flex-1 overflow-auto p-4">

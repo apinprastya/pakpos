@@ -50,6 +50,18 @@ type SendResult struct {
 	// Skipped is true when a pre-request script called
 	// pm.execution.skipRequest: nothing was sent.
 	Skipped bool `json:"skipped"`
+	// ScriptError locates a pre-request script error (Error.Kind "script")
+	// so the UI can open that script; nil otherwise and for timeouts'
+	// position (Line 0).
+	ScriptError *ScriptErrorInfo `json:"scriptError"`
+}
+
+// ScriptErrorInfo is where a pre-request script failed: the level's
+// script and the 1-based line and column (0 when unknown, e.g. a timeout).
+type ScriptErrorInfo struct {
+	Source script.Source `json:"source"`
+	Line   int           `json:"line"`
+	Column int           `json:"column"`
 }
 
 // RequestService saves requests in the workspace and sends them.
@@ -219,6 +231,7 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 		return result, nil
 	case pre.Err != nil:
 		result.Error = &httpexec.Error{Kind: httpexec.KindScript, Message: pre.Err.Error(), Err: pre.Err}
+		result.ScriptError = &ScriptErrorInfo{Source: pre.Err.Source, Line: pre.Err.Line, Column: pre.Err.Column}
 		result.HistoryID = s.record(wsID, envName, req, nil, result.Error, started)
 		return result, nil
 	case pre.Skip:

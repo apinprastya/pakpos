@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { api } from "@/lib/api";
-import { emptyAuth, type Auth, type ResolvePreview } from "@/lib/model";
+import { emptyAuth, emptyScripts, type Auth, type ResolvePreview } from "@/lib/model";
 import { col, folder, makeEnv, makePreview, makeVar } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 import { useEnvironmentsStore } from "@/stores/environments";
@@ -219,7 +219,9 @@ describe("move to secret helpers", () => {
 
   it("refuses while the scope has unsaved edits, and stops when unlocking is cancelled", async () => {
     const id = useTabsStore.getState().openDoc("globals", "", "Globals", "w1");
-    useTabsStore.getState().markDocSaved(id, { auth: emptyAuth(), headers: [], variables: [] });
+    useTabsStore
+      .getState()
+      .markDocSaved(id, { auth: emptyAuth(), headers: [], variables: [], scripts: emptyScripts() });
     useTabsStore.getState().updateDoc(id, (d) => ({ ...d, variables: [makeVar("x", "1")] }));
     await expect(moveToSecret({ kind: "global", id: "" }, "Globals", "t", "v")).rejects.toThrow(
       'Save or discard your changes in "Globals" first.',

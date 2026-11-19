@@ -76,6 +76,7 @@ describe("model", () => {
       tests: [],
       console: [],
       skipped: false,
+      scriptError: null,
     });
     const hops = normalizeSendResult({
       hops: [{ method: "GET", requestHeaders: null, responseHeaders: [{ key: "A" }] }, null],
@@ -102,6 +103,10 @@ describe("model", () => {
       console: [{ level: "warn", text: "hi", source: null }, {}],
     });
     expect(scripted.skipped).toBe(true);
+    expect(
+      normalizeSendResult({ scriptError: { source: { kind: "folder", id: "f", name: "Auth" }, line: 3 } })
+        .scriptError,
+    ).toEqual({ source: { kind: "folder", id: "f", name: "Auth", event: "prerequest" }, line: 3, column: 0 });
     expect(scripted.tests).toEqual([
       {
         name: "ok",
@@ -228,6 +233,7 @@ describe("sidebar model helpers", () => {
       tests: [],
       console: [],
       skipped: false,
+      scriptError: null,
     });
     expect(empty.environmentName).toBe("");
     const withEnv = normalizeHistoryEntry({ id: 9, environmentName: "Prod" });

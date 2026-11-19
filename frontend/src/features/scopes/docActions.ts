@@ -3,6 +3,7 @@ import { api } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import {
   emptyAuth,
+  emptyScripts,
   type CollectionSettings,
   type Environment,
   type FolderSettings,
@@ -17,6 +18,7 @@ import {
   compactDraft,
   draftsEqual,
   isDirty,
+  scriptsChanged,
   tabTitle,
   useTabsStore,
   type DocDraft,
@@ -26,15 +28,15 @@ import {
 import { useWorkspaceStore } from "@/stores/workspace";
 
 export function variablesDraft(variables: Variable[]): DocDraft {
-  return { auth: emptyAuth(), headers: [], variables };
+  return { auth: emptyAuth(), headers: [], variables, scripts: emptyScripts() };
 }
 
 export function collectionDraft(c: CollectionSettings): DocDraft {
-  return { auth: c.auth, headers: c.headers, variables: c.variables };
+  return { auth: c.auth, headers: c.headers, variables: c.variables, scripts: c.scripts };
 }
 
 export function folderDraft(f: FolderSettings): DocDraft {
-  return { auth: f.auth, headers: f.headers, variables: [] };
+  return { auth: f.auth, headers: f.headers, variables: [], scripts: f.scripts };
 }
 
 /**
@@ -115,6 +117,8 @@ export async function saveDocTab(tabId: string, closeAfter = false): Promise<boo
   // Moving a renamed secret's value needs the store; unlock first rather than lose it.
   if (renames.length > 0 && !(await useSecretsStore.getState().ensureReady())) return false;
   const d = compactDraft(doc.draft);
+  // Scripts go only when edited, so a tab restored from before scripts existed can't clear them.
+  const scripts = scriptsChanged(doc.draft, doc.saved) ? d.scripts : undefined;
   try {
     let saved: DocDraft;
     switch (doc.kind) {
@@ -127,10 +131,18 @@ export async function saveDocTab(tabId: string, closeAfter = false): Promise<boo
         saved = variablesDraft((await api.saveGlobals(d.variables, renames)).variables);
         break;
       case "collection":
-        saved = collectionDraft(await api.saveCollection(doc.targetId, d, renames));
+        saved = collectionDraft(
+          await api.saveCollection(
+            doc.targetId,
+            { auth: d.auth, headers: d.headers, variables: d.variables, scripts },
+            renames,
+          ),
+        );
         break;
       case "folder":
-        saved = folderDraft(await api.saveFolder(doc.targetId, { auth: d.auth, headers: d.headers }));
+        saved = folderDraft(
+          await api.saveFolder(doc.targetId, { auth: d.auth, headers: d.headers, scripts }),
+        );
         break;
     }
     useTabsStore.getState().markDocSaved(tabId, saved);
