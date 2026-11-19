@@ -15,6 +15,7 @@ import { useEffect } from "react";
 import { useActiveTab } from "@/stores/tabs";
 import { DocEditor } from "@/features/scopes/DocEditor";
 import { RunnerView } from "@/features/runner/lazy";
+import { ToolTab } from "@/features/tools/ToolTab";
 import { useScopeSync } from "@/features/scopes/useScopeSync";
 import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
 import { useDismissToastsOnDialog } from "@/lib/dialogToasts";
@@ -54,7 +55,9 @@ export function AppShell() {
             <main className="flex h-full min-w-0 flex-col">
               <TabBar />
               <ConsolePanel>
-                {active.doc?.kind === "runner" ? (
+                {active.tool ? (
+                  <ToolTab key={active.id} tab={active} />
+                ) : active.doc?.kind === "runner" ? (
                   <RunnerView key={active.id} tab={active} />
                 ) : active.doc ? (
                   <DocEditor key={active.id} tab={active} />

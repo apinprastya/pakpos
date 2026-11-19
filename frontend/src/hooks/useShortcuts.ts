@@ -3,7 +3,7 @@ import { saveTab, sendTab } from "@/features/request/actions";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { usePaletteStore } from "@/stores/palette";
 import { useSettingsStore } from "@/stores/settings";
-import { useTabsStore } from "@/stores/tabs";
+import { isRequestTab, useTabsStore } from "@/stores/tabs";
 import { useConsoleStore } from "@/stores/console";
 
 /**
@@ -25,7 +25,7 @@ export function useShortcuts(): void {
         if (e.key.toLowerCase() === "c") {
           const { tabs, activeId } = useTabsStore.getState();
           const tab = tabs.find((t) => t.id === activeId);
-          if (!tab || tab.doc) return;
+          if (!tab || !isRequestTab(tab)) return;
           e.preventDefault();
           useCodeDialogsStore.getState().openCode(tab.id);
         }

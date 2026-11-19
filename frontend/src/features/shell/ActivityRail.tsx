@@ -1,4 +1,4 @@
-import { FolderTree, History, Layers, Search, Settings, type LucideIcon } from "lucide-react";
+import { FolderTree, History, Layers, Search, Settings, Wrench, type LucideIcon } from "lucide-react";
 import { usePaletteStore } from "@/stores/palette";
 import { Button } from "@/components/ui/button";
 import { modKeyLabel } from "@/lib/platform";
@@ -14,6 +14,7 @@ const VIEWS: { id: SidebarView; label: string; icon: LucideIcon }[] = [
   { id: "collections", label: "Collections", icon: FolderTree },
   { id: "environments", label: "Environments", icon: Layers },
   { id: "history", label: "History", icon: History },
+  { id: "tools", label: "Tools", icon: Wrench },
 ];
 
 export function ActivityRail() {

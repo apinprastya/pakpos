@@ -19,7 +19,7 @@ import { api } from "@/lib/api";
 import { compactRequest, type CodeLanguage, type CodeResult, type Request } from "@/lib/model";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { useEnvironmentsStore } from "@/stores/environments";
-import { tabTitle, useTabsStore } from "@/stores/tabs";
+import { isRequestTab, tabTitle, useTabsStore } from "@/stores/tabs";
 import { codeLanguages } from "./languages";
 import { addedHeadersNote, codeNotes } from "./summary";
 
@@ -31,7 +31,7 @@ type Gen = { state: "ok"; result: CodeResult } | { state: "error"; message: stri
  */
 export function CodeDialog() {
   const tabId = useCodeDialogsStore((s) => s.codeTabId);
-  const tab = useTabsStore((s) => s.tabs.find((t) => t.id === tabId && !t.doc));
+  const tab = useTabsStore((s) => s.tabs.find((t) => t.id === tabId && isRequestTab(t)));
   const open = !!tab;
   return (
     <Dialog open={open} onOpenChange={(o) => !o && useCodeDialogsStore.getState().closeCode()}>

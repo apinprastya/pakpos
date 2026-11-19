@@ -14,6 +14,7 @@ import {
   type SendResult,
   type Variable,
 } from "@/lib/model";
+import { toolDef } from "@/features/tools/registry";
 
 /** What a non-request tab edits (or, for `runner`, runs). */
 export type DocKind = "environment" | "globals" | "collection" | "folder" | "runner";
@@ -129,8 +130,24 @@ export interface Tab {
    * for request tabs (whose request fields are then unused).
    */
   doc: DocState | null;
+  /**
+   * Set for tool tabs (JWT decoder, …); null otherwise. A tool tab has no
+   * workspace or parent: it survives a workspace switch and is never dirty.
+   */
+  tool: ToolTab | null;
   /** Section open in each pane (e.g. the request's Body), so it survives switching tabs. */
   sections: TabSections;
+}
+
+/** A tool tab's tool (an id from the tools registry) and that tool's own state. */
+export interface ToolTab {
+  id: string;
+  state: unknown;
+}
+
+/** True for request tabs: neither a doc (settings, runner) nor a tool tab. */
+export function isRequestTab(tab: Tab): boolean {
+  return !tab.doc && !tab.tool;
 }
 
 /** Panes whose section tabs are remembered per tab. */
@@ -207,6 +224,14 @@ interface TabsState {
   ) => string;
   /** Changes a runner tab's configuration. */
   updateRunner: (id: string, patch: Partial<RunnerSettings>) => void;
+  /**
+   * Opens a tool's tab, or focuses the open one (one tab per tool). With
+   * `input` (e.g. "Decode JWT" from a request), the tab's input is replaced.
+   * Returns the tab id, or "" for an unknown tool.
+   */
+  openTool: (toolId: string, input?: string) => string;
+  /** Changes a tool tab's state. */
+  updateToolState: (id: string, update: (state: unknown) => unknown) => void;
   /** Remembers which section of a pane is open in a tab. */
   setSection: (id: string, pane: TabPane, section: string) => void;
 }
@@ -227,12 +252,14 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
     sendId: null,
     result: null,
     doc: null,
+    tool: null,
     sections: {},
     ...partial,
   };
 }
 
 export function isDirty(tab: Tab): boolean {
+  if (tab.tool) return false;
   if (tab.doc) {
     const { draft, saved } = tab.doc;
     return draft !== null && saved !== null && !draftsEqual(draft, saved);
@@ -249,6 +276,7 @@ const DOC_TITLES: Record<DocKind, (name: string) => string> = {
 };
 
 export function tabTitle(tab: Tab): string {
+  if (tab.tool) return toolDef(tab.tool.id)?.label ?? "Unknown tool";
   if (tab.doc) return DOC_TITLES[tab.doc.kind](tab.doc.name);
   return tab.request.name || "Untitled request";
 }
@@ -482,6 +510,36 @@ export const useTabsStore = create<TabsState>()(
           tabs: mapDoc(s.tabs, id, (d) => (d.runner ? { ...d, runner: { ...d.runner, ...patch } } : d)),
         })),
 
+      openTool: (toolId, input) => {
+        const def = toolDef(toolId);
+        if (!def) return "";
+        const existing = get().tabs.find((t) => t.tool?.id === toolId);
+        if (existing) {
+          set((s) => ({
+            activeId: existing.id,
+            tabs:
+              input === undefined
+                ? s.tabs
+                : s.tabs.map((t) =>
+                    t.id === existing.id && t.tool
+                      ? { ...t, tool: { ...t.tool, state: def.withInput(t.tool.state, input) } }
+                      : t,
+                  ),
+          }));
+          return existing.id;
+        }
+        const tab = makeTab({ tool: { id: toolId, state: def.initialState(input) } });
+        set((s) => ({ tabs: [...s.tabs, tab], activeId: tab.id }));
+        return tab.id;
+      },
+
+      updateToolState: (id, update) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) =>
+            t.id === id && t.tool ? { ...t, tool: { ...t.tool, state: update(t.tool.state) } } : t,
+          ),
+        })),
+
       setSection: (id, pane, section) =>
         set((s) => ({
           tabs: s.tabs.map((t) =>
@@ -496,15 +554,17 @@ export const useTabsStore = create<TabsState>()(
       version: 1,
       storage: createJSONStorage(() => safeStorage),
       // Convenience only: keep the open tabs and drafts, not responses or sends.
+      // A tool's state is kept only when the tool says so (never a JWT's token).
       partialize: (s) => ({
         activeId: s.activeId,
-        tabs: s.tabs.map((t) => ({ ...t, sendId: null, result: null })),
+        tabs: s.tabs.map((t) => ({ ...t, sendId: null, result: null, tool: persistedTool(t.tool) })),
       }),
       merge: (persisted, current) => {
         // Tabs saved before nested folders have `collectionId` instead of `parentId`;
         // tabs saved before M4 have no `doc` (they're all request tabs).
-        type StoredTab = Omit<Tab, "parentId" | "doc" | "sections"> & {
+        type StoredTab = Omit<Tab, "parentId" | "doc" | "sections" | "tool"> & {
           sections?: unknown;
+          tool?: unknown;
           parentId?: string;
           collectionId?: string;
           doc?: Partial<DocState> | null;
@@ -519,7 +579,7 @@ export const useTabsStore = create<TabsState>()(
             saved: t.saved ? normalizeRequest(t.saved) : null,
             sendId: null,
             result: null,
-            doc: restoreDoc(t.doc),
+            ...restoreKind(t.doc, t.tool),
             sections: restoreSections(t.sections),
           }),
         );
@@ -548,6 +608,31 @@ export function useTabSection<T extends string>(
 
 export function useActiveTab(): Tab {
   return useTabsStore((s) => s.tabs.find((t) => t.id === s.activeId) ?? s.tabs[0]);
+}
+
+function persistedTool(tool: ToolTab | null): ToolTab | null {
+  if (!tool) return null;
+  return toolDef(tool.id)?.persist ? tool : { id: tool.id, state: null };
+}
+
+/**
+ * Restores a persisted tool tab. Its state comes back only for tools that
+ * persist; others start empty. An unknown tool (from another build) keeps
+ * its id so its tab can say so and be closed.
+ */
+export function restoreTool(raw: unknown): ToolTab | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { id, state } = raw as { id?: unknown; state?: unknown };
+  if (typeof id !== "string" || !id) return null;
+  const def = toolDef(id);
+  if (!def) return { id, state: null };
+  return { id, state: def.persist ? def.restore(state) : def.initialState() };
+}
+
+/** A tab is a tool tab, a doc tab, or (anything else) a request tab. */
+function restoreKind(doc: Partial<DocState> | null | undefined, tool: unknown) {
+  const t = restoreTool(tool);
+  return t ? { doc: null, tool: t } : { doc: restoreDoc(doc), tool: null };
 }
 
 const DOC_KINDS: DocKind[] = ["environment", "globals", "collection", "folder", "runner"];

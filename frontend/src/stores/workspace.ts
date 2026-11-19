@@ -100,6 +100,8 @@ function releaseForeignTabs(workspaceId: string | null) {
   const tabs = useTabsStore.getState();
   let kept = 0;
   for (const tab of tabs.tabs) {
+    // Tool tabs belong to no workspace.
+    if (tab.tool) continue;
     if (tab.doc) {
       // Environment and settings tabs only make sense in their own workspace.
       if (tab.workspaceId !== workspaceId) useTabsStore.getState().close(tab.id);
@@ -132,7 +134,7 @@ async function syncTabs(workspaceId: string, collections: CollectionNode[], from
   const changedWithEdits: string[] = [];
   const candidates = useTabsStore
     .getState()
-    .tabs.filter((t) => t.saved && (t.workspaceId === workspaceId || t.workspaceId === ""));
+    .tabs.filter((t) => !t.tool && t.saved && (t.workspaceId === workspaceId || t.workspaceId === ""));
 
   for (const candidate of candidates) {
     const id = candidate.saved!.id;

@@ -1,6 +1,7 @@
 import { CollectionsView } from "@/features/sidebar/CollectionsView";
 import { EnvironmentsView } from "@/features/environments/EnvironmentsView";
 import { HistoryView } from "@/features/sidebar/HistoryView";
+import { ToolsSidebar } from "@/features/tools/ToolsSidebar";
 import { WorkspaceSwitcher } from "@/features/sidebar/WorkspaceSwitcher";
 import { useLayoutStore } from "@/stores/layout";
 import { TitleBarSpace } from "./TitleBarSpace";
@@ -16,6 +17,7 @@ export function Sidebar() {
       {view === "collections" && <CollectionsView />}
       {view === "environments" && <EnvironmentsView />}
       {view === "history" && <HistoryView />}
+      {view === "tools" && <ToolsSidebar />}
     </aside>
   );
 }

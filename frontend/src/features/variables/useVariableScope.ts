@@ -18,8 +18,10 @@ interface Source {
   target: { kind: ScopeKind; id: string; name: string } | null;
 }
 
-/** Where a settings tab sees variables from. Request tabs use their preview instead. */
+/** Where a settings or tool tab sees variables from. Request tabs use their preview instead. */
 function sourceOf(tab: Tab): Source | null {
+  // Tools see what a request outside any collection sees: globals and the selected environment.
+  if (tab.tool) return { parentId: "", environmentId: "", target: null };
   const doc = tab.doc;
   if (!doc || doc.kind === "runner") return null;
   switch (doc.kind) {

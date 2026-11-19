@@ -4,7 +4,7 @@
  */
 import type { CollectionNode, Environment, ExampleSummary } from "@/lib/model";
 import { walkTree } from "@/lib/tree";
-import { tabTitle, type Tab } from "@/stores/tabs";
+import { isRequestTab, tabTitle, type Tab } from "@/stores/tabs";
 
 export type SearchKind = "request" | "folder" | "collection" | "environment" | "globals" | "example" | "tab";
 
@@ -83,8 +83,8 @@ export function buildItems(src: SearchSources): SearchItem[] {
       label: tabTitle(t),
       path: "",
       id: t.id,
-      url: t.doc ? undefined : t.request.url || undefined,
-      method: t.doc ? undefined : t.request.method,
+      url: isRequestTab(t) ? t.request.url || undefined : undefined,
+      method: isRequestTab(t) ? t.request.method : undefined,
     });
   }
   return items;

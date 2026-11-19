@@ -3,7 +3,7 @@ import { StreamLanguage } from "@codemirror/language";
 
 /** Languages for request and response bodies and for generated code. */
 export type EditorLanguage =
-  "json" | "xml" | "html" | "javascript" | "text" | "shell" | "python" | "go" | "java" | "php";
+  "json" | "xml" | "html" | "javascript" | "text" | "shell" | "python" | "go" | "java" | "php" | "jwt";
 
 /**
  * Every language except plain text is a separate chunk, imported on first use,
@@ -19,6 +19,7 @@ const LOADERS: Record<Exclude<EditorLanguage, "text">, () => Promise<Extension>>
   python: async () => (await import("@codemirror/lang-python")).python(),
   java: async () => (await import("@codemirror/lang-java")).java(),
   php: async () => (await import("@codemirror/lang-php")).php(),
+  jwt: async () => (await import("@/features/tools/jwt/jwtLanguage")).jwtLanguage,
 };
 
 const loading = new Map<EditorLanguage, Promise<Extension>>();

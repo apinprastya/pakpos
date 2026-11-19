@@ -11,12 +11,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { methodShortLabel, methodTextClass } from "@/lib/http";
 import { modKeyLabel } from "@/lib/platform";
 import { cn } from "@/lib/utils";
-import { isDirty, tabTitle, useTabsStore, type Tab } from "@/stores/tabs";
+import { isDirty, isRequestTab, tabTitle, useTabsStore, type Tab } from "@/stores/tabs";
+import { ToolIcon } from "@/features/tools/ToolIcon";
 import { EnvironmentSwitcher } from "@/features/environments/EnvironmentSwitcher";
 import { DocKindIcon } from "@/features/scopes/DocKindIcon";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 
-/** Open request tabs: click to switch, middle-click or × to close, drag to reorder. */
+/** Open tabs (requests, settings, runners and tools): click to switch, middle-click or × to close, drag to reorder. */
 export function TabBar() {
   const tabs = useTabsStore((s) => s.tabs);
   const activeId = useTabsStore((s) => s.activeId);
@@ -75,7 +76,7 @@ export function TabBar() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                title={tab.doc ? title : tab.request.url || title}
+                title={isRequestTab(tab) ? tab.request.url || title : title}
                 onClick={() => activate(tab.id)}
                 className="flex h-full min-w-0 flex-1 items-center gap-2 pr-1 pl-3 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
               >
@@ -151,6 +152,7 @@ export function TabBar() {
 }
 
 function TabIcon({ tab }: { tab: Tab }) {
+  if (tab.tool) return <ToolIcon id={tab.tool.id} className="size-3.5" />;
   if (tab.doc) return <DocKindIcon kind={tab.doc.kind} className="size-3.5" />;
   return (
     <span className={cn("font-mono text-[11px] font-semibold", methodTextClass(tab.request.method))}>
