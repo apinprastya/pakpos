@@ -132,3 +132,39 @@ func TestRequestSettingsYAML(t *testing.T) {
 		})
 	}
 }
+
+func TestScriptsYAML(t *testing.T) {
+	cases := []struct {
+		name string
+		in   Scripts
+		want string
+	}{
+		{"empty", Scripts{}, "{}\n"},
+		{"both", Scripts{PreRequest: "a();\nb();\n", Test: "pm.test('x', () => {})"},
+			"preRequest: |\n    a();\n    b();\ntest: |-\n    pm.test('x', () => {})\n"},
+		{"test only", Scripts{Test: "t"}, "test: |-\n    t\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out, err := yaml.Marshal(c.in)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(out) != c.want {
+				t.Errorf("yaml:\n%s\nwant:\n%s", out, c.want)
+			}
+			var back Scripts
+			if err := yaml.Unmarshal(out, &back); err != nil || back != c.in {
+				t.Errorf("round trip = %+v, %v", back, err)
+			}
+		})
+	}
+	if !(Scripts{}).IsZero() || (Scripts{Test: "x"}).IsZero() {
+		t.Error("IsZero")
+	}
+	// A request without scripts omits the block.
+	out, err := yaml.Marshal(Request{Name: "r"})
+	if err != nil || strings.Contains(string(out), "scripts") {
+		t.Errorf("request yaml = %s, %v", out, err)
+	}
+}

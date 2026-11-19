@@ -18,7 +18,11 @@ import {
 } from "../../bindings/pakpos/internal/service";
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
 import type * as bc from "../../bindings/pakpos/internal/core/cookies/models";
-import { UpdateProgress as UpdateProgressEvent, WorkspaceChanged } from "../../bindings/events";
+import {
+  ScriptConsole,
+  UpdateProgress as UpdateProgressEvent,
+  WorkspaceChanged,
+} from "../../bindings/events";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
@@ -41,6 +45,11 @@ import {
   normalizeGlobals,
   normalizePreview,
   normalizeVisible,
+  normalizeConsoleEntry,
+  normalizeOverlayValue,
+  type OverlayValue,
+  type ScriptConsoleEvent,
+  type Scripts,
   normalizeSecretsStatus,
   normalizeVariables,
   normalizeCollection,
@@ -316,10 +325,16 @@ export const api = {
   /** `renames` lists renamed secret variables, so Go moves their stored values (a locked store refuses). */
   async saveCollection(
     id: string,
-    settings: Pick<CollectionSettings, "auth" | "headers" | "variables">,
+    settings: Pick<CollectionSettings, "auth" | "headers" | "variables"> & { scripts?: Scripts },
     renames: SecretRename[] = [],
   ): Promise<CollectionSettings> {
-    const body = { auth: settings.auth, headers: settings.headers, variables: toVars(settings.variables) };
+    // Without `scripts` Go keeps the collection's scripts as they are.
+    const body = {
+      auth: settings.auth,
+      headers: settings.headers,
+      variables: toVars(settings.variables),
+      scripts: settings.scripts ?? null,
+    };
     return normalizeCollection(
       await WorkspaceService.SaveCollection(id, body as unknown as bf.CollectionSettings, toRenames(renames)),
     );
@@ -327,13 +342,25 @@ export const api = {
   async getFolder(id: string): Promise<FolderSettings> {
     return normalizeFolder(await WorkspaceService.GetFolder(id));
   },
-  async saveFolder(id: string, settings: Pick<FolderSettings, "auth" | "headers">): Promise<FolderSettings> {
-    return normalizeFolder(await WorkspaceService.SaveFolder(id, settings as unknown as bf.FolderSettings));
+  /** Without `scripts` Go keeps the folder's scripts as they are. */
+  async saveFolder(
+    id: string,
+    settings: Pick<FolderSettings, "auth" | "headers"> & { scripts?: Scripts },
+  ): Promise<FolderSettings> {
+    const body = { auth: settings.auth, headers: settings.headers, scripts: settings.scripts ?? null };
+    return normalizeFolder(await WorkspaceService.SaveFolder(id, body as unknown as bf.FolderSettings));
   },
   /** Subscribes to external workspace changes; returns the unsubscribe function. */
   onWorkspaceChanged(cb: (change: WorkspaceChange) => void): () => void {
     return Events.On(WorkspaceChanged, (ev) => {
       cb({ workspaceId: ev.data.workspaceId, problems: ev.data.problems ?? [] });
+    });
+  },
+
+  /** Subscribes to script console output while sends run; returns the unsubscribe function. */
+  onScriptConsole(cb: (ev: ScriptConsoleEvent) => void): () => void {
+    return Events.On(ScriptConsole, (ev) => {
+      cb({ sendId: ev.data.sendId, entries: (ev.data.entries ?? []).map(normalizeConsoleEntry) });
     });
   },
 
@@ -420,6 +447,18 @@ export const api = {
   async selectedEnvironment(): Promise<EnvRef | null> {
     const e = await EnvService.Selected();
     return e ? { id: e.id, name: e.name } : null;
+  },
+  /** Values scripts set on a scope this session (secret values are never returned). */
+  async overlayValues(scope: ScopeRef): Promise<OverlayValue[]> {
+    return ((await EnvService.OverlayValues(toScope(scope))) ?? []).map(normalizeOverlayValue);
+  },
+  /** Drops a script value so the file value applies again ("" drops all of the scope's). */
+  async resetOverlay(scope: ScopeRef, key: string): Promise<void> {
+    return EnvService.ResetOverlay(toScope(scope), key);
+  },
+  /** Writes a script value to the file (a secret's to the store) and drops it from the overlay. */
+  async persistOverlay(scope: ScopeRef, key: string): Promise<Variable[]> {
+    return normalizeVariables(await EnvService.PersistOverlay(toScope(scope), key));
   },
   async resolvePreview(req: Request, parentId: string): Promise<ResolvePreview> {
     return normalizePreview(await EnvService.ResolvePreview(toBinding(req), parentId));

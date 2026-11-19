@@ -3,11 +3,14 @@ import { persist, createJSONStorage, type StateStorage } from "zustand/middlewar
 import {
   emptyAuth,
   emptyRequest,
+  emptyScripts,
   normalizeRequest,
+  normalizeScripts,
   requestsEqual,
   type Auth,
   type KeyValue,
   type Request,
+  type Scripts,
   type SendResult,
   type Variable,
 } from "@/lib/model";
@@ -18,12 +21,14 @@ export type DocKind = "environment" | "globals" | "collection" | "folder";
 /**
  * The editable part of an environment, the globals, or a collection's or
  * folder's settings. Environments and globals use only `variables`; folders
- * have no `variables`. Secret variables never carry a value here.
+ * have no `variables`; only collections and folders have `scripts`. Secret
+ * variables never carry a value here.
  */
 export interface DocDraft {
   auth: Auth;
   headers: KeyValue[];
   variables: Variable[];
+  scripts: Scripts;
 }
 
 /** State of an environment, globals, collection or folder settings tab. */
@@ -41,7 +46,7 @@ export interface DocState {
 }
 
 export function emptyDocDraft(): DocDraft {
-  return { auth: emptyAuth(), headers: [], variables: [] };
+  return { auth: emptyAuth(), headers: [], variables: [], scripts: emptyScripts() };
 }
 
 /** Drops the editor's blank rows so they don't count as changes. */
@@ -52,7 +57,15 @@ export function compactDraft(d: DocDraft): DocDraft {
     variables: d.variables
       .filter((v) => v.key !== "" || v.value !== "")
       .map(({ key, value, enabled, secret }) => ({ key, value, enabled, secret })),
+    scripts: normalizeScripts(d.scripts),
   };
+}
+
+/** True when the draft's scripts differ from the saved ones (only then are they sent on save). */
+export function scriptsChanged(draft: DocDraft, saved: DocDraft | null): boolean {
+  const a = normalizeScripts(draft.scripts);
+  const b = normalizeScripts(saved?.scripts);
+  return a.preRequest !== b.preRequest || a.test !== b.test;
 }
 
 export function draftsEqual(a: DocDraft, b: DocDraft): boolean {
@@ -83,10 +96,10 @@ export interface Tab {
 }
 
 /** Panes whose section tabs are remembered per tab. */
-export type TabPane = "request" | "response" | "settings";
+export type TabPane = "request" | "response" | "settings" | "scripts";
 export type TabSections = Partial<Record<TabPane, string>>;
 
-const TAB_PANES: TabPane[] = ["request", "response", "settings"];
+const TAB_PANES: TabPane[] = ["request", "response", "settings", "scripts"];
 
 /** Keeps only string sections of known panes (persisted data may be anything). */
 export function restoreSections(raw: unknown): TabSections {
@@ -484,6 +497,8 @@ function restoreDraft(d: Partial<DocDraft> | null | undefined): DocDraft | null 
     auth: { ...emptyAuth(), ...d.auth },
     headers: Array.isArray(d.headers) ? d.headers : [],
     variables: Array.isArray(d.variables) ? d.variables : [],
+    // Tabs stored before scripts existed have none; saving sends scripts only when edited.
+    scripts: normalizeScripts(d.scripts),
   };
 }
 

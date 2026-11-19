@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Lock, LockOpen, X } from "lucide-react";
 import {
@@ -24,6 +24,9 @@ import { SecretValueCell } from "./SecretValueCell";
 import { SPLIT_A, SPLIT_B, useColumnSplit } from "@/hooks/useColumnSplit";
 import { ColumnResizer } from "@/components/table/ColumnResizer";
 import { useSecretStatus } from "./useSecretStatus";
+import { useOverlayValues } from "./useOverlayValues";
+import { ScriptValueNote, ScriptValuesBar } from "./ScriptValues";
+import { useScriptValueActions } from "./scriptValueActions";
 
 export type RowsUpdate = (update: (rows: Variable[]) => Variable[]) => void;
 
@@ -41,6 +44,11 @@ export interface VariablesTableProps {
    * the scope's variables as now saved, and how to update the edited rows.
    */
   onSavedOnDisk: (saved: Variable[], update: (rows: Variable[]) => Variable[]) => void;
+}
+
+function lastIndexOf(rows: Variable[], key: string): number {
+  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].key.trim() === key) return i;
+  return -1;
 }
 
 const BLANK: Variable = { key: "", value: "", enabled: true, secret: false };
@@ -79,6 +87,24 @@ export function VariablesTable({
   const [setLocally, setSetLocally] = useState<ReadonlySet<string>>(new Set());
   const [confirmPlain, setConfirmPlain] = useState<{ index: number; key: string } | null>(null);
   const display = [...rows, BLANK];
+  const overlay = useOverlayValues(scope);
+  const scriptActions = useScriptValueActions(scope, overlay.refresh, onSavedOnDisk);
+  const overlayByKey = new Map(overlay.values.map((v) => [v.key, v]));
+  const rowKeys = new Set(rows.map((r) => r.key.trim()));
+  // Values only a script defined (or whose row was removed from the draft) show as extra rows.
+  const scriptOnly = overlay.values.filter((v) => v.state !== "unset" && !rowKeys.has(v.key));
+  const noteFor = (key: string, index: number) => {
+    const v = overlayByKey.get(key);
+    // The last row of a key is the one that applies.
+    if (!v || lastIndexOf(rows, key) !== index) return null;
+    return (
+      <ScriptValueNote
+        value={v}
+        onReset={() => void scriptActions.reset(key)}
+        onPersist={() => void scriptActions.persist(v)}
+      />
+    );
+  };
 
   const savedSecret = (key: string) => savedRows.some((v) => v.secret && v.key === key);
   const markSet = (key: string, on: boolean) =>
@@ -174,170 +200,202 @@ export function VariablesTable({
     onChange((current) => current.map((r, i) => (i === index ? { ...r, secret: false, value: "" } : r)));
   };
 
-  return (
-    <div ref={tableRef} role="table" aria-label={label} className="text-sm" style={split.style}>
-      <div role="rowgroup">
-        <div role="row" className={cn(GRID, "border-b px-1 py-1 text-xs text-muted-foreground")}>
-          <span role="columnheader">
-            <span className="sr-only">Enabled</span>
-          </span>
-          <span role="columnheader" className="relative px-2" {...SPLIT_A}>
-            Variable
-            <ColumnResizer column="Variable" split={split} />
-          </span>
-          <span role="columnheader" className="px-2" {...SPLIT_B}>
-            Value
-          </span>
-          <span role="columnheader">
-            <span className="sr-only">Secret</span>
-          </span>
-          <span role="columnheader">
-            <span className="sr-only">Actions</span>
-          </span>
-        </div>
-      </div>
-      <div role="rowgroup">
-        {display.map((row, i) => {
-          const isBlank = i === rows.length;
-          const n = i + 1;
-          const key = row.key.trim();
-          return (
-            <div
-              role="row"
-              key={i}
-              className={cn(
-                GRID,
-                "group border-b border-border/60 px-1 py-0.5",
-                !row.enabled && !isBlank && "text-muted-foreground [&_input]:line-through",
-              )}
-            >
-              <span role="cell" className="flex justify-center">
-                {!isBlank && (
-                  <Checkbox
-                    aria-label={`Enable variable ${n}`}
-                    checked={row.enabled}
-                    onCheckedChange={(v) => update(i, { enabled: v === true })}
-                  />
-                )}
-              </span>
-              <span role="cell">
-                <input
-                  aria-label={`Variable ${n}`}
-                  data-row={i}
-                  data-col="key"
-                  className={cellInputClass}
-                  value={row.key}
-                  placeholder={isBlank ? "Variable" : ""}
-                  spellCheck={false}
-                  onChange={(e) => update(i, { key: e.target.value })}
-                  onPaste={(e) => onPasteKey(i, e)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      focusCell(i, "value");
-                    }
-                  }}
-                />
-              </span>
-              <span role="cell" className="min-w-0">
-                {row.secret && !isBlank ? (
-                  <SecretValueCell
-                    scope={scope}
-                    keyName={key}
-                    n={n}
-                    saved={savedSecret(key)}
-                    isSet={isSet(key)}
-                    onStored={(on) => {
-                      markSet(key, on);
-                      status.refresh();
-                    }}
-                  />
-                ) : (
-                  <VarInput
-                    ariaLabel={`Value ${n}`}
-                    dataRow={i}
-                    dataCol="value"
-                    className={cn(varCellClass, !row.enabled && !isBlank && "line-through")}
-                    value={row.value}
-                    placeholder={isBlank ? "Value" : ""}
-                    onChange={(value) => update(i, { value })}
-                    onEnter={() => focusCell(i + 1, "key")}
-                  />
-                )}
-              </span>
-              <span role="cell" className="flex justify-center">
-                {!isBlank && (
-                  <button
-                    type="button"
-                    aria-label={row.secret ? `Make variable ${n} plain` : `Make variable ${n} secret`}
-                    aria-pressed={row.secret}
-                    title={
-                      row.secret ? "Secret: stored on this machine only. Click to make plain." : "Make secret"
-                    }
-                    onClick={() => {
-                      if (row.secret) setConfirmPlain({ index: i, key });
-                      else void makeSecret(i);
-                    }}
-                    className={cn(iconButtonClass, row.secret && "text-foreground")}
-                  >
-                    {row.secret ? (
-                      <Lock className="size-3.5" />
-                    ) : (
-                      <LockOpen className="size-3.5 opacity-60" />
-                    )}
-                  </button>
-                )}
-              </span>
-              <span role="cell" className="flex justify-center">
-                {!isBlank && (
-                  <button
-                    type="button"
-                    aria-label={`Delete variable ${n}`}
-                    title="Delete variable"
-                    onClick={() => remove(i)}
-                    className={cn(
-                      iconButtonClass,
-                      "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
-                    )}
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                )}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-      {status.error && (
-        <p role="alert" className="px-2 py-1.5 text-xs text-destructive">
-          Couldn&apos;t check which secrets are set: {status.error}
-        </p>
-      )}
-      <AlertDialog open={!!confirmPlain} onOpenChange={(open) => !open && setConfirmPlain(null)}>
-        {confirmPlain && (
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                Store {confirmPlain.key ? `{{${confirmPlain.key}}}` : "this variable"} in plain text?
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {savedSecret(confirmPlain.key)
-                  ? "Its value is written to the workspace file now, where anyone with the workspace or its git history can read it. It's removed from the secret store."
-                  : "It will be saved in the workspace file in plain text. Any value set for it on this machine is removed, so enter the value again."}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Keep it secret</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                onClick={() => void makePlain(confirmPlain.index, confirmPlain.key)}
-              >
-                Store in plain text
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        )}
-      </AlertDialog>
+  // Shown just above the blank row.
+  const scriptRows = scriptOnly.map((v) => (
+    <div
+      role="row"
+      key={`script:${v.key}`}
+      aria-label={`${v.key}, set by script`}
+      className={cn(GRID, "border-b border-border/60 px-1 py-0.5")}
+    >
+      <span role="cell" />
+      <span role="cell" className="truncate px-2 font-mono text-[12.5px] text-muted-foreground">
+        {v.key}
+      </span>
+      <span role="cell" className="min-w-0">
+        <ScriptValueNote
+          value={v}
+          onReset={() => void scriptActions.reset(v.key)}
+          onPersist={() => void scriptActions.persist(v)}
+        />
+      </span>
+      <span role="cell" />
+      <span role="cell" />
     </div>
+  ));
+
+  return (
+    <>
+      <ScriptValuesBar count={overlay.values.length} onResetAll={() => void scriptActions.reset("")} />
+      <div ref={tableRef} role="table" aria-label={label} className="text-sm" style={split.style}>
+        <div role="rowgroup">
+          <div role="row" className={cn(GRID, "border-b px-1 py-1 text-xs text-muted-foreground")}>
+            <span role="columnheader">
+              <span className="sr-only">Enabled</span>
+            </span>
+            <span role="columnheader" className="relative px-2" {...SPLIT_A}>
+              Variable
+              <ColumnResizer column="Variable" split={split} />
+            </span>
+            <span role="columnheader" className="px-2" {...SPLIT_B}>
+              Value
+            </span>
+            <span role="columnheader">
+              <span className="sr-only">Secret</span>
+            </span>
+            <span role="columnheader">
+              <span className="sr-only">Actions</span>
+            </span>
+          </div>
+        </div>
+        <div role="rowgroup">
+          {display.map((row, i) => {
+            const isBlank = i === rows.length;
+            const n = i + 1;
+            const key = row.key.trim();
+            return (
+              <Fragment key={i}>
+                {isBlank && scriptRows}
+                <div
+                  role="row"
+                  className={cn(
+                    GRID,
+                    "group border-b border-border/60 px-1 py-0.5",
+                    !row.enabled && !isBlank && "text-muted-foreground [&_input]:line-through",
+                  )}
+                >
+                  <span role="cell" className="flex justify-center">
+                    {!isBlank && (
+                      <Checkbox
+                        aria-label={`Enable variable ${n}`}
+                        checked={row.enabled}
+                        onCheckedChange={(v) => update(i, { enabled: v === true })}
+                      />
+                    )}
+                  </span>
+                  <span role="cell">
+                    <input
+                      aria-label={`Variable ${n}`}
+                      data-row={i}
+                      data-col="key"
+                      className={cellInputClass}
+                      value={row.key}
+                      placeholder={isBlank ? "Variable" : ""}
+                      spellCheck={false}
+                      onChange={(e) => update(i, { key: e.target.value })}
+                      onPaste={(e) => onPasteKey(i, e)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          focusCell(i, "value");
+                        }
+                      }}
+                    />
+                  </span>
+                  <span role="cell" className="min-w-0">
+                    {row.secret && !isBlank ? (
+                      <SecretValueCell
+                        scope={scope}
+                        keyName={key}
+                        n={n}
+                        saved={savedSecret(key)}
+                        isSet={isSet(key)}
+                        onStored={(on) => {
+                          markSet(key, on);
+                          status.refresh();
+                        }}
+                      />
+                    ) : (
+                      <VarInput
+                        ariaLabel={`Value ${n}`}
+                        dataRow={i}
+                        dataCol="value"
+                        className={cn(varCellClass, !row.enabled && !isBlank && "line-through")}
+                        value={row.value}
+                        placeholder={isBlank ? "Value" : ""}
+                        onChange={(value) => update(i, { value })}
+                        onEnter={() => focusCell(i + 1, "key")}
+                      />
+                    )}
+                    {!isBlank && key && noteFor(key, i)}
+                  </span>
+                  <span role="cell" className="flex justify-center">
+                    {!isBlank && (
+                      <button
+                        type="button"
+                        aria-label={row.secret ? `Make variable ${n} plain` : `Make variable ${n} secret`}
+                        aria-pressed={row.secret}
+                        title={
+                          row.secret
+                            ? "Secret: stored on this machine only. Click to make plain."
+                            : "Make secret"
+                        }
+                        onClick={() => {
+                          if (row.secret) setConfirmPlain({ index: i, key });
+                          else void makeSecret(i);
+                        }}
+                        className={cn(iconButtonClass, row.secret && "text-foreground")}
+                      >
+                        {row.secret ? (
+                          <Lock className="size-3.5" />
+                        ) : (
+                          <LockOpen className="size-3.5 opacity-60" />
+                        )}
+                      </button>
+                    )}
+                  </span>
+                  <span role="cell" className="flex justify-center">
+                    {!isBlank && (
+                      <button
+                        type="button"
+                        aria-label={`Delete variable ${n}`}
+                        title="Delete variable"
+                        onClick={() => remove(i)}
+                        className={cn(
+                          iconButtonClass,
+                          "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
+                        )}
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    )}
+                  </span>
+                </div>
+              </Fragment>
+            );
+          })}
+        </div>
+        {status.error && (
+          <p role="alert" className="px-2 py-1.5 text-xs text-destructive">
+            Couldn&apos;t check which secrets are set: {status.error}
+          </p>
+        )}
+        <AlertDialog open={!!confirmPlain} onOpenChange={(open) => !open && setConfirmPlain(null)}>
+          {confirmPlain && (
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Store {confirmPlain.key ? `{{${confirmPlain.key}}}` : "this variable"} in plain text?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {savedSecret(confirmPlain.key)
+                    ? "Its value is written to the workspace file now, where anyone with the workspace or its git history can read it. It's removed from the secret store."
+                    : "It will be saved in the workspace file in plain text. Any value set for it on this machine is removed, so enter the value again."}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Keep it secret</AlertDialogCancel>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={() => void makePlain(confirmPlain.index, confirmPlain.key)}
+                >
+                  Store in plain text
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          )}
+        </AlertDialog>
+      </div>
+    </>
   );
 }

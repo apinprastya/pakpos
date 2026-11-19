@@ -117,6 +117,27 @@ describe("SettingsDialog", () => {
     expect(within(dialog).getByText("Enter whole seconds from 0 to 600.")).toBeInTheDocument();
   });
 
+  it("saves the script timeout and refuses one out of range", async () => {
+    const { user, dialog } = await openSettings();
+    await user.click(section(dialog, "Requests"));
+    const field = within(dialog).getByRole("textbox", { name: "Script timeout" });
+    expect(field).toHaveValue("5");
+    await user.clear(field);
+    await user.type(field, "90");
+    await user.click(section(dialog, "History"));
+    await user.click(within(dialog).getByRole("button", { name: "Save settings" }));
+    expect(section(dialog, "Requests")).toHaveAttribute("aria-current", "page");
+    expect(within(dialog).getByText("Enter whole seconds from 1 to 60.")).toBeInTheDocument();
+    expect(api.setSettings).not.toHaveBeenCalled();
+    const again = within(dialog).getByRole("textbox", { name: "Script timeout" });
+    await user.clear(again);
+    await user.type(again, "12");
+    await user.click(within(dialog).getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.setSettings).toHaveBeenCalledWith(expect.objectContaining({ scriptTimeoutMs: 12_000 })),
+    );
+  });
+
   it("explains that lowering retention deletes history", async () => {
     const { user, dialog } = await openSettings();
     await user.click(section(dialog, "History"));

@@ -21,6 +21,8 @@ import { useExamplesSync } from "@/features/examples/useExamplesSync";
 import { LazyDialogs } from "./LazyDialogs";
 import { useUpdateCheck } from "@/features/update/useUpdateCheck";
 import { usePanelLayout } from "@/hooks/usePanelLayout";
+import { useConsoleSync } from "@/features/console/useConsoleSync";
+import { ConsolePanel } from "@/features/console/ConsolePanel";
 
 export function AppShell() {
   const orientation = useLayoutStore((s) => s.splitOrientation);
@@ -30,6 +32,7 @@ export function AppShell() {
   useDismissToastsOnDialog();
   useExamplesSync();
   useUpdateCheck();
+  useConsoleSync();
   const active = useActiveTab();
   const mainLayout = usePanelLayout("main");
   const splitLayout = usePanelLayout(`split-${orientation}`);
@@ -49,24 +52,26 @@ export function AppShell() {
           <ResizablePanel id="workspace" minSize="40">
             <main className="flex h-full min-w-0 flex-col">
               <TabBar />
-              {active.doc ? (
-                <DocEditor key={active.id} tab={active} />
-              ) : (
-                <ResizablePanelGroup
-                  key={orientation}
-                  orientation={orientation === "vertical" ? "vertical" : "horizontal"}
-                  id={`pakpos-split-${orientation}`}
-                  {...splitLayout}
-                >
-                  <ResizablePanel id="request" defaultSize="50" minSize="20">
-                    <RequestPane />
-                  </ResizablePanel>
-                  <ResizableHandle />
-                  <ResizablePanel id="response" defaultSize="50" minSize="20">
-                    <ResponsePane />
-                  </ResizablePanel>
-                </ResizablePanelGroup>
-              )}
+              <ConsolePanel>
+                {active.doc ? (
+                  <DocEditor key={active.id} tab={active} />
+                ) : (
+                  <ResizablePanelGroup
+                    key={orientation}
+                    orientation={orientation === "vertical" ? "vertical" : "horizontal"}
+                    id={`pakpos-split-${orientation}`}
+                    {...splitLayout}
+                  >
+                    <ResizablePanel id="request" defaultSize="50" minSize="20">
+                      <RequestPane />
+                    </ResizablePanel>
+                    <ResizableHandle />
+                    <ResizablePanel id="response" defaultSize="50" minSize="20">
+                      <ResponsePane />
+                    </ResizablePanel>
+                  </ResizablePanelGroup>
+                )}
+              </ConsolePanel>
             </main>
           </ResizablePanel>
         </ResizablePanelGroup>

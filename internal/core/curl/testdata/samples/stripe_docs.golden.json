@@ -42,7 +42,11 @@
       "apiValue": "",
       "apiIn": ""
     },
-    "settings": {}
+    "settings": {},
+    "scripts": {
+      "preRequest": "",
+      "test": ""
+    }
   },
   "warnings": []
 }

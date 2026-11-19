@@ -40,6 +40,28 @@ describe("model", () => {
     });
     expect(r.auth).toMatchObject({ type: "none", apiIn: "header" });
     expect(normalizeRequest(null)).toEqual(emptyRequest());
+    expect(r.scripts).toEqual({ preRequest: "", test: "" });
+    expect(normalizeRequest({ scripts: { preRequest: "a", test: null } }).scripts).toEqual({
+      preRequest: "a",
+      test: "",
+    });
+  });
+
+  it("normalizes overlay values and never keeps a secret value", async () => {
+    const { normalizeOverlayValue } = await import("./model");
+    expect(normalizeOverlayValue(null)).toEqual({ key: "", value: "", state: "set", secret: false });
+    expect(normalizeOverlayValue({ key: "a", value: "1", state: "new" })).toEqual({
+      key: "a",
+      value: "1",
+      state: "new",
+      secret: false,
+    });
+    expect(normalizeOverlayValue({ key: "s", value: "leak", state: "unset", secret: true })).toEqual({
+      key: "s",
+      value: "",
+      state: "unset",
+      secret: true,
+    });
   });
 
   it("normalizes send results", () => {
@@ -51,6 +73,10 @@ describe("model", () => {
       secretsLocked: false,
       environment: null,
       hops: [],
+      tests: [],
+      console: [],
+      skipped: false,
+      scriptError: null,
     });
     const hops = normalizeSendResult({
       hops: [{ method: "GET", requestHeaders: null, responseHeaders: [{ key: "A" }] }, null],
@@ -68,6 +94,39 @@ describe("model", () => {
       normalizeSendResult({ unresolved: ["a"], secretsLocked: true, environment: { id: "e", name: "Dev" } }),
     ).toMatchObject({ unresolved: ["a"], secretsLocked: true, environment: { id: "e", name: "Dev" } });
     expect(normalizeSendResult({ environment: {} }).environment).toEqual({ id: "", name: "" });
+    const scripted = normalizeSendResult({
+      skipped: true,
+      tests: [
+        { name: "ok", passed: true, source: { kind: "folder", id: "f", name: "Auth", event: "test" } },
+        null,
+      ],
+      console: [{ level: "warn", text: "hi", source: null }, {}],
+    });
+    expect(scripted.skipped).toBe(true);
+    expect(
+      normalizeSendResult({ scriptError: { source: { kind: "folder", id: "f", name: "Auth" }, line: 3 } })
+        .scriptError,
+    ).toEqual({ source: { kind: "folder", id: "f", name: "Auth", event: "prerequest" }, line: 3, column: 0 });
+    expect(scripted.tests).toEqual([
+      {
+        name: "ok",
+        passed: true,
+        skipped: false,
+        error: "",
+        source: { kind: "folder", id: "f", name: "Auth", event: "test" },
+      },
+      {
+        name: "",
+        passed: false,
+        skipped: false,
+        error: "",
+        source: { kind: "request", id: "", name: "", event: "prerequest" },
+      },
+    ]);
+    expect(scripted.console).toEqual([
+      { level: "warn", text: "hi", source: { kind: "request", id: "", name: "", event: "prerequest" } },
+      { level: "log", text: "", source: { kind: "request", id: "", name: "", event: "prerequest" } },
+    ]);
     const res = normalizeSendResult({
       response: { statusCode: 200, headers: null, cookies: null, timings: { total: 5 } },
       error: null,
@@ -171,6 +230,10 @@ describe("sidebar model helpers", () => {
       secretsLocked: false,
       environment: null,
       hops: [],
+      tests: [],
+      console: [],
+      skipped: false,
+      scriptError: null,
     });
     expect(empty.environmentName).toBe("");
     const withEnv = normalizeHistoryEntry({ id: 9, environmentName: "Prod" });
@@ -253,7 +316,31 @@ describe("environment model", () => {
       environment: { id: "e", name: "Dev" },
     });
     expect(v.variables[0].value).toBe("");
+    expect(v.variables[0].overlay).toBe("");
     expect(v.shadowed.map((x) => x.value)).toEqual(["", "plain"]);
+    const set = normalizeVisible({ variables: [{ key: "t", value: "v", overlay: "set" }, {}] });
+    expect(set.variables).toEqual([
+      {
+        key: "t",
+        value: "v",
+        secret: false,
+        scope: "global",
+        scopeId: "",
+        scopeName: "",
+        set: false,
+        overlay: "set",
+      },
+      {
+        key: "",
+        value: "",
+        secret: false,
+        scope: "global",
+        scopeId: "",
+        scopeName: "",
+        set: false,
+        overlay: "",
+      },
+    ]);
     expect(v.environment).toEqual({ id: "e", name: "Dev" });
   });
 
@@ -318,7 +405,14 @@ describe("environment model", () => {
 describe("collection and folder settings", () => {
   it("fills defaults; empty or inherit auth on a collection is none, empty on a folder is inherit", async () => {
     const { normalizeCollection, normalizeFolder } = await import("./model");
-    expect(normalizeCollection(null)).toMatchObject({ id: "", name: "", headers: [], variables: [] });
+    expect(normalizeCollection(null)).toMatchObject({
+      id: "",
+      name: "",
+      headers: [],
+      variables: [],
+      scripts: { preRequest: "", test: "" },
+    });
+    expect(normalizeFolder({ scripts: { test: "t" } }).scripts).toEqual({ preRequest: "", test: "t" });
     expect(normalizeCollection({ auth: { type: "" } }).auth.type).toBe("none");
     expect(normalizeCollection({ auth: { type: "inherit" } }).auth.type).toBe("none");
     expect(

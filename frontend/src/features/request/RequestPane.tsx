@@ -19,8 +19,12 @@ import { looksLikeCurl } from "@/features/code/summary";
 import { usePreview } from "./usePreview";
 import { ExamplesSection } from "@/features/examples/ExamplesSection";
 import { useRequestExamples } from "@/stores/examples";
+import { ScriptsSection } from "@/features/scripts/lazy";
+import { hasScripts } from "@/features/scripts/hasScripts";
+import { useInheritedScripts } from "@/features/scripts/useInheritedScripts";
 
-const SECTIONS = ["params", "headers", "body", "auth", "settings", "examples"] as const;
+const SECTIONS = ["params", "headers", "body", "auth", "scripts", "settings", "examples"] as const;
+const SCRIPT_EVENTS = ["prerequest", "test"] as const;
 
 function Count({ n }: { n: number }) {
   if (n === 0) return null;
@@ -46,6 +50,12 @@ export function RequestPane() {
   const headerCount = req.headers.filter((h) => h.enabled && h.key).length;
   const exampleCount = useRequestExamples(tab.saved?.id ?? "").length;
   const [section, setSection] = useTabSection(tab, "request", SECTIONS, "params");
+  const [scriptEvent, setScriptEvent] = useTabSection(tab, "scripts", SCRIPT_EVENTS, "prerequest");
+  const inherited = useInheritedScripts({
+    kind: "request",
+    id: tab.saved?.id ?? "",
+    parentId: inCollection ? tab.parentId : "",
+  });
 
   return (
     <VarScopeContext.Provider value={varScope}>
@@ -80,6 +90,9 @@ export function RequestPane() {
             <TabsTrigger value="auth" className="flex-none px-2">
               Auth <Dot on={req.auth.type !== "none"} label="auth set" />
             </TabsTrigger>
+            <TabsTrigger value="scripts" className="flex-none px-2">
+              Scripts <Dot on={hasScripts(req.scripts)} label="has scripts" />
+            </TabsTrigger>
             <TabsTrigger value="settings" className="flex-none px-2">
               Settings <Count n={overrideCount(req.settings)} />
             </TabsTrigger>
@@ -99,6 +112,17 @@ export function RequestPane() {
           </TabsContent>
           <TabsContent key={`a-${tab.id}`} value="auth" className="min-h-0 flex-1 overflow-auto p-3">
             <AuthSection request={req} parentId={tab.parentId} preview={preview} onChange={onChange} />
+          </TabsContent>
+          <TabsContent key={`sc-${tab.id}`} value="scripts" className="min-h-0 flex-1">
+            <ScriptsSection
+              tabKey={tab.id}
+              owner="request"
+              scripts={req.scripts}
+              onChange={(update) => onChange((r) => ({ ...r, scripts: update(r.scripts) }))}
+              inherited={inherited}
+              event={scriptEvent}
+              onEventChange={setScriptEvent}
+            />
           </TabsContent>
           <TabsContent key={`s-${tab.id}`} value="settings" className="min-h-0 flex-1 overflow-auto p-3">
             <SettingsSection request={req} onChange={onChange} />

@@ -60,6 +60,15 @@ export interface RequestSettings {
   verifyTls?: boolean;
 }
 
+/**
+ * JavaScript run before a send (`preRequest`) and after its response (`test`),
+ * on a request, folder or collection (Go model.Scripts). "" means none.
+ */
+export interface Scripts {
+  preRequest: string;
+  test: string;
+}
+
 export interface Request {
   id: string;
   name: string;
@@ -72,6 +81,7 @@ export interface Request {
   body: Body;
   auth: Auth;
   settings: RequestSettings;
+  scripts: Scripts;
 }
 
 export type BodyKind = "json" | "xml" | "html" | "image" | "text" | "binary" | "empty" | "";
@@ -131,7 +141,9 @@ export type SendErrorKind =
   /** The body didn't match its Content-Encoding (gzip, deflate, br). */
   | "decode"
   /** {{variables}} couldn't be resolved (a loop, or nested too deeply). */
-  | "variables";
+  | "variables"
+  /** A pre-request script failed (an exception, a syntax error or a timeout); nothing was sent. */
+  | "script";
 
 /**
  * One HTTP exchange of a send as it went over the wire: the request, then one
@@ -185,6 +197,84 @@ export interface SendResult {
   environment: EnvRef | null;
   /** What went over the wire. Empty when nothing was sent or for history entries (never stored). */
   hops: Hop[];
+  /** pm.test results of the pre-request and test scripts, collection first (masked, never stored). */
+  tests: TestResult[];
+  /** Script console output, collection first (masked, never stored). */
+  console: ConsoleEntry[];
+  /** A pre-request script called pm.execution.skipRequest(): nothing was sent. */
+  skipped: boolean;
+  /** Where a pre-request script failed (error kind "script"); null otherwise. */
+  scriptError: ScriptErrorInfo | null;
+}
+
+/** The script and position of a pre-request script error (Go service.ScriptErrorInfo). */
+export interface ScriptErrorInfo {
+  source: ScriptSource;
+  /** 1-based; 0 when unknown (a timeout). */
+  line: number;
+  column: number;
+}
+
+export type ScriptEvent = "prerequest" | "test";
+export type ScriptLevelKind = "collection" | "folder" | "request";
+
+/** The script a test or console line came from (Go script.Source). */
+export interface ScriptSource {
+  kind: ScriptLevelKind;
+  id: string;
+  name: string;
+  event: ScriptEvent;
+}
+
+/** One pm.test (Go script.TestResult). Secret values read as [secret:name]. */
+export interface TestResult {
+  name: string;
+  passed: boolean;
+  skipped: boolean;
+  /** e.g. "AssertionError: expected 404 to equal 200"; "" when passed. */
+  error: string;
+  source: ScriptSource;
+}
+
+export type ConsoleLevel = "log" | "info" | "warn" | "error" | "debug";
+
+/** One console line of a script (Go script.ConsoleEntry). */
+export interface ConsoleEntry {
+  level: ConsoleLevel;
+  text: string;
+  source: ScriptSource;
+}
+
+/** Payload of the `script:console` event: one script run's output while a send runs. */
+export interface ScriptConsoleEvent {
+  sendId: string;
+  entries: ConsoleEntry[];
+}
+
+function normalizeSource(input: Loose<ScriptSource> | null | undefined): ScriptSource {
+  const s = input ?? {};
+  return {
+    kind: s.kind || "request",
+    id: s.id ?? "",
+    name: s.name ?? "",
+    event: s.event || "prerequest",
+  };
+}
+
+export function normalizeTestResult(input: unknown): TestResult {
+  const t = (input ?? {}) as Omit<Loose<TestResult>, "source"> & { source?: Loose<ScriptSource> | null };
+  return {
+    name: t.name ?? "",
+    passed: t.passed ?? false,
+    skipped: t.skipped ?? false,
+    error: t.error ?? "",
+    source: normalizeSource(t.source),
+  };
+}
+
+export function normalizeConsoleEntry(input: unknown): ConsoleEntry {
+  const e = (input ?? {}) as Omit<Loose<ConsoleEntry>, "source"> & { source?: Loose<ScriptSource> | null };
+  return { level: e.level || "log", text: e.text ?? "", source: normalizeSource(e.source) };
 }
 
 /** A saved request in the sidebar tree. */
@@ -313,7 +403,17 @@ export function emptyRequest(): Request {
     body: emptyBody(),
     auth: emptyAuth(),
     settings: {},
+    scripts: emptyScripts(),
   };
+}
+
+export function emptyScripts(): Scripts {
+  return { preRequest: "", test: "" };
+}
+
+export function normalizeScripts(input: unknown): Scripts {
+  const s = (input ?? {}) as Loose<Scripts>;
+  return { preRequest: s.preRequest ?? "", test: s.test ?? "" };
 }
 
 /** Keeps only the set fields, in a fixed order (so requests compare by JSON). */
@@ -378,6 +478,7 @@ export function normalizeRequest(input: unknown): Request {
       apiIn: a.apiIn || "header",
     },
     settings: normalizeRequestSettings(r.settings),
+    scripts: normalizeScripts(r.scripts),
   };
 }
 
@@ -423,7 +524,16 @@ export function normalizeSendResult(input: unknown): SendResult {
     secretsLocked: r.secretsLocked ?? false,
     environment: normalizeEnvRef(r.environment),
     hops: (r.hops ?? []).map(normalizeHop),
+    tests: (r.tests ?? []).map(normalizeTestResult),
+    console: (r.console ?? []).map(normalizeConsoleEntry),
+    skipped: r.skipped ?? false,
+    scriptError: normalizeScriptError(r.scriptError),
   };
+}
+
+function normalizeScriptError(input: Loose<ScriptErrorInfo> | null | undefined): ScriptErrorInfo | null {
+  if (!input) return null;
+  return { source: normalizeSource(input.source), line: input.line ?? 0, column: input.column ?? 0 };
 }
 
 export function normalizeHop(input: unknown): Hop {
@@ -495,6 +605,10 @@ export function historyToResult(entry: HistoryEntry): SendResult {
     secretsLocked: false,
     environment: entry.environmentName ? { id: "", name: entry.environmentName } : null,
     hops: [],
+    tests: [],
+    console: [],
+    skipped: false,
+    scriptError: null,
   };
 }
 
@@ -615,6 +729,38 @@ export interface PreviewVariable {
   scopeName: string;
   /** False for a secret with no value on this machine. */
   set: boolean;
+  /** "set" when a script replaced the file's value this session, "new" when only a script defined it. */
+  overlay: OverlayState;
+}
+
+/** How the script overlay changes a variable ("" = the file's value). */
+export type OverlayState = "" | "set" | "new" | "unset";
+
+/** A value scripts set on a scope this session (Go pipeline.OverlayValue). Secret values are "". */
+export interface OverlayValue {
+  key: string;
+  value: string;
+  state: Exclude<OverlayState, "">;
+  secret: boolean;
+}
+
+export function normalizeOverlayValue(input: unknown): OverlayValue {
+  const v = (input ?? {}) as Loose<OverlayValue>;
+  const state = v.state === "new" || v.state === "unset" ? v.state : "set";
+  return { key: v.key ?? "", value: v.secret ? "" : (v.value ?? ""), state, secret: v.secret ?? false };
+}
+
+function previewVariable(v: Loose<PreviewVariable>): PreviewVariable {
+  return {
+    key: v.key ?? "",
+    value: v.secret ? "" : (v.value ?? ""),
+    secret: v.secret ?? false,
+    scope: v.scope || "global",
+    scopeId: v.scopeId ?? "",
+    scopeName: v.scopeName ?? "",
+    set: v.set ?? false,
+    overlay: v.overlay ?? "",
+  };
 }
 
 /** How a request resolves, for the headers tab and variable hover. */
@@ -671,7 +817,7 @@ export function normalizePreview(input: unknown): ResolvePreview {
     overridden: (p.overridden ?? []).map((h) => ({ key: h.key, value: h.value, source: { ...h.source } })),
     auth: normalizeRequest({ auth: p.auth }).auth,
     authSource: p.authSource ? { ...p.authSource } : null,
-    variables: (p.variables ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
+    variables: (p.variables ?? []).map(previewVariable),
     unresolved: p.unresolved ?? [],
     secretsLocked: p.secretsLocked ?? false,
     environment: normalizeEnvRef(p.environment),
@@ -693,8 +839,8 @@ export interface VisibleVariables {
 export function normalizeVisible(input: unknown): VisibleVariables {
   const p = (input ?? {}) as Loose<VisibleVariables>;
   return {
-    variables: (p.variables ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
-    shadowed: (p.shadowed ?? []).map((v) => ({ ...v, value: v.secret ? "" : v.value })),
+    variables: (p.variables ?? []).map(previewVariable),
+    shadowed: (p.shadowed ?? []).map(previewVariable),
     environment: normalizeEnvRef(p.environment),
   };
 }
@@ -706,6 +852,8 @@ export interface CollectionSettings {
   auth: Auth;
   headers: KeyValue[];
   variables: Variable[];
+  /** Run for every request in the collection, before the folders' and the request's own. */
+  scripts: Scripts;
 }
 
 /** A folder's settings: what its folders and requests inherit. Folders have no variables. */
@@ -714,6 +862,7 @@ export interface FolderSettings {
   name: string;
   auth: Auth;
   headers: KeyValue[];
+  scripts: Scripts;
 }
 
 /** Fills defaults in a collection from Go. Nothing is above a collection, so an empty auth type is "none". */
@@ -724,6 +873,7 @@ export function normalizeCollection(input: unknown): CollectionSettings {
     auth?: Loose<Auth> | null;
     headers?: Loose<KeyValue>[] | null;
     variables?: Loose<Variable>[] | null;
+    scripts?: Loose<Scripts> | null;
   };
   return {
     id: c.id ?? "",
@@ -732,6 +882,7 @@ export function normalizeCollection(input: unknown): CollectionSettings {
     auth: containerAuth(c.auth?.type === "inherit" ? { ...c.auth, type: "" as AuthType } : c.auth, "none"),
     headers: kvList(c.headers),
     variables: varList(c.variables),
+    scripts: normalizeScripts(c.scripts),
   };
 }
 
@@ -741,12 +892,14 @@ export function normalizeFolder(input: unknown): FolderSettings {
     name?: string | null;
     auth?: Loose<Auth> | null;
     headers?: Loose<KeyValue>[] | null;
+    scripts?: Loose<Scripts> | null;
   };
   return {
     id: f.id ?? "",
     name: f.name ?? "",
     auth: containerAuth(f.auth, "inherit"),
     headers: kvList(f.headers),
+    scripts: normalizeScripts(f.scripts),
   };
 }
 
@@ -773,6 +926,7 @@ export function compactRequest(req: Request): Request {
       formData: req.body.formData.filter((f) => f.key !== "" || f.value !== "" || f.filePath !== ""),
     },
     settings: normalizeRequestSettings(req.settings),
+    scripts: normalizeScripts(req.scripts),
   };
 }
 
@@ -802,6 +956,8 @@ export interface AppSettings {
   caFile: string;
   /** Tried in order; the first whose host matches is sent. */
   clientCerts: ClientCert[];
+  /** A pre-request or test script running longer is stopped (1–60 s). */
+  scriptTimeoutMs: number;
 }
 
 export type ProxyMode = "none" | "system" | "custom";
@@ -883,6 +1039,8 @@ export const SETTINGS_LIMITS = {
   maxTimeoutMs: 10 * 60 * 1000,
   maxRedirects: 50,
   maxHistoryRetention: 100_000,
+  minScriptTimeoutMs: 1_000,
+  maxScriptTimeoutMs: 60_000,
 } as const;
 
 export interface BuildInfo {
@@ -916,6 +1074,10 @@ export function normalizeSettings(
       keyFile: c?.keyFile ?? "",
       pfxFile: c?.pfxFile ?? "",
     })),
+    scriptTimeoutMs:
+      typeof s.scriptTimeoutMs === "number" && s.scriptTimeoutMs > 0
+        ? s.scriptTimeoutMs
+        : defaults.scriptTimeoutMs,
   };
 }
 
@@ -942,6 +1104,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   proxy: { mode: "system", url: "", username: "", bypass: "" },
   caFile: "",
   clientCerts: [],
+  scriptTimeoutMs: 5_000,
 };
 
 /** Result of a check for updates (Go service.UpdateInfo). */

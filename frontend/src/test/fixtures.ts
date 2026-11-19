@@ -17,6 +17,10 @@ import type {
   SendResult,
   Hop,
   TreeChild,
+  ConsoleEntry,
+  OverlayValue,
+  ScriptSource,
+  TestResult,
 } from "@/lib/model";
 
 /** A send result with no response, error or variable notes; patch what the test needs. */
@@ -29,6 +33,10 @@ export function makeResult(patch: Partial<SendResult> = {}): SendResult {
     secretsLocked: false,
     environment: null,
     hops: [],
+    tests: [],
+    console: [],
+    skipped: false,
+    scriptError: null,
     ...patch,
   };
 }
@@ -133,6 +141,7 @@ export function makePreviewVar(
     scopeId: "e1",
     scopeName: "Dev",
     set: true,
+    overlay: "",
     ...patch,
   };
   return v.secret ? { ...v, value: "" } : v;
@@ -230,4 +239,32 @@ export function makeHop(patch: Partial<Hop> = {}): Hop {
     error: "",
     ...patch,
   };
+}
+
+/** Where a test or console line came from: the request's pre-request script unless patched. */
+export function makeScriptSource(patch: Partial<ScriptSource> = {}): ScriptSource {
+  return { kind: "request", id: "", name: "Get user", event: "prerequest", ...patch };
+}
+
+/** A passing pm.test from the request's test script; patch what the test needs. */
+export function makeTestResult(name: string, patch: Partial<TestResult> = {}): TestResult {
+  return {
+    name,
+    passed: true,
+    skipped: false,
+    error: "",
+    source: makeScriptSource({ event: "test" }),
+    ...patch,
+  };
+}
+
+/** A console.log line from the request's pre-request script. */
+export function makeConsoleEntry(text: string, patch: Partial<ConsoleEntry> = {}): ConsoleEntry {
+  return { level: "log", text, source: makeScriptSource(), ...patch };
+}
+
+/** A value a script set on a scope this session (secret values are always ""). */
+export function makeOverlayValue(key: string, value = "", patch: Partial<OverlayValue> = {}): OverlayValue {
+  const v: OverlayValue = { key, value, state: "set", secret: false, ...patch };
+  return v.secret ? { ...v, value: "" } : v;
 }

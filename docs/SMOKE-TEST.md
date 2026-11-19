@@ -155,6 +155,19 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir. Tools: any local proxy (e.g. `mitm
 - [ ] Cookies: a response that sets a persistent cookie (`/cookies/set?x=1` on httpbin sets a session cookie; use a server sending `Max-Age`) shows it in Manage cookies (from the palette and from the response Cookies tab, which opens on that domain). After quitting and restarting, the persistent cookie is still sent and listed; a session cookie is gone.
 - [ ] Cookie manager: add, edit (value, expiry, Include subdomains, SameSite), delete one, delete a domain and Delete all (with confirmation). An invalid name shows the error inline. Cookies are per workspace: another workspace starts without them, and nothing about cookies appears in the workspace files.
 
+## Tier 3: scripting
+
+Use `XDG_CONFIG_HOME` pointing at a temp dir and an environment `Dev` with a plain `token` variable.
+
+- [ ] Token chaining: a "Login" request's Tests script `pm.environment.set("token", pm.response.json().token)` (or the "Set an environment variable from the JSON response" snippet); a second request sends `Authorization: Bearer {{token}}`. After Login, the second request sends the new token (check Debug); hovering `{{token}}` says "set by script"; the Dev variables show the row with "Set by script" and the value; the env file on disk is unchanged.
+- [ ] Overlay: Reset on the row brings back the file's value; "Reset all script values" and the palette's "Reset script values" clear every one. "Persist to file" writes the value to the env file (and a new name as a new row); for a secret `token` it goes to the keychain/secret file (unlock asked first) and never into the file. Editing the row in the settings tab still shows the script value winning. Reopening the workspace or restarting clears the overlay.
+- [ ] Scripts tab: Pre-request and Tests sub-tabs, `pm.` completions (`pm.response` only in Tests), Snippets (test-only snippets disabled in Pre-request with a reason), help text when empty, the dot on the tab, Save writes `scripts:` as a block in the YAML (manifest `version: 3`). A collection or folder with scripts shows "Runs before this request's script: …" with read-only copies and an "Open … settings" link. Collection and folder settings tabs have the same Scripts tab.
+- [ ] Tests tab: "Tests 2/3" in amber with a failure, green when all pass; each test has its icon, name and error; All/Passed/Failed filter; a request without tests shows "Open tests", which switches to its Scripts tab.
+- [ ] Console: `console.log/info/warn/error/debug` lines appear while sending (open with Mod+J or the status bar's Console, which counts new lines while closed), grouped under time, method, name and status, colored per level, with level filters, search, Copy line and Clear. Script output with a secret shows `[secret:name]`. Nothing survives a restart.
+- [ ] Script error: `notDefined()` in a folder's pre-request script stops the send with "A pre-request script failed", the folder name and line:column, and "Open the pre-request script of folder …" opens that folder's Scripts tab; the error is in the console too. A `while(true){}` stops after the script timeout (Settings → Requests).
+- [ ] Skip: `pm.execution.skipRequest()` shows "Skipped by a pre-request script (pm.execution.skipRequest)" and nothing is sent or added to history.
+- [ ] Palette: "Open pre-request script", "Open tests", "Toggle console", "Clear console", "Reset script values".
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

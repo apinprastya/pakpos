@@ -38,6 +38,8 @@ type Session struct {
 	idx SecretIndex
 	// opts are passed to the resolver (tests inject a clock and random source).
 	opts []vars.Option
+	// overlay holds values set by scripts (see WithOverlay); nil without one.
+	overlay *Overlay
 }
 
 // New returns a Session. log may be nil.
@@ -102,12 +104,16 @@ type Scopes struct {
 	// Locked holds the secrets (by lockKey) without a value because the
 	// secret store is locked.
 	Locked map[string]bool
+	// Overlay holds, by lockKey, the variables whose value (or absence)
+	// comes from the script overlay.
+	Overlay map[string]OverlayState
 }
 
 func lockKey(scopeID, name string) string { return scopeID + "\x00" + name }
 
 // BuildScopes returns globals, the collection (when collectionID is set),
-// the environment (when env is not nil) and an empty local scope.
+// the environment (when env is not nil) and an empty local scope, with the
+// session's overlay laid over the file values.
 func (s *Session) BuildScopes(collectionID string, env *fsstore.Environment) Scopes {
 	g := s.ws.GetGlobals()
 	raw := []vars.Scope{{Kind: vars.ScopeGlobal, ID: g.ID, Name: GlobalsName, Variables: g.Variables}}
@@ -121,7 +127,7 @@ func (s *Session) BuildScopes(collectionID string, env *fsstore.Environment) Sco
 	}
 	raw = append(raw, vars.Scope{Kind: vars.ScopeLocal, Name: LocalName})
 
-	out := Scopes{Locked: map[string]bool{}}
+	out := Scopes{Locked: map[string]bool{}, Overlay: map[string]OverlayState{}}
 	wsID := s.workspaceID()
 	for _, sc := range raw {
 		filled, missing, locked, err := secrets.Fill(s.sec, wsID, sc.ID, sc.Variables)
@@ -132,6 +138,9 @@ func (s *Session) BuildScopes(collectionID string, env *fsstore.Environment) Sco
 			out.Locked[lockKey(sc.ID, k)] = true
 		}
 		sc.Variables, sc.Unset = filled, missing
+		if sc.Kind != vars.ScopeLocal {
+			sc = applyOverlay(sc, s.overlay.scope(sc.ID), out.Overlay)
+		}
 		out.List = append(out.List, sc)
 	}
 	return out
@@ -184,7 +193,15 @@ func (s *Session) Prepare(req model.Request, parentID, envID string) (Prepared, 
 // nothing is inherited and there are no variables, but dynamic variables
 // ({{$guid}}...) still resolve.
 func PrepareWithoutWorkspace(req model.Request, opts ...vars.Option) (Prepared, error) {
-	return prepare(inherit.Effective(nil, req), Scopes{Locked: map[string]bool{}}, opts)
+	return prepare(inherit.Effective(nil, req), localOnly(), opts)
+}
+
+// localOnly is the scopes of a send without a workspace: just local.
+func localOnly() Scopes {
+	return Scopes{
+		List:   []vars.Scope{{Kind: vars.ScopeLocal, Name: LocalName}},
+		Locked: map[string]bool{}, Overlay: map[string]OverlayState{},
+	}
 }
 
 func prepare(eff inherit.Result, scopes Scopes, opts []vars.Option) (Prepared, error) {
@@ -227,6 +244,9 @@ type PreviewVariable struct {
 	// can't be read while the store is locked); it still wins over lower
 	// scopes, so the name stays unresolved. Always true otherwise.
 	Set bool `json:"set"`
+	// Overlay is "set" when a script replaced the file's value for this
+	// session, "new" when only a script defined it, "" for a file value.
+	Overlay OverlayState `json:"overlay"`
 }
 
 // Preview is what the editor needs to show how a request will be sent,
@@ -366,7 +386,9 @@ func visible(res *vars.Resolver, scopes Scopes) []PreviewVariable {
 		}
 		seen[name] = true
 		m, _ := res.Lookup(name)
-		out = append(out, previewVar(m))
+		v := previewVar(m)
+		v.Overlay = scopes.Overlay[lockKey(m.ScopeID, m.Name)]
+		out = append(out, v)
 	}
 	for _, sc := range scopes.List {
 		for _, v := range sc.Variables {

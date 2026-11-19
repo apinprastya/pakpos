@@ -24,6 +24,14 @@ describe("settingsForm", () => {
     expect(fromDraft(d, s)).toEqual({ settings: s, secrets: { certPassphrases: [] }, errors: null });
   });
 
+  it("round-trips the script timeout in seconds", () => {
+    const d = toDraft(DEFAULT_SETTINGS);
+    expect(d.scriptTimeoutSeconds).toBe("5");
+    expect(fromDraft({ ...d, scriptTimeoutSeconds: "60" }, DEFAULT_SETTINGS).settings?.scriptTimeoutMs).toBe(
+      60_000,
+    );
+  });
+
   it("shows sub-second timeouts with one decimal", () => {
     expect(toDraft({ ...DEFAULT_SETTINGS, timeoutMs: 1500 }).timeoutSeconds).toBe("1.5");
   });
@@ -47,11 +55,13 @@ describe("settingsForm", () => {
       timeoutSeconds: "x",
       maxRedirects: "0",
       historyRetention: "-5",
+      scriptTimeoutSeconds: "0",
     };
     const r = fromDraft(d, DEFAULT_SETTINGS);
     expect(r.settings).toBeNull();
     expect(r.errors).toEqual({
       timeoutSeconds: "Enter whole seconds from 0 to 600.",
+      scriptTimeoutSeconds: "Enter whole seconds from 1 to 60.",
       maxRedirects: "Enter a number from 1 to 50.",
       historyRetention: "Enter a number from 0 to 100,000.",
     });
@@ -98,8 +108,10 @@ describe("settingsForm", () => {
       proxy: { mode: "custom" as const, url: "http://p:1", username: "me", bypass: "localhost" },
       caFile: "/ca.pem",
       clientCerts: [{ id: "c", host: "*", certFile: "", keyFile: "", pfxFile: "/me.p12" }],
+      scriptTimeoutMs: 9000,
     };
     expect(normalizeSettings(full, DEFAULT_SETTINGS)).toEqual(full);
+    expect(normalizeSettings({ ...full, scriptTimeoutMs: 0 }, DEFAULT_SETTINGS).scriptTimeoutMs).toBe(5000);
     expect(
       normalizeSettings(
         { proxy: { mode: "bogus" } as never, clientCerts: [{ id: "x" }] as never },

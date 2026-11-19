@@ -17,6 +17,8 @@ export interface SettingsDraft {
   theme: AppSettings["theme"];
   layout: AppSettings["layout"];
   timeoutSeconds: string;
+  /** Pre-request and test script timeout, whole seconds. */
+  scriptTimeoutSeconds: string;
   followRedirects: boolean;
   maxRedirects: string;
   verifyTls: boolean;
@@ -35,7 +37,15 @@ export interface SettingsDraft {
 }
 
 export type DraftErrors = Partial<
-  Record<"timeoutSeconds" | "maxRedirects" | "historyRetention" | "proxyUrl" | "proxyBypass", string>
+  Record<
+    | "timeoutSeconds"
+    | "scriptTimeoutSeconds"
+    | "maxRedirects"
+    | "historyRetention"
+    | "proxyUrl"
+    | "proxyBypass",
+    string
+  >
 > & {
   /** Errors of client certificate rows, by id. */
   certs?: Record<string, string>;
@@ -63,6 +73,7 @@ export function toDraft(s: AppSettings): SettingsDraft {
     theme: s.theme,
     layout: s.layout,
     timeoutSeconds: formatSeconds(s.timeoutMs),
+    scriptTimeoutSeconds: formatSeconds(s.scriptTimeoutMs),
     followRedirects: s.followRedirects,
     maxRedirects: String(s.maxRedirects),
     verifyTls: s.verifyTls,
@@ -101,6 +112,8 @@ export function parseWhole(text: string, min: number, max: number): number | nul
 }
 
 const MAX_TIMEOUT_S = SETTINGS_LIMITS.maxTimeoutMs / 1000;
+const MIN_SCRIPT_S = SETTINGS_LIMITS.minScriptTimeoutMs / 1000;
+const MAX_SCRIPT_S = SETTINGS_LIMITS.maxScriptTimeoutMs / 1000;
 
 /** Checks a custom proxy URL like Go's httpexec.ParseProxyURL; returns the problem or null. */
 export function proxyUrlError(url: string): string | null {
@@ -146,6 +159,9 @@ export function fromDraft(
   const errors: DraftErrors = {};
   const timeout = parseWhole(d.timeoutSeconds, 0, MAX_TIMEOUT_S);
   if (timeout === null) errors.timeoutSeconds = `Enter whole seconds from 0 to ${MAX_TIMEOUT_S}.`;
+  const scriptTimeout = parseWhole(d.scriptTimeoutSeconds, MIN_SCRIPT_S, MAX_SCRIPT_S);
+  if (scriptTimeout === null)
+    errors.scriptTimeoutSeconds = `Enter whole seconds from ${MIN_SCRIPT_S} to ${MAX_SCRIPT_S}.`;
 
   let maxRedirects = parseWhole(d.maxRedirects, 1, SETTINGS_LIMITS.maxRedirects);
   if (maxRedirects === null) {
@@ -213,6 +229,7 @@ export function fromDraft(
       },
       caFile: d.caFile.trim(),
       clientCerts: certs,
+      scriptTimeoutMs: scriptTimeout! * 1000,
     },
     secrets,
     errors: null,

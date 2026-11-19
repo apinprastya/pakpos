@@ -41,6 +41,10 @@
       "timeoutMs": 10000,
       "followRedirects": true,
       "verifyTls": false
+    },
+    "scripts": {
+      "preRequest": "",
+      "test": ""
     }
   },
   "warnings": [

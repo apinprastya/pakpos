@@ -4,10 +4,11 @@ import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { usePaletteStore } from "@/stores/palette";
 import { useSettingsStore } from "@/stores/settings";
 import { useTabsStore } from "@/stores/tabs";
+import { useConsoleStore } from "@/stores/console";
 
 /**
  * App-wide shortcuts: Mod+K command palette, Mod+Enter send, Mod+S save, Mod+T new tab,
- * Mod+W close tab, Mod+, settings, Mod+Shift+C generate code (request tabs).
+ * Mod+W close tab, Mod+, settings, Mod+J toggle console, Mod+Shift+C generate code (request tabs).
  * While the palette is open only Mod+K works (it closes it); the palette handles its own keys.
  */
 export function useShortcuts(): void {
@@ -51,6 +52,10 @@ export function useShortcuts(): void {
         case ",":
           e.preventDefault();
           useSettingsStore.getState().openDialog();
+          break;
+        case "j":
+          e.preventDefault();
+          useConsoleStore.getState().toggle();
           break;
       }
     };

@@ -7,6 +7,8 @@ import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useExamplesStore } from "@/stores/examples";
 import { saveDocTab } from "@/features/scopes/docActions";
+import { useConsoleStore } from "@/stores/console";
+import { useEnvironmentsStore } from "@/stores/environments";
 
 function newSendId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `send-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -27,6 +29,10 @@ export async function sendTab(tabId: string): Promise<void> {
   // A new response replaces an example the tab was showing.
   useExamplesStore.getState().hide(tabId);
   store.setSending(tabId, sendId);
+  useConsoleStore.getState().begin(sendId, {
+    method: tab.request.method,
+    name: tab.request.name || "Untitled request",
+  });
   let result: SendResult;
   try {
     result = await api.send(sendId, compactRequest(tab.request), tab.parentId);
@@ -39,11 +45,18 @@ export async function sendTab(tabId: string): Promise<void> {
       secretsLocked: false,
       environment: null,
       hops: [],
+      tests: [],
+      console: [],
+      skipped: false,
+      scriptError: null,
     };
   }
   // Ignore results for tabs that were closed or re-sent meanwhile.
   const current = useTabsStore.getState().tabs.find((t) => t.id === tabId);
   if (current?.sendId === sendId) useTabsStore.getState().setResult(tabId, result);
+  useConsoleStore.getState().finish(sendId, result);
+  // Scripts may have set variables (the overlay): re-resolve previews and variable tables.
+  if (useWorkspaceStore.getState().workspace) useEnvironmentsStore.getState().touch();
   if (result.secretsLocked) void useSecretsStore.getState().refresh();
   if (result.historyId) void useHistoryStore.getState().refresh();
 }

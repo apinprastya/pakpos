@@ -304,3 +304,37 @@ func (s *EnvService) ResetSecretStore() error {
 	}
 	return nil
 }
+
+// OverlayValues lists the values scripts set on a scope (the globals, a
+// collection or an environment) in this session, sorted by key. Secret
+// values are never returned.
+func (s *EnvService) OverlayValues(scope pipeline.ScopeRef) ([]pipeline.OverlayValue, error) {
+	_, p, err := s.c.openSession()
+	if err != nil {
+		return nil, err
+	}
+	return p.OverlayValues(scope)
+}
+
+// ResetOverlay drops the value a script set on key in a scope, so the file
+// value applies again; key "" drops every script value of the scope.
+func (s *EnvService) ResetOverlay(scope pipeline.ScopeRef, key string) error {
+	_, p, err := s.c.openSession()
+	if err != nil {
+		return err
+	}
+	return p.ResetOverlay(scope, key)
+}
+
+// PersistOverlay writes the value a script set on key in a scope ("" for
+// all of the scope's) to the workspace file (a secret's to the secret
+// store) and drops it from the overlay. It returns the scope's variables
+// as saved.
+func (s *EnvService) PersistOverlay(scope pipeline.ScopeRef, key string) ([]model.Variable, error) {
+	_, p, err := s.c.openSession()
+	if err != nil {
+		return nil, err
+	}
+	vs, err := p.PersistOverlay(scope, key)
+	return vs, secrets.Explain(err)
+}

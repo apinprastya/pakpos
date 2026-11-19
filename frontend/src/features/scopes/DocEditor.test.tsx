@@ -46,6 +46,7 @@ beforeEach(() => {
   vi.mocked(api.getCollection).mockResolvedValue({
     id: "c1",
     name: "Users",
+    scripts: { preRequest: "", test: "" },
     auth: { ...emptyAuth(), type: "bearer", token: "literal-token" },
     headers: [{ key: "Accept", value: "application/json", enabled: true }],
     variables: [makeVar("v", "1")],
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.mocked(api.getFolder).mockResolvedValue({
     id: "f1",
     name: "Admin",
+    scripts: { preRequest: "", test: "" },
     auth: { ...emptyAuth(), type: "inherit" },
     headers: [],
   });
@@ -251,6 +253,7 @@ describe("collection and folder settings", () => {
     vi.mocked(api.getCollection).mockResolvedValue({
       id: "c1",
       name: "Users",
+      scripts: { preRequest: "", test: "" },
       auth: { ...emptyAuth(), type: "bearer", token: "literal-token" },
       headers: [],
       variables: [],

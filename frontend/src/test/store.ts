@@ -13,6 +13,7 @@ import { usePaletteStore } from "@/stores/palette";
 import { resetUpdateAnnouncements, useUpdateStore } from "@/stores/update";
 import { resetUiState } from "@/stores/uiState";
 import { cookiesInitial, useCookiesStore } from "@/stores/cookies";
+import { useConsoleStore } from "@/stores/console";
 
 const workspaceInitial = useWorkspaceStore.getState();
 const historyInitial = useHistoryStore.getState();
@@ -23,6 +24,7 @@ const treeInitial = useTreeStore.getState();
 const examplesInitial = useExamplesStore.getState();
 const paletteInitial = usePaletteStore.getState();
 const updateInitial = useUpdateStore.getState();
+const consoleInitial = useConsoleStore.getState();
 
 /** Puts the workspace and history stores back to their start state (run before each test). */
 export function resetSidebarStores(): void {
@@ -36,6 +38,7 @@ export function resetSidebarStores(): void {
   usePaletteStore.setState(paletteInitial, true);
   useUpdateStore.setState({ ...updateInitial, skipped: "" }, true);
   useCookiesStore.setState(cookiesInitial);
+  useConsoleStore.setState(consoleInitial, true);
   resetUpdateAnnouncements();
   resetUiState();
   useSettingsStore.setState({

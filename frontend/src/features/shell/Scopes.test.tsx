@@ -31,6 +31,7 @@ function boot() {
   vi.mocked(api.getCollection).mockResolvedValue({
     id: "c1",
     name: "Users",
+    scripts: { preRequest: "", test: "" },
     auth: emptyAuth(),
     headers: [],
     variables: [],

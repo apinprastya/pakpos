@@ -219,7 +219,8 @@ an applied one is never edited.
 
 ## 6. Request execution pipeline
 
-As built (`internal/pipeline`, `Session.Prepare`, then `httpexec`):
+As built (`internal/pipeline`, `Session.NewSend` → `Send.PreRequest` →
+`Send.Prepare`, then `httpexec`, then `Send.Test`):
 
 ```
 Request (as written) + parentId + selected environment
@@ -227,9 +228,13 @@ Request (as written) + parentId + selected environment
   → inherit (core/inherit): auth walks request → folders → collection
     (first non-`inherit` wins, else none); headers merge collection → folders
     → request, a deeper enabled header replacing the same name
-  → scopes, lowest first: globals, collection, environment, local (empty
-    until scripts, Tier 3)
+  → scopes, lowest first: globals, collection, environment, local (empty;
+    the runner seeds it with iteration data)
   → secret values from the store (unset/locked ones shadow but stay unresolved)
+  → the script overlay laid over globals, collection and environment
+  → pre-request scripts (core/script): collection → folders → request; they
+    change the request and the scopes (local, overlay, secret store); an
+    error or skipRequest stops here
   → resolve {{vars}} (core/vars): nesting up to 10 levels, cycles are errors,
     dynamic {{$guid}} {{$timestamp}}… fresh per occurrence; unresolved names
     are sent as written and reported
@@ -238,7 +243,9 @@ Request (as written) + parentId + selected environment
   → execute with httptrace (DNS / connect / TLS / TTFB / total), cancellable
   → decode the body (gzip, deflate, br), cap it inline at 10 MB (the rest
     spills to a file)
+  → test scripts: collection → folders → request (an error is a failed test)
   → history (request as written + environment name) → SendResult to the UI
+    (tests, console and hops masked)
 ```
 
 - Each send has an ID; `RequestService.Cancel(id)` cancels its context.
@@ -252,8 +259,9 @@ Request (as written) + parentId + selected environment
   settings tab that removes a row shows the lower-scope value that takes
   over. Code generation (`PrepareCode`: secrets kept as `{{name}}` unless
   revealed).
-- Planned for Tier 3: a pre-request script after resolving scopes and a test
-  script after the response (§7).
+- Scripts (§7) run around the send. The request stored in history is the one
+  the user wrote, without script changes; Debug hops show what was sent. Code
+  generation and previews never run scripts (they do see overlay values).
 - Per-workspace cookie jar (`core/cookies`, persistent cookies in SQLite):
   switching workspace loads that workspace's jar; the executor is rebuilt
   around it and the app settings.
@@ -276,9 +284,32 @@ Request (as written) + parentId + selected environment
 
 ## 7. Scripting (goja)
 
-- Fresh runtime per execution, hard timeout (`runtime.Interrupt`), no FS/network access by default.
-- `pm` API subset: `pm.environment.get/set`, `pm.variables`, `pm.request`, `pm.response.json()/text()/code/headers`,
-  `pm.test`, `pm.expect` (small chai-like assertion lib), `console.log` → UI console.
+- `internal/core/script` (no Wails, no I/O): `script.Run(ctx, Input)` runs one
+  script in a fresh goja runtime: timeout (`settings.scriptTimeoutMs`, 5 s by
+  default, 1–60 s) and cancellation through `Runtime.Interrupt`, call depth
+  capped (`SetMaxCallStackSize`), no `require`, filesystem, network or timers
+  (those names throw an explanatory error). Console output is captured and
+  capped per send (1000 entries / 1 MiB, then "Output truncated").
+- The `pm` API, `console` and a chai subset are embedded JavaScript
+  (`prelude.js`, `expect.js`): `pm.environment` / `collectionVariables` /
+  `globals` / `variables` (get, set, unset, has, toObject, replaceIn),
+  `pm.request` (mutable in pre-request scripts), `pm.response` (test scripts),
+  `pm.test`, `pm.expect`, `pm.response.to.have/be…`, `pm.info`,
+  `pm.iterationData`, `pm.execution.setNextRequest/skipRequest`. Postman
+  snippets work unchanged where the API overlaps.
+- Variables go through the `script.Vars` interface. `pipeline.Send` implements
+  it: `pm.variables.set` writes the send's local scope; other scopes write the
+  in-memory `pipeline.Overlay` (per open workspace, cleared on switch, close
+  and restart; never stored unless the user persists a value through
+  `EnvService.PersistOverlay`), or the secret store when the target is a
+  secret variable.
+- Errors carry the level (collection, folder, request), line and column. A
+  pre-request error stops the send (`error.kind = "script"`, with
+  `SendResult.scriptError {source, line, column}` so the UI can open that
+  script); a test-script error becomes a failed test.
+- Console lines, test names, errors and hops are masked (`[secret:name]`)
+  with the send's secret values plus those scripts wrote. Console output also
+  streams to the UI as `script:console` events; it is never persisted.
 
 ## 8. Frontend
 
@@ -288,11 +319,12 @@ Request (as written) + parentId + selected environment
 - Code splitting: every editor language (JSON, XML, HTML, JavaScript and the generated-code ones) is its own chunk, loaded on first use (plain text until then); the settings, code, import-cURL dialogs and the command palette load on first open.
 - Theme: light/dark/system via CSS variables (shadcn tokens); command palette (`cmdk`), keyboard shortcuts.
 - Drag & drop in tree: `dnd-kit`.
+- Scripting UI (Tier 3 M4): a lazy **Scripts** tab (Pre-request / Tests) in request, collection and folder editors with `pm` completions from a static API description (`features/scripts/pmApi.ts`), snippets and a read-only view of the inherited scripts; a **Tests** tab in the response pane; a **console drawer** below the editors (lazy, Mod+J or the status bar), fed live by `script:console` and reconciled with `SendResult.console` per send, kept in memory only (`stores/console.ts`, 2000 lines); "Set by script" badges with Reset / Persist in variable tables (`EnvService.OverlayValues/ResetOverlay/PersistOverlay`), refreshed after every send.
 
 ## 9. Backend ↔ frontend contract
 
 - Wails v3 services → generated TS bindings (`wails3 generate bindings`).
-- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars). Planned: `request:progress`, `script:console`.
+- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars), `update:progress`, `script:console` (`{sendId, entries}`, one per script run that logged, masked). Planned: `request:progress`, `runner:progress`.
 - DTOs are plain structs with JSON tags in `internal/core/model`.
 
 ## 10. Testing & quality
