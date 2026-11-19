@@ -168,6 +168,19 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir and an environment `Dev` with a pla
 - [ ] Skip: `pm.execution.skipRequest()` shows "Skipped by a pre-request script (pm.execution.skipRequest)" and nothing is sent or added to history.
 - [ ] Palette: "Open pre-request script", "Open tests", "Toggle console", "Clear console", "Reset script values".
 
+## Tier 3: collection runner
+
+Use `XDG_CONFIG_HOME` pointing at a temp dir, a collection with Login (test script sets `token` in `Dev`, where `token` and `apiKey` are secret variables), Me (`Bearer {{token}}`, a test on the user) and Logout, and a `users.csv` with `user,password` and two rows.
+
+- [ ] Entry points: the tree menu's "Run collection…"/"Run folder…", the settings tab's "Run collection…" button and the palette ("Run collection…", "Run folder…" with a step when there are several, "Open run history") all open one runner tab per target; the tab survives a restart with its configuration but no results.
+- [ ] Configuration: the request checklist is in sidebar order (folders depth-first) with Select all/none; the environment defaults to the selected one; choosing `users.csv` shows its name, "2 rows", the columns and first rows, and disables Iterations ("One iteration per row"). A broken file (a CSV row with a missing field, a JSON object instead of an array) shows a clear message.
+- [ ] Live run: Run collection shows the progress bar, "Iteration N of M · request", and rows with the method colour, status colour, time, size and tests x/y; Cancel stops it and keeps the rows. With reduced motion on, the progress bar doesn't animate.
+- [ ] Results: the summary shows passed/failed/errors/skipped, duration and average time; Failed filters; a row expands to its tests, console and (with Save responses) the body. Console lines appear in the console drawer under headers with "Run … · Iteration N". Secret values read `[secret:name]` everywhere.
+- [ ] Scripts: `pm.iterationData.get("user")` and `{{user}}` resolve per row; `pm.execution.setNextRequest("Logout")` skips ahead, `setNextRequest(null)` ends the iteration, a request setting itself as next forever stops after 1000 jumps with an error; `skipRequest` shows "Skipped".
+- [ ] Options: "Stop at the first failure" ends the run at a failing test; "Keep variable values" off leaves the Dev rows without "Set by script" after the run; "Record in history" adds the sends to History (off: nothing added); a 1 s delay is visible between requests.
+- [ ] Past runs: listed with time, environment and totals; opening one shows its results; delete removes it; only the last 20 are kept. Starting a second run in the same workspace while one runs says to wait or cancel.
+- [ ] Export JSON and Export HTML save a report (the save dialog suggests `<name>-run-<date>.<ext>`); the HTML opens in a browser without network access, in light and dark; neither file contains the `apiKey` or token values.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

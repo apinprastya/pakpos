@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, MoreHorizontal, Pencil, Save, Trash2, TriangleAlert } from "lucide-react";
+import { Check, Copy, MoreHorizontal, Pencil, Play, Save, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,6 +35,7 @@ import { MoveToSecretDialog } from "./MoveToSecretDialog";
 import { DocKindIcon } from "./DocKindIcon";
 import { VariablesTable } from "./VariablesTable";
 import { ScriptsSection } from "@/features/scripts/lazy";
+import { openRunnerFor } from "@/features/runner/open";
 import { hasScripts } from "@/features/scripts/hasScripts";
 import { useInheritedScripts } from "@/features/scripts/useInheritedScripts";
 
@@ -57,6 +58,7 @@ const KIND_LABELS: Record<DocKind, string> = {
   globals: "Global variables",
   collection: "Collection settings",
   folder: "Folder settings",
+  runner: "Runner",
 };
 
 /**
@@ -216,6 +218,11 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
         <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
         {dirty && <span className="shrink-0 text-xs text-muted-foreground">· Unsaved changes</span>}
       </div>
+      {isContainer && !doc.missing && (
+        <Button size="sm" variant="outline" onClick={() => void openRunnerFor(doc.targetId)}>
+          <Play /> {doc.kind === "folder" ? "Run folder…" : "Run collection…"}
+        </Button>
+      )}
       {isEnv &&
         (selected ? (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">

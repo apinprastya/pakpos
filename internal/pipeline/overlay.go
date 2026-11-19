@@ -112,6 +112,35 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
+// Clone returns a copy of the overlay (an empty one for nil): writes to
+// either no longer reach the other.
+func (o *Overlay) Clone() *Overlay {
+	out := NewOverlay()
+	if o == nil {
+		return out
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for id, entries := range o.entries {
+		m := make(map[string]overlayEntry, len(entries))
+		for k, e := range entries {
+			m[k] = e
+		}
+		out.entries[id] = m
+	}
+	return out
+}
+
+// Isolated returns a copy of the session whose scripts see the current
+// overlay values but write to a private copy of them, so nothing they set
+// outlives the copy (the runner with "keep variable values" off). Secret
+// variables still go through the secret store.
+func (s *Session) Isolated() *Session {
+	cp := *s
+	cp.overlay = s.overlay.Clone()
+	return &cp
+}
+
 // WithOverlay makes the session lay ov over file values (BuildScopes) and
 // lets its sends' scripts write to it. nil means none.
 func (s *Session) WithOverlay(ov *Overlay) *Session {

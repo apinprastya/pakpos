@@ -30,6 +30,18 @@ describe("tab bar", () => {
     expect(within(tabList()).getAllByRole("tab")).toHaveLength(1);
   });
 
+  it("shows a runner tab with its icon and title", async () => {
+    vi.mocked(api.currentWorkspace).mockResolvedValue({ id: "w", name: "ws", path: "/ws" });
+    vi.mocked(api.tree).mockResolvedValue({
+      collections: [col("c1", "API", [req("r1", "Login")])],
+      problems: [],
+    });
+    s().openRunner("collection", "c1", "API", "w");
+    render(<App />);
+    expect(within(tabList()).getByRole("tab", { name: /Run API/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Run collection" })).toBeInTheDocument();
+  });
+
   it("closes with middle click and reorders by drag", () => {
     render(<App />);
     act(() => {

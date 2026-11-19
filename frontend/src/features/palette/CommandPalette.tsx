@@ -6,6 +6,7 @@ import {
   FolderTree,
   Globe,
   Layers,
+  Play,
   Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -35,6 +36,10 @@ import { useSecretsStore } from "@/stores/secrets";
 import { useActiveTab, useTabsStore } from "@/stores/tabs";
 import { useTreeStore } from "@/stores/tree";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useRunnerStore } from "@/stores/runner";
+import { openRunnerFor } from "@/features/runner/open";
+import { runTime } from "@/features/runner/format";
+import type { RunListItem } from "@/lib/runModel";
 import { availableActions, type ActionContext, type PaletteAction } from "./actions";
 import { pushRecent, readRecent } from "./recent";
 import { buildItems, fuzzyScore, rankItems, recentItems, type SearchItem } from "./search";
@@ -79,7 +84,9 @@ type Row =
   | { kind: "item"; item: SearchItem }
   | { kind: "action"; action: PaletteAction }
   | { kind: "env"; id: string; name: string }
-  | { kind: "dest"; id: string; name: string; path: string; folder: boolean };
+  | { kind: "dest"; id: string; name: string; path: string; folder: boolean }
+  | { kind: "runTarget"; id: string; name: string; path: string; folder: boolean }
+  | { kind: "pastRun"; run: RunListItem };
 
 interface Section {
   heading?: string;
@@ -96,8 +103,18 @@ const rowValue = (r: Row): string => {
       return envValue(r.id);
     case "dest":
       return `dest:${r.id}`;
+    case "runTarget":
+      return `run:${r.id}`;
+    case "pastRun":
+      return `past-run:${r.run.id}`;
   }
 };
+
+/** A past run's label in the palette: "API · 19 Nov, 09:30 · Passed". */
+function pastRunLabel(r: RunListItem): string {
+  const t = r.totals;
+  return `${r.target.name} · ${runTime(r.createdAt)} · ${t.testsPassed} passed, ${t.testsFailed} failed, ${t.errors} errors`;
+}
 
 /** cmdk value of an environment step row ("" for "No environment"). */
 const envValue = (id: string) => `env-pick:${id}`;
@@ -105,6 +122,9 @@ const envValue = (id: string) => `env-pick:${id}`;
 const PAGE_TITLES: Record<PalettePage, string> = {
   environment: "Switch environment",
   move: "Move current request to",
+  "run-collection": "Run collection",
+  "run-folder": "Run folder",
+  "run-history": "Run history",
 };
 
 const PLACEHOLDERS = {
@@ -112,6 +132,9 @@ const PLACEHOLDERS = {
   actions: "Run an action…",
   environment: "Choose an environment…",
   move: "Choose a collection or folder…",
+  "run-collection": "Choose a collection to run…",
+  "run-folder": "Choose a folder to run…",
+  "run-history": "Choose a past run…",
 };
 
 function PaletteBody({ onFocusElsewhere }: { onFocusElsewhere: () => void }) {
@@ -141,6 +164,7 @@ function PaletteBody({ onFocusElsewhere }: { onFocusElsewhere: () => void }) {
   const environments = useEnvironmentsStore((s) => s.environments);
   const selectedEnv = useEnvironmentsStore((s) => s.selectedId);
   const byRequest = useExamplesStore((s) => s.byRequest);
+  const pastRuns = useRunnerStore((s) => s.past);
   const tabs = useTabsStore((s) => s.tabs);
   const tab = useActiveTab();
   const secrets = useSecretsStore((s) => s.status);
@@ -210,6 +234,29 @@ function PaletteBody({ onFocusElsewhere }: { onFocusElsewhere: () => void }) {
         .map((x) => x.r);
       return [{ rows }];
     }
+    if (mode === "run-collection" || mode === "run-folder") {
+      const kind = mode === "run-collection" ? "collection" : "folder";
+      const rows = destinations(collections)
+        .filter((d) => d.kind === kind)
+        .map((d): Row => ({
+          kind: "runTarget",
+          id: d.id,
+          name: d.name,
+          path: d.path,
+          folder: d.kind === "folder",
+        }))
+        .map((r) => ({ r, score: query && r.kind === "runTarget" ? fuzzyScore(query, r.path) : 0 }))
+        .filter((x) => x.score !== null)
+        .sort((a, b) => (query ? (b.score ?? 0) - (a.score ?? 0) : 0))
+        .map((x) => x.r);
+      return [{ rows }];
+    }
+    if (mode === "run-history") {
+      const rows = pastRuns
+        .filter((r) => !query || fuzzyScore(query, pastRunLabel(r)) !== null)
+        .map((run): Row => ({ kind: "pastRun", run }));
+      return [{ rows }];
+    }
     const actions = availableActions(base);
     if (mode === "actions") {
       if (!query) {
@@ -261,7 +308,7 @@ function PaletteBody({ onFocusElsewhere }: { onFocusElsewhere: () => void }) {
     ];
     // ctx is rebuilt every render; its inputs are listed instead.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, query, items, recent, environments, collections, tab, workspace, secrets, tabs]);
+  }, [mode, query, items, recent, environments, collections, tab, workspace, secrets, tabs, pastRuns]);
 
   const rows = sections.flatMap((s) => s.rows);
 
@@ -282,6 +329,21 @@ function PaletteBody({ onFocusElsewhere }: { onFocusElsewhere: () => void }) {
     close();
     if (row.kind === "env") {
       void useEnvironmentsStore.getState().select(row.id);
+      return;
+    }
+    if (row.kind === "runTarget") {
+      openRunnerFor(row.id);
+      return;
+    }
+    if (row.kind === "pastRun") {
+      const target = row.run.target.id;
+      if (!openRunnerFor(target)) {
+        toast.error("Couldn't open the run", {
+          description: `Its ${row.run.target.kind} "${row.run.target.name}" no longer exists.`,
+        });
+        return;
+      }
+      await useRunnerStore.getState().openPast(target, row.run.id);
       return;
     }
     if (row.kind === "dest") {
@@ -475,7 +537,18 @@ function RowContent({ row, selectedEnv }: { row: Row; selectedEnv: string }) {
       </>
     );
   }
-  if (row.kind === "dest") {
+  if (row.kind === "pastRun") {
+    return (
+      <>
+        <KindIcon icon={Play} />
+        <span className="min-w-0 flex-1 truncate">{pastRunLabel(row.run)}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {row.run.environmentName || "No environment"}
+        </span>
+      </>
+    );
+  }
+  if (row.kind === "dest" || row.kind === "runTarget") {
     return (
       <>
         <KindIcon icon={row.folder ? Folder : FolderTree} />
@@ -549,6 +622,15 @@ function EmptyCopy({ mode, query, hasWorkspace }: { mode: string; query: string;
       ) : (
         <>There&apos;s nowhere else to move it. Create a collection or folder first.</>
       );
+    case "run-collection":
+    case "run-folder":
+      return <>Nothing matches &ldquo;{query}&rdquo;.</>;
+    case "run-history":
+      return query ? (
+        <>No past runs match &ldquo;{query}&rdquo;.</>
+      ) : (
+        <>No past runs yet. Run a collection or folder first.</>
+      );
     default:
       if (!query)
         return <>Type to search requests, folders, collections and environments. Type &gt; for actions.</>;
@@ -587,13 +669,13 @@ function Footer({ mode }: { mode: string }) {
           <Kbd>&gt;</Kbd> actions
         </span>
       )}
-      {(mode === "environment" || mode === "move") && (
+      {mode !== "search" && mode !== "actions" && (
         <span>
           <Kbd>Backspace</Kbd> back
         </span>
       )}
       <span className="ml-auto">
-        <Kbd>Esc</Kbd> {mode === "environment" || mode === "move" ? "back" : "close"}
+        <Kbd>Esc</Kbd> {mode !== "search" && mode !== "actions" ? "back" : "close"}
       </span>
     </p>
   );

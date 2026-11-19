@@ -164,5 +164,14 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     saveExample: vi.fn(),
     renameExample: vi.fn(),
     deleteExample: vi.fn().mockResolvedValue(undefined),
+    startRun: vi.fn().mockResolvedValue("run-1"),
+    cancelRun: vi.fn().mockResolvedValue(true),
+    listRuns: vi.fn().mockResolvedValue([]),
+    getRun: vi.fn(),
+    deleteRun: vi.fn().mockResolvedValue(undefined),
+    exportRun: vi.fn().mockResolvedValue(""),
+    pickDataFile: vi.fn().mockResolvedValue(""),
+    previewData: vi.fn(),
+    onRunnerProgress: vi.fn().mockReturnValue(() => {}),
   };
 }

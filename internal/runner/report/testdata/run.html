@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="Pakpos test">
+<title>Run report: Users API</title>
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1c1c1f; --muted: #6b6b73; --line: #e4e4e8; --panel: #f6f6f8;
+  --ok: #1a7f37; --redirect: #8250df; --client: #b35900; --server: #cf222e;
+  --get: #1a7f37; --post: #b35900; --put: #0969da; --patch: #8250df; --delete: #cf222e; --other: #6b6b73;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b; --fg: #e8e8ec; --muted: #9a9aa3; --line: #2e2e33; --panel: #212125;
+    --ok: #4ac26b; --redirect: #b392f0; --client: #e3a14a; --server: #ff7b72;
+    --get: #4ac26b; --post: #e3a14a; --put: #58a6ff; --patch: #b392f0; --delete: #ff7b72; --other: #9a9aa3;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 48px; background: var(--bg); color: var(--fg);
+  font: 14px/1.45 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 32px 0 8px; }
+h3 { font-size: 13px; margin: 20px 0 6px; color: var(--muted); font-weight: 600; }
+.sub { color: var(--muted); margin: 0 0 16px; }
+.mono, code, pre { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin: 16px 0; }
+.stat { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--panel); }
+.stat b { display: block; font-size: 18px; }
+.stat span { color: var(--muted); font-size: 12px; }
+.table { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+details > summary { cursor: pointer; color: var(--muted); }
+pre { white-space: pre-wrap; word-break: break-word; margin: 4px 0; padding: 6px 8px; background: var(--panel); border-radius: 4px; }
+ul.plain { list-style: none; margin: 4px 0; padding: 0; }
+.muted { color: var(--muted); }
+.s-ok { color: var(--ok); } .s-redirect { color: var(--redirect); } .s-client { color: var(--client); } .s-server { color: var(--server); }
+.m-get { color: var(--get); } .m-post { color: var(--post); } .m-put { color: var(--put); }
+.m-patch { color: var(--patch); } .m-delete { color: var(--delete); } .m-other { color: var(--other); }
+.pass { color: var(--ok); } .fail { color: var(--server); }
+.outcome-passed { color: var(--ok); } .outcome-failed, .outcome-error, .outcome-stopped { color: var(--server); }
+.outcome-canceled { color: var(--client); }
+</style>
+</head>
+<body>
+<main>
+<h1>Users API</h1>
+<p class="sub">Users API · Environment Dev · 2 iterations · Data file users.csv · Delay 100 ms<br>
+Started 2026-11-19 09:30:00 UTC · <strong class="outcome-failed">Failed</strong></p>
+<div class="stats">
+  <div class="stat"><b>5</b><span>Requests</span></div>
+  <div class="stat"><b class="pass">1</b><span>Tests passed</span></div>
+  <div class="stat"><b class="fail">1</b><span>Tests failed</span></div>
+  <div class="stat"><b class="fail">1</b><span>Errors</span></div>
+  <div class="stat"><b>1</b><span>Skipped</span></div>
+  <div class="stat"><b>3.00 s</b><span>Duration</span></div>
+  <div class="stat"><b>507 ms</b><span>Average response time</span></div>
+</div>
+<p class="muted">The secret store was locked during the run, so some secret variables had no value.</p>
+<h2>Failures (2)</h2>
+<div class="table"><table>
+<thead><tr><th>Iteration</th><th>Request</th><th>Test</th><th>Message</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Profile &lt;me&gt;</td><td>is 200</td><td class="mono">AssertionError: expected response to have status code 200 but got 404</td></tr>
+<tr><td>2</td><td>Profile &lt;me&gt;</td><td><span class="muted">Request error</span></td><td class="mono">Couldn&#39;t connect to [secret:host]</td></tr>
+</tbody></table></div>
+
+<h2>Requests</h2>
+<div class="table"><table>
+<thead><tr><th>Request</th><th class="num">Runs</th><th class="num">Errors</th><th class="num">Skipped</th><th class="num">Tests passed</th><th class="num">Tests failed</th><th class="num">Avg</th><th class="num">Min</th><th class="num">Max</th></tr></thead>
+<tbody>
+<tr><td><span class="mono m-post">POST</span> Login</td><td class="num">2</td><td class="num">0</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">756 ms</td><td class="num">12 ms</td><td class="num">1.50 s</td></tr>
+<tr><td><span class="mono m-get">GET</span> Profile &lt;me&gt;</td><td class="num">2</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">1</td><td class="num">8.0 ms</td><td class="num">8.0 ms</td><td class="num">8.0 ms</td></tr>
+<tr><td><span class="mono m-other">PURGE</span> Purge</td><td class="num">1</td><td class="num">0</td><td class="num">1</td><td class="num">0</td><td class="num">0</td><td class="num">0.0 ms</td><td class="num">0.0 ms</td><td class="num">0.0 ms</td></tr>
+</tbody></table></div>
+
+<h2>Results</h2>
+<h3>Iteration 1</h3>
+<div class="table"><table>
+<thead><tr><th>Request</th><th>Status</th><th class="num">Time</th><th class="num">Size</th><th class="num">Tests</th><th>Details</th></tr></thead>
+<tbody>
+<tr>
+<td><span class="mono m-post">POST</span> Login</td>
+<td class="s-ok">200 OK</td>
+<td class="num">12 ms</td>
+<td class="num">512 B</td>
+<td class="num">1/1</td>
+<td>
+<details><summary>Tests</summary><ul class="plain">
+<li><span class="pass">Passed</span> status is 200</li>
+</ul></details>
+<details><summary>Console (1)</summary><pre>log  token [secret:token]
+</pre></details>
+<details><summary>Response body</summary><pre>{&#34;token&#34;:&#34;[secret:token]&#34;}</pre>
+</details>
+</td>
+</tr>
+<tr>
+<td><span class="mono m-get">GET</span> Profile &lt;me&gt;</td>
+<td class="s-client">404 Not Found</td>
+<td class="num">8.0 ms</td>
+<td class="num">20 B</td>
+<td class="num fail">0/1</td>
+<td>
+<details><summary>Tests</summary><ul class="plain">
+<li><span class="fail">Failed</span> is 200<br><span class="mono">AssertionError: expected response to have status code 200 but got 404</span></li>
+<li><span class="muted">Skipped</span> later</li>
+</ul></details>
+<details><summary>Response body</summary><p class="muted">Binary body not saved.</p>
+</details>
+</td>
+</tr>
+<tr>
+<td><span class="mono m-other">PURGE</span> Purge</td>
+<td class="muted">Skipped</td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num">–</td>
+<td>
+</td>
+</tr>
+</tbody></table></div>
+<h3>Iteration 2</h3>
+<div class="table"><table>
+<thead><tr><th>Request</th><th>Status</th><th class="num">Time</th><th class="num">Size</th><th class="num">Tests</th><th>Details</th></tr></thead>
+<tbody>
+<tr>
+<td><span class="mono m-post">POST</span> Login</td>
+<td class="s-redirect">301 Moved Permanently</td>
+<td class="num">1.50 s</td>
+<td class="num">3.0 MB</td>
+<td class="num">–</td>
+<td>
+<details><summary>Response body</summary><pre>aaaaaaaaaa</pre><p class="muted">Cut at 1 MB.</p>
+</details>
+</td>
+</tr>
+<tr>
+<td><span class="mono m-get">GET</span> Profile &lt;me&gt;</td>
+<td class="s-server">Couldn&#39;t connect to [secret:host]</td>
+<td class="num"></td>
+<td class="num"></td>
+<td class="num fail">–</td>
+<td>
+<details><summary>Response body</summary><p class="muted">Not saved: the run's saved bodies reached their limit.</p>
+</details>
+</td>
+</tr>
+</tbody></table></div>
+
+<p class="muted">Generated by Pakpos test. Secret values are masked as [secret:name].</p>
+</main>
+</body>
+</html>

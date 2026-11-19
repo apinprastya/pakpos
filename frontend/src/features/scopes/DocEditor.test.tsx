@@ -287,3 +287,13 @@ describe("collection and folder settings", () => {
     expect(tabs().tabs.some((t) => t.doc?.kind === "collection" && t.doc.targetId === "c1")).toBe(true);
   });
 });
+
+describe("run from settings", () => {
+  it("opens the runner of the collection or folder", async () => {
+    const user = openDoc("folder", "f1", "Admin");
+    await user.click(await screen.findByRole("button", { name: "Run folder…" }));
+    const t = tabs().tabs.find((x) => x.id === tabs().activeId)!;
+    expect(t.doc).toMatchObject({ kind: "runner", targetId: "f1" });
+    expect(t.doc?.runner?.targetKind).toBe("folder");
+  });
+});

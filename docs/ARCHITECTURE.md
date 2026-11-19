@@ -32,14 +32,18 @@ A desktop REST API client (Postman-style), REST only.
 │  Go services (thin, bound to Wails)                          │
 │   WorkspaceService  RequestService  EnvService  HistoryService│
 │   SettingsService   ExampleService  CookieService            │
+│   RunnerService                                              │
 ├──────────────────────────────────────────────────────────────┤
-│  pipeline (send/preview/codegen preparation, secret          │
+│  runner (collection runs: order, iterations, data files,     │
+│  setNextRequest; report: JSON/HTML export; no Wails)         │
+├──────────────────────────────────────────────────────────────┤
+│  pipeline (send/preview/codegen preparation, scripts, secret │
 │  bookkeeping; no Wails)                                      │
 ├──────────────────────────────────────────────────────────────┤
 │  Core (pure Go, no Wails import → reusable by future CLI)    │
 │   model · vars (resolve {{x}}) · inherit · auth · httpexec   │
 │   cookies (jar)                                              │
-│   curl (import/export) · codegen · (script: Tier 3)          │
+│   curl (import/export) · codegen · script (goja)             │
 │   store/fsstore (YAML) · store/sqlite · secrets              │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -55,7 +59,9 @@ pakpos/
 ├── build/                      # Wails build assets (icons, platform configs)
 ├── internal/
 │   ├── service/                # Wails-bound services (adapters)
-│   ├── pipeline/               # chain → inherit → scopes → secrets → resolve; secret bookkeeping
+│   ├── pipeline/               # chain → inherit → scopes → secrets → resolve; scripts; secret bookkeeping
+│   ├── runner/                 # collection runner (no Wails): order, iterations, data files, setNextRequest
+│   │   └── report/             # JSON and standalone HTML run reports (golden files)
 │   ├── core/
 │   │   ├── model/              # Request, Auth, Body, Variable, Response…
 │   │   ├── vars/               # variable scopes + {{var}} / {{$dynamic}} resolution
@@ -67,7 +73,7 @@ pakpos/
 │   │   └── script/             # (Tier 3) goja sandbox + pm-like API
 │   ├── store/
 │   │   ├── fsstore/            # YAML workspace read/write + file watcher
-│   │   └── sqlite/             # history, settings, recent workspaces, workspace state (migrations)
+│   │   └── sqlite/             # history, settings, recent workspaces, workspace state, cookies, runs (migrations)
 │   └── secrets/                # Store interface: keychain, encrypted file, fake for tests
 ├── frontend/
 │   ├── src/
@@ -153,7 +159,7 @@ place instead.
 ## 5. SQLite (app data dir)
 
 Driver: `modernc.org/sqlite` (pure Go, no CGO → easy cross-compilation).
-Migrations are numbered files (`0001_init.sql` … `0005_cookies.sql`);
+Migrations are numbered files (`0001_init.sql` … `0006_runs.sql`);
 an applied one is never edited.
 
 - `history`: id, timestamp, workspace_id, environment_name, the request **as
@@ -177,6 +183,14 @@ an applied one is never edited.
   jar's memory and are gone on restart. Workspace `''` holds the cookies of
   sends made without a workspace. Expired rows are deleted when a jar loads.
   Cookies never go into workspace files.
+- `runs` (`0006_runs.sql`): collection runner results per workspace, the
+  newest `sqlite.MaxRuns` (20) kept (older ones pruned on insert). Columns for
+  the list (target, environment name, iterations, data file **name**,
+  outcome, duration, summary JSON) and `run_json`, the whole `runner.Report`:
+  the requests as written (`{{vars}}` unresolved), per-request results with
+  tests, console and errors masked (`[secret:name]`), and response bodies only
+  when the run had "Save responses" on (text only, masked, 1 MB each, 32 MB
+  per run). Never a data file's contents, never secret values.
 - `settings` also holds the network settings (proxy mode, URL, user name,
   bypass list; CA file; client certificate paths). The proxy password and
   PKCS#12 passphrases are **not** there: they are app-level secret-store keys
@@ -311,6 +325,40 @@ Request (as written) + parentId + selected environment
   with the send's secret values plus those scripts wrote. Console output also
   streams to the UI as `script:console` events; it is never persisted.
 
+## 7a. Collection runner
+
+- `internal/runner` (no Wails; the Tier 4 CLI reuses it): `runner.New(Config)`
+  checks the configuration and resolves the order (the target's requests
+  depth-first in tree order, optionally a subset), then `Runner.Run(ctx, Sink)`
+  runs the iterations and returns a `runner.Report`; `runner.Run` does both.
+  Each send is a `pipeline.Send` (same scopes, overlay, scripts and masking as
+  a single send) executed by an `Executor` (`httpexec`).
+- Per iteration the `local` scope starts from the data row (CSV with a header,
+  or a JSON array of objects; `runner.LoadData`) and carries
+  `pm.variables.set` values from request to request (`ScriptOptions.Local`,
+  `Send.Local()`). `pm.info.iteration`/`iterationCount` and
+  `pm.iterationData` are filled. `setNextRequest(name|id)` jumps within the
+  run order (first name match, then id), `null` ends the iteration; more than
+  1000 jumps in an iteration, or a name not in the run, ends the run with an
+  error. `skipRequest` marks the result skipped.
+- "Keep variable values" off runs on `Session.Isolated()` (a private copy of
+  the overlay). Delay between requests via an injectable sleeper; ctx cancel
+  stops between or within requests and keeps the results so far.
+- Progress goes to a `Sink` (`started`, `requestStarted`, `requestFinished`,
+  `iterationFinished`, `finished`); `RunnerService` forwards it as
+  `runner:progress`, stores the report (`runs` table) and only then emits
+  `finished`. One active run per workspace; a run keeps the workspace it
+  started in.
+- `internal/runner/report`: `JSON` (schema `version` 1, documented in
+  `report.go`) and `HTML` (`html/template`, embedded CSS with light/dark via
+  `prefers-color-scheme`, no scripts or external assets). Golden files in
+  `testdata/` (`go test ./internal/runner/report -update`).
+- Frontend: a lazy runner doc tab (`Tab.doc.kind = "runner"`, one per
+  target) with the configuration (persisted with the tab), live results,
+  summary, export and past runs (`stores/runner.ts`; results are never in
+  localStorage). Runner console lines go to the shared console store, one
+  group per request per iteration.
+
 ## 8. Frontend
 
 - State: **Zustand** (tabs, active workspace, env selection); server data via bound service calls.
@@ -324,7 +372,7 @@ Request (as written) + parentId + selected environment
 ## 9. Backend ↔ frontend contract
 
 - Wails v3 services → generated TS bindings (`wails3 generate bindings`).
-- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars), `update:progress`, `script:console` (`{sendId, entries}`, one per script run that logged, masked). Planned: `request:progress`, `runner:progress`.
+- Events (backend → UI): `workspace:changed` (file watcher, `fsnotify`; also covers environments and example sidecars), `update:progress`, `script:console` (`{sendId, entries}`, one per script run that logged, masked), `runner:progress` (`{runId, workspaceId, event}` with a `runner.Event`: started with the run's configuration and order, request started/finished with the masked result, iteration finished, finished with the outcome and summary after the run is stored). Planned: `request:progress`.
 - DTOs are plain structs with JSON tags in `internal/core/model`.
 
 ## 10. Testing & quality

@@ -11,6 +11,7 @@ import {
   ExampleService,
   HistoryService,
   RequestService,
+  RunnerService,
   SettingsService,
   UIStateService,
   UpdateService,
@@ -19,6 +20,7 @@ import {
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
 import type * as bc from "../../bindings/pakpos/internal/core/cookies/models";
 import {
+  RunnerProgress,
   ScriptConsole,
   UpdateProgress as UpdateProgressEvent,
   WorkspaceChanged,
@@ -26,6 +28,19 @@ import {
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
+import type * as bsvc from "../../bindings/pakpos/internal/service/models";
+import {
+  normalizeDataPreview,
+  normalizeRunEvent,
+  normalizeRunListItem,
+  normalizeRunReport,
+  type DataPreview,
+  type ExportFormat,
+  type RunConfig,
+  type RunListItem,
+  type RunProgress,
+  type RunReport,
+} from "./runModel";
 import {
   DEFAULT_SETTINGS,
   normalizeSettings,
@@ -515,6 +530,41 @@ export const api = {
   },
   async deleteExample(requestId: string, id: string): Promise<void> {
     return ExampleService.Delete(requestId, id);
+  },
+
+  /** Starts a collection or folder run in the open workspace; resolves with its id. */
+  async startRun(config: RunConfig): Promise<string> {
+    return RunnerService.Start(config as bsvc.RunConfig);
+  },
+  async cancelRun(runId: string): Promise<boolean> {
+    return RunnerService.Cancel(runId);
+  },
+  /** The open workspace's stored runs, newest first. */
+  async listRuns(): Promise<RunListItem[]> {
+    return ((await RunnerService.List()) ?? []).map(normalizeRunListItem);
+  },
+  async getRun(runId: string): Promise<RunReport> {
+    return normalizeRunReport(await RunnerService.Get(runId));
+  },
+  async deleteRun(runId: string): Promise<void> {
+    return RunnerService.Delete(runId);
+  },
+  /** Asks where to save the report; resolves with the path, or "" when cancelled. */
+  async exportRun(runId: string, format: ExportFormat): Promise<string> {
+    return RunnerService.Export(runId, format);
+  },
+  /** Asks for a CSV or JSON data file; "" when cancelled. */
+  async pickDataFile(): Promise<string> {
+    return RunnerService.PickDataFile();
+  },
+  async previewData(path: string): Promise<DataPreview> {
+    return normalizeDataPreview(await RunnerService.PreviewData(path));
+  },
+  /** Subscribes to runner progress; returns the unsubscribe function. */
+  onRunnerProgress(cb: (p: RunProgress) => void): () => void {
+    return Events.On(RunnerProgress, (ev) => {
+      cb({ runId: ev.data.runId, workspaceId: ev.data.workspaceId, event: normalizeRunEvent(ev.data.event) });
+    });
   },
 };
 

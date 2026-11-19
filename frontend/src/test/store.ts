@@ -14,6 +14,7 @@ import { resetUpdateAnnouncements, useUpdateStore } from "@/stores/update";
 import { resetUiState } from "@/stores/uiState";
 import { cookiesInitial, useCookiesStore } from "@/stores/cookies";
 import { useConsoleStore } from "@/stores/console";
+import { resetRunnerStore } from "@/stores/runner";
 
 const workspaceInitial = useWorkspaceStore.getState();
 const historyInitial = useHistoryStore.getState();
@@ -39,6 +40,7 @@ export function resetSidebarStores(): void {
   useUpdateStore.setState({ ...updateInitial, skipped: "" }, true);
   useCookiesStore.setState(cookiesInitial);
   useConsoleStore.setState(consoleInitial, true);
+  resetRunnerStore();
   resetUpdateAnnouncements();
   resetUiState();
   useSettingsStore.setState({

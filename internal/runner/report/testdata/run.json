@@ -1,0 +1,391 @@
+{
+  "version": 1,
+  "generator": "Pakpos test",
+  "run": {
+    "id": "01RUN",
+    "workspaceId": "ws1",
+    "target": {
+      "id": "c1",
+      "kind": "collection",
+      "name": "Users API",
+      "path": [
+        "Users API"
+      ]
+    },
+    "environmentId": "e1",
+    "environmentName": "Dev",
+    "iterations": 2,
+    "delayMs": 100,
+    "dataFile": "users.csv",
+    "options": {
+      "stopOnFailure": false,
+      "keepVariables": true,
+      "saveResponses": true,
+      "recordHistory": false
+    },
+    "requests": [
+      {
+        "id": "r1",
+        "name": "Login",
+        "method": "POST",
+        "url": "{{base}}/login",
+        "request": {
+          "id": "r1",
+          "name": "Login",
+          "seq": 0,
+          "method": "POST",
+          "url": "{{base}}/login",
+          "pathParams": null,
+          "query": null,
+          "headers": null,
+          "body": {
+            "type": "",
+            "raw": "",
+            "language": "",
+            "formData": null,
+            "urlEncoded": null,
+            "binaryPath": ""
+          },
+          "auth": {
+            "type": "",
+            "username": "",
+            "password": "",
+            "token": "",
+            "prefix": "",
+            "apiKey": "",
+            "apiValue": "",
+            "apiIn": ""
+          },
+          "settings": {},
+          "scripts": {
+            "preRequest": "",
+            "test": ""
+          }
+        }
+      },
+      {
+        "id": "r2",
+        "name": "Profile \u003cme\u003e",
+        "method": "GET",
+        "url": "{{base}}/me",
+        "request": {
+          "id": "r2",
+          "name": "Profile \u003cme\u003e",
+          "seq": 0,
+          "method": "GET",
+          "url": "{{base}}/me",
+          "pathParams": null,
+          "query": null,
+          "headers": null,
+          "body": {
+            "type": "",
+            "raw": "",
+            "language": "",
+            "formData": null,
+            "urlEncoded": null,
+            "binaryPath": ""
+          },
+          "auth": {
+            "type": "",
+            "username": "",
+            "password": "",
+            "token": "",
+            "prefix": "",
+            "apiKey": "",
+            "apiValue": "",
+            "apiIn": ""
+          },
+          "settings": {},
+          "scripts": {
+            "preRequest": "",
+            "test": ""
+          }
+        }
+      },
+      {
+        "id": "r3",
+        "name": "Purge",
+        "method": "PURGE",
+        "url": "{{base}}/cache",
+        "request": {
+          "id": "r3",
+          "name": "Purge",
+          "seq": 0,
+          "method": "PURGE",
+          "url": "{{base}}/cache",
+          "pathParams": null,
+          "query": null,
+          "headers": null,
+          "body": {
+            "type": "",
+            "raw": "",
+            "language": "",
+            "formData": null,
+            "urlEncoded": null,
+            "binaryPath": ""
+          },
+          "auth": {
+            "type": "",
+            "username": "",
+            "password": "",
+            "token": "",
+            "prefix": "",
+            "apiKey": "",
+            "apiValue": "",
+            "apiIn": ""
+          },
+          "settings": {},
+          "scripts": {
+            "preRequest": "",
+            "test": ""
+          }
+        }
+      }
+    ],
+    "startedAt": "2026-11-19T09:30:00Z",
+    "finishedAt": "2026-11-19T09:30:03Z",
+    "outcome": "failed",
+    "error": "",
+    "results": [
+      {
+        "iteration": 0,
+        "index": 0,
+        "requestId": "r1",
+        "name": "Login",
+        "method": "POST",
+        "startedAt": "2026-11-19T09:30:00Z",
+        "status": 200,
+        "statusText": "OK",
+        "durationMs": 12.4,
+        "size": 512,
+        "tests": [
+          {
+            "name": "status is 200",
+            "passed": true,
+            "skipped": false,
+            "error": "",
+            "source": {
+              "kind": "request",
+              "id": "r1",
+              "name": "Login",
+              "event": "test"
+            }
+          }
+        ],
+        "console": [
+          {
+            "level": "log",
+            "text": "token [secret:token]",
+            "source": {
+              "kind": "request",
+              "id": "r1",
+              "name": "Login",
+              "event": "test"
+            }
+          }
+        ],
+        "error": null,
+        "skipped": false,
+        "secretsLocked": false,
+        "response": {
+          "contentType": "application/json",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "enabled": true
+            }
+          ],
+          "body": "{\"token\":\"[secret:token]\"}",
+          "truncated": false
+        }
+      },
+      {
+        "iteration": 0,
+        "index": 1,
+        "requestId": "r2",
+        "name": "Profile \u003cme\u003e",
+        "method": "GET",
+        "startedAt": "2026-11-19T09:30:00.02Z",
+        "status": 404,
+        "statusText": "Not Found",
+        "durationMs": 8,
+        "size": 20,
+        "tests": [
+          {
+            "name": "is 200",
+            "passed": false,
+            "skipped": false,
+            "error": "AssertionError: expected response to have status code 200 but got 404",
+            "source": {
+              "kind": "request",
+              "id": "r2",
+              "name": "Profile \u003cme\u003e",
+              "event": "test"
+            }
+          },
+          {
+            "name": "later",
+            "passed": false,
+            "skipped": true,
+            "error": "",
+            "source": {
+              "kind": "request",
+              "id": "r2",
+              "name": "Profile \u003cme\u003e",
+              "event": "test"
+            }
+          }
+        ],
+        "console": [],
+        "error": null,
+        "skipped": false,
+        "secretsLocked": false,
+        "response": {
+          "contentType": "image/png",
+          "headers": null,
+          "body": "",
+          "truncated": false,
+          "omitted": "binary"
+        }
+      },
+      {
+        "iteration": 0,
+        "index": 2,
+        "requestId": "r3",
+        "name": "Purge",
+        "method": "PURGE",
+        "startedAt": "2026-11-19T09:30:00.04Z",
+        "status": 0,
+        "statusText": "",
+        "durationMs": 0,
+        "size": 0,
+        "tests": [],
+        "console": [],
+        "error": null,
+        "skipped": true,
+        "secretsLocked": false
+      },
+      {
+        "iteration": 1,
+        "index": 0,
+        "requestId": "r1",
+        "name": "Login",
+        "method": "POST",
+        "startedAt": "2026-11-19T09:30:01Z",
+        "status": 301,
+        "statusText": "Moved Permanently",
+        "durationMs": 1500,
+        "size": 3145728,
+        "tests": [],
+        "console": [],
+        "error": null,
+        "skipped": false,
+        "secretsLocked": true,
+        "response": {
+          "contentType": "",
+          "headers": null,
+          "body": "aaaaaaaaaa",
+          "truncated": true
+        }
+      },
+      {
+        "iteration": 1,
+        "index": 1,
+        "requestId": "r2",
+        "name": "Profile \u003cme\u003e",
+        "method": "GET",
+        "startedAt": "2026-11-19T09:30:02.6Z",
+        "status": 0,
+        "statusText": "",
+        "durationMs": 0,
+        "size": 0,
+        "tests": [],
+        "console": [],
+        "error": {
+          "kind": "connection_refused",
+          "message": "Couldn't connect to [secret:host]"
+        },
+        "skipped": false,
+        "secretsLocked": false,
+        "response": {
+          "contentType": "",
+          "headers": null,
+          "body": "",
+          "truncated": false,
+          "omitted": "limit"
+        }
+      }
+    ],
+    "summary": {
+      "iterations": 2,
+      "requests": 5,
+      "errors": 1,
+      "skipped": 1,
+      "testsPassed": 1,
+      "testsFailed": 1,
+      "testsSkipped": 1,
+      "durationMs": 3000,
+      "avgResponseMs": 506.8,
+      "perRequest": [
+        {
+          "requestId": "r1",
+          "name": "Login",
+          "method": "POST",
+          "runs": 2,
+          "errors": 0,
+          "skipped": 0,
+          "testsPassed": 1,
+          "testsFailed": 0,
+          "avgMs": 756.2,
+          "minMs": 12.4,
+          "maxMs": 1500
+        },
+        {
+          "requestId": "r2",
+          "name": "Profile \u003cme\u003e",
+          "method": "GET",
+          "runs": 2,
+          "errors": 1,
+          "skipped": 0,
+          "testsPassed": 0,
+          "testsFailed": 1,
+          "avgMs": 8,
+          "minMs": 8,
+          "maxMs": 8
+        },
+        {
+          "requestId": "r3",
+          "name": "Purge",
+          "method": "PURGE",
+          "runs": 1,
+          "errors": 0,
+          "skipped": 1,
+          "testsPassed": 0,
+          "testsFailed": 0,
+          "avgMs": 0,
+          "minMs": 0,
+          "maxMs": 0
+        }
+      ],
+      "failures": [
+        {
+          "iteration": 0,
+          "requestId": "r2",
+          "name": "Profile \u003cme\u003e",
+          "test": "is 200",
+          "message": "AssertionError: expected response to have status code 200 but got 404"
+        },
+        {
+          "iteration": 1,
+          "requestId": "r2",
+          "name": "Profile \u003cme\u003e",
+          "test": "",
+          "message": "Couldn't connect to [secret:host]"
+        }
+      ],
+      "failuresTotal": 2,
+      "secretsLocked": true
+    }
+  }
+}
