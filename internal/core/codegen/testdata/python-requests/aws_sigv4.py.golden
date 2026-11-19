@@ -1,0 +1,22 @@
+import requests
+
+url = "https://example.amazonaws.com/"
+
+headers = {
+    "X-Amz-Date": "20150830T123600Z",
+    "X-Amz-Security-Token": "token",
+    "Authorization": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token, Signature=765af1e8f55bb22b2ecdc914616f1cbf1889ff08004fc774a0f640c4eecab8a5",
+    "Content-Type": "application/json",
+}
+
+payload = {
+    "a": 1,
+}
+
+response = requests.post(url, headers=headers, json=payload)
+
+print(response.status_code)
+print(response.text)
+
+# warnings:
+# The AWS signature in this code was computed now and is valid for about 5 minutes.

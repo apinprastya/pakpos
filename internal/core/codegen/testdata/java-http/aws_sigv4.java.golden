@@ -1,0 +1,29 @@
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+
+public class Main {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        String body = "{\"a\":1}";
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("https://example.amazonaws.com/"))
+                .header("X-Amz-Date", "20150830T123600Z")
+                .header("X-Amz-Security-Token", "token")
+                .header("Authorization", "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token, Signature=765af1e8f55bb22b2ecdc914616f1cbf1889ff08004fc774a0f640c4eecab8a5")
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        System.out.println(response.statusCode());
+        System.out.println(response.body());
+    }
+}
+
+# warnings:
+# The AWS signature in this code was computed now and is valid for about 5 minutes.

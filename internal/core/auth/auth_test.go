@@ -93,7 +93,7 @@ func TestApply(t *testing.T) {
 		},
 		{name: "api key without name", auth: model.Auth{Type: model.AuthAPIKey, APIKey: "  "}, wantErr: ErrMissingAPIKeyName},
 		{name: "api key bad location", auth: model.Auth{Type: model.AuthAPIKey, APIKey: "k", APIIn: "cookie"}, wantErr: errAny},
-		{name: "unknown type", auth: model.Auth{Type: "digest"}, wantErr: errAny},
+		{name: "unknown type", auth: model.Auth{Type: "kerberos"}, wantErr: errAny},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

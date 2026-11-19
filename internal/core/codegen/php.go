@@ -34,6 +34,16 @@ func genPHP(s *spec) string {
 	if s.basic != nil {
 		opts = append(opts, "CURLOPT_HTTPAUTH => CURLAUTH_BASIC", "CURLOPT_USERPWD => "+phpString(basicPair(s.basic)))
 	}
+	if s.digest != nil {
+		opts = append(opts, "CURLOPT_HTTPAUTH => CURLAUTH_DIGEST", "CURLOPT_USERPWD => "+phpString(s.digest.Username+":"+s.digest.Password))
+	}
+	if s.ntlm != nil {
+		user := s.ntlm.Username
+		if s.ntlm.Domain != "" {
+			user = s.ntlm.Domain + `\` + user
+		}
+		opts = append(opts, "CURLOPT_HTTPAUTH => CURLAUTH_NTLM", "CURLOPT_USERPWD => "+phpString(user+":"+s.ntlm.Password))
+	}
 
 	switch s.body.Type {
 	case model.BodyRaw:

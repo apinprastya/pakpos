@@ -70,6 +70,8 @@ so decoding it locally is safer than pasting it into a website.
 
 ## Milestone 3 — Signature verification (Go)
 
+> `internal/core/jwtx` already exists (built in Tier 3 M7 for the JWT auth type): `Sign`, `Verify(token, Key) (Result, error)` with `Key{Kind: secret|pem|jwk|jwks, Data}`, `Result{Valid, Alg, Kid, Reason}`, `SecretKey(text, base64)`, `Algorithms()`, and tests for every algorithm, wrong keys, algorithm/key-family mismatches and `alg: none`. M3 only adds the JWKS fetch and `ToolService`.
+
 1. `internal/core/jwtx`: `Verify(token, key Key) (Result, error)`, where `Key` is a secret, PEM, JWK or JWK set. `Result` holds `valid`, `alg`, `kid` and a reason ("Signature doesn't match", "Algorithm HS256 needs a shared secret, not a public key"). No Wails, no I/O.
 2. `ToolService.VerifyJWT(ctx, req)`: resolves variables through the pipeline, fetches a JWKS URL through `httpexec` with the app settings, calls `jwtx.Verify`. Secrets in the request never come back in the result.
 3. Frontend: a Signature section (algorithm read from the header, key-type select, key input, Verify button, result line). `api.ts` + `apiMock.ts` entries.

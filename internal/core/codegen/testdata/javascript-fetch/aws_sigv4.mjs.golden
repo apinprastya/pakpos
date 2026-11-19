@@ -1,0 +1,18 @@
+const response = await fetch("https://example.amazonaws.com/", {
+  method: "POST",
+  headers: {
+    "X-Amz-Date": "20150830T123600Z",
+    "X-Amz-Security-Token": "token",
+    "Authorization": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token, Signature=765af1e8f55bb22b2ecdc914616f1cbf1889ff08004fc774a0f640c4eecab8a5",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    "a": 1
+  }),
+});
+
+console.log(response.status);
+console.log(await response.text());
+
+# warnings:
+# The AWS signature in this code was computed now and is valid for about 5 minutes.

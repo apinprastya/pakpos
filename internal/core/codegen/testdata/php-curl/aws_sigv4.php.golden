@@ -1,0 +1,28 @@
+<?php
+
+$curl = curl_init();
+
+curl_setopt_array($curl, [
+    CURLOPT_URL => 'https://example.amazonaws.com/',
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_CUSTOMREQUEST => 'POST',
+    CURLOPT_HTTPHEADER => [
+        'X-Amz-Date: 20150830T123600Z',
+        'X-Amz-Security-Token: token',
+        'Authorization: AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token, Signature=765af1e8f55bb22b2ecdc914616f1cbf1889ff08004fc774a0f640c4eecab8a5',
+        'Content-Type: application/json',
+    ],
+    CURLOPT_POSTFIELDS => '{"a":1}',
+]);
+
+$response = curl_exec($curl);
+
+if ($response === false) {
+    echo 'Request failed: ' . curl_error($curl) . PHP_EOL;
+} else {
+    echo curl_getinfo($curl, CURLINFO_RESPONSE_CODE) . PHP_EOL;
+    echo $response . PHP_EOL;
+}
+
+# warnings:
+# The AWS signature in this code was computed now and is valid for about 5 minutes.

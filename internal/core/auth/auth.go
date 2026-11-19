@@ -78,6 +78,14 @@ func Apply(r *http.Request, a model.Auth) error {
 		return applyAPIKey(r, a)
 	case model.AuthOAuth2:
 		return ErrOAuth2Token
+	case model.AuthDigest, model.AuthNTLM:
+		return nil // answered by httpexec after the server's challenge
+	case model.AuthAWSV4:
+		return applyAWS(r, a.AWSV4)
+	case model.AuthJWT:
+		return applyJWT(r, a.JWT)
+	case model.AuthHawk:
+		return applyHawk(r, a.Hawk)
 	default:
 		return fmt.Errorf("unsupported auth type %q", a.Type)
 	}
@@ -124,12 +132,81 @@ func applyAPIKey(r *http.Request, a model.Auth) error {
 //
 // req is not modified; Headers and Query are copied when they change.
 func Materialize(req model.Request, keepBasic bool) (model.Request, error) {
+	out, _, err := MaterializeWith(req, func(t model.AuthType) bool { return keepBasic && t == model.AuthBasic })
+	return out, err
+}
+
+// MaterializeWith is Materialize where keep says which auth types the
+// target writes with its own helper (they stay as auth: basic, Digest,
+// NTLM, AWS Signature v4). The others become headers or query rows: AWS
+// Signature v4, JWT and Hawk are computed now (see Signed), which needs
+// their settings resolved; Digest and NTLM can't be (they need the
+// server's challenge) and are left out. The warnings say what the code
+// does differently from a send. keep may be nil.
+func MaterializeWith(req model.Request, keep func(model.AuthType) bool) (model.Request, []string, error) {
 	a := req.Auth
-	if a.Type == model.AuthOAuth2 {
-		a = TokenAuth(a.OAuth2, TokenPlaceholder)
-	}
 	out := req
 	out.Auth = model.Auth{Type: model.AuthNone}
+	kept := keep != nil && keep(a.Type)
+	switch a.Type {
+	case model.AuthOAuth2:
+		a = TokenAuth(a.OAuth2, TokenPlaceholder)
+	case model.AuthJWT:
+		if hasValue(req.Headers, "Authorization") && a.JWT != nil && a.JWT.Placement != model.PlaceQuery {
+			return out, nil, nil
+		}
+		tok, warn := materializeJWT(a.JWT)
+		if tok == "" {
+			return out, warn, nil
+		}
+		a = JWTAuth(*a.JWT, tok)
+		res, err := materializeSimple(out, req, a, false)
+		return res, warn, err
+	case model.AuthDigest, model.AuthNTLM, model.AuthAWSV4:
+		if hasValue(req.Headers, "Authorization") {
+			return out, nil, nil
+		}
+		if kept && authSettings(a) {
+			out.Auth = a
+			return out, nil, nil
+		}
+		if a.Type == model.AuthAWSV4 {
+			return materializeAWS(out, req)
+		}
+		if authSettings(a) {
+			return out, []string{handshakeWarning(a.Type)}, nil
+		}
+		return out, nil, nil
+	case model.AuthHawk:
+		if hasValue(req.Headers, "Authorization") {
+			return out, nil, nil
+		}
+		return materializeHawk(out, req)
+	}
+	res, err := materializeSimple(out, req, a, kept)
+	return res, nil, err
+}
+
+// authSettings reports whether a has the settings block of its type.
+func authSettings(a model.Auth) bool {
+	switch a.Type {
+	case model.AuthDigest:
+		return a.Digest != nil
+	case model.AuthNTLM:
+		return a.NTLM != nil
+	case model.AuthAWSV4:
+		return a.AWSV4 != nil
+	}
+	return true
+}
+
+func handshakeWarning(t model.AuthType) string {
+	name := map[model.AuthType]string{model.AuthDigest: "Digest", model.AuthNTLM: "NTLM"}[t]
+	return name + " auth needs the server's challenge, which this code doesn't answer, so it sends no auth. Add it with an HTTP library that supports " + name + "."
+}
+
+// materializeSimple writes basic, bearer and API key auth.
+func materializeSimple(out, req model.Request, a model.Auth, keepBasic bool) (model.Request, error) {
 	switch a.Type {
 	case "", model.AuthNone, model.AuthInherit:
 		return out, nil

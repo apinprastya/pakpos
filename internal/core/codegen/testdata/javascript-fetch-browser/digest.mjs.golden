@@ -1,0 +1,7 @@
+const response = await fetch("https://example.com/dir/index.html");
+
+console.log(response.status);
+console.log(await response.text());
+
+# warnings:
+# Digest auth needs the server's challenge, which this code doesn't answer, so it sends no auth. Add it with an HTTP library that supports Digest.

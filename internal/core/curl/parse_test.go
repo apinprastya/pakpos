@@ -152,7 +152,7 @@ func TestParse(t *testing.T) {
 			if r.Auth.Type != model.AuthNone || len(r.Headers) != 1 {
 				t.Errorf("%+v %+v", r.Auth, r.Headers)
 			}
-		}, warn: []string{"Only basic auth"}},
+		}},
 		{name: "basic header not decodable stays", text: "curl -H 'Authorization: Basic !!' -H 'X: y' https://a.com", check: func(t *testing.T, r model.Request) {
 			if r.Auth.Type != model.AuthNone || r.Headers[0].Value != "Basic !!" {
 				t.Errorf("%+v %+v", r.Auth, r.Headers)

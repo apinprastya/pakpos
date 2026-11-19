@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ConsoleEntry, ConsoleLevel, SendResult } from "@/lib/model";
+import { statusName, type ConsoleEntry, type ConsoleLevel, type SendResult } from "@/lib/model";
 
 /** The most console lines kept; the oldest go first. */
 export const MAX_CONSOLE_ENTRIES = 2000;
@@ -84,7 +84,7 @@ function capped(groups: ConsoleGroup[]): ConsoleGroup[] {
 export function statusText(result: SendResult): string {
   if (result.skipped) return "Skipped";
   if (result.error) return result.error.kind === "canceled" ? "Cancelled" : "Error";
-  if (result.response) return `${result.response.statusCode} ${result.response.statusText}`.trim();
+  if (result.response) return statusName(result.response.statusCode, result.response.statusText);
   return "";
 }
 

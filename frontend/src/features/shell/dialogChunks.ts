@@ -9,6 +9,7 @@ export const loadCookies = () => import("@/features/cookies/CookieManagerDialog"
 export const loadScripts = () => import("@/features/scripts/ScriptsSection");
 export const loadConsole = () => import("@/features/console/ConsoleDrawer");
 export const loadRunner = () => import("@/features/runner/RunnerView");
+export const loadOtherAuth = () => import("@/features/request/OtherAuthFields");
 
 /** The palette first: it's the one opened most and expected to be instant. */
 export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
@@ -20,6 +21,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadScripts,
   loadConsole,
   loadRunner,
+  loadOtherAuth,
   loadUpdate,
 ];
 

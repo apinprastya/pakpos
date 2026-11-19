@@ -40,6 +40,16 @@ export function autoHeaders(req: Request, userAgent: string): AutoHeader[] {
   if (a.type === "bearer" && a.token)
     list.push({ name: "Authorization", value: `${a.prefix || "Bearer"} …` });
   if (a.type === "apikey" && a.apiIn === "header" && a.apiKey) list.push({ name: a.apiKey, value: "…" });
+  if (a.type === "jwt" && a.jwt?.placement !== "query")
+    list.push({ name: "Authorization", value: `${a.jwt?.headerPrefix || "Bearer"} …` });
+  if (a.type === "hawk") list.push({ name: "Authorization", value: "Hawk …" });
+  if (a.type === "awsv4") {
+    list.push({ name: "Authorization", value: "AWS4-HMAC-SHA256 …" });
+    list.push({ name: "X-Amz-Date", value: "…" });
+    if (a.awsv4?.sessionToken) list.push({ name: "X-Amz-Security-Token", value: "…" });
+  }
+  if (a.type === "digest" || a.type === "ntlm")
+    list.push({ name: "Authorization", value: a.type === "digest" ? "Digest … (after a 401)" : "NTLM …" });
 
   return list.map((h) => ({ ...h, overridden: user.has(h.name.toLowerCase()) }));
 }

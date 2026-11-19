@@ -27,7 +27,11 @@ func pyText(s string) string {
 // genPython writes a Python 3 script using requests.
 func genPython(s *spec) string {
 	var b strings.Builder
-	b.WriteString("import requests\n\n")
+	b.WriteString("import requests\n")
+	if s.digest != nil {
+		b.WriteString("from requests.auth import HTTPDigestAuth\n")
+	}
+	b.WriteString("\n")
 	b.WriteString("url = " + pyString(s.url) + "\n")
 
 	var args []string
@@ -96,6 +100,9 @@ func genPython(s *spec) string {
 	}
 	if s.basic != nil {
 		args = append(args, "auth=("+pyString(s.basic.Username)+", "+pyString(s.basic.Password)+")")
+	}
+	if s.digest != nil {
+		args = append(args, "auth=HTTPDigestAuth("+pyString(s.digest.Username)+", "+pyString(s.digest.Password)+")")
 	}
 
 	call := "requests." + strings.ToLower(s.method) + "(url"

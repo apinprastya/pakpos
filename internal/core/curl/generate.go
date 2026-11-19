@@ -24,7 +24,7 @@ import (
 // left out. The request's own settings follow the URL (see settingArgs).
 func Generate(req model.Request) string {
 	// An incomplete API key setting is left out, as it can't be sent.
-	r, _ := auth.Materialize(req, true)
+	r, _, _ := auth.MaterializeWith(req, Keeps)
 	method := strings.ToUpper(strings.TrimSpace(r.Method))
 	if method == "" {
 		method = "GET"
@@ -52,9 +52,7 @@ func Generate(req model.Request) string {
 
 	lines := []string{strings.Join(first, " ")}
 	lines = append(lines, settingArgs(r.Settings)...)
-	if r.Auth.Type == model.AuthBasic {
-		lines = append(lines, "-u "+Quote(r.Auth.Username+":"+r.Auth.Password))
-	}
+	lines = append(lines, authArgs(r.Auth)...)
 	for _, h := range headers {
 		if h.Value == "" {
 			lines = append(lines, "-H "+Quote(h.Key+";"))
@@ -64,6 +62,44 @@ func Generate(req model.Request) string {
 	}
 	lines = append(lines, body...)
 	return strings.Join(lines, " \\\n  ")
+}
+
+// Keeps reports the auth types curl writes with its own options (-u with
+// --digest, --ntlm or --aws-sigv4); the others become headers.
+func Keeps(t model.AuthType) bool {
+	switch t {
+	case model.AuthBasic, model.AuthDigest, model.AuthNTLM, model.AuthAWSV4:
+		return true
+	}
+	return false
+}
+
+// authArgs writes basic, Digest, NTLM and AWS Signature v4 auth as curl
+// options.
+func authArgs(a model.Auth) []string {
+	switch a.Type {
+	case model.AuthBasic:
+		return []string{"-u " + Quote(a.Username+":"+a.Password)}
+	case model.AuthDigest:
+		return []string{"--digest", "-u " + Quote(a.Digest.Username+":"+a.Digest.Password)}
+	case model.AuthNTLM:
+		user := a.NTLM.Username
+		if a.NTLM.Domain != "" {
+			user = a.NTLM.Domain + `\` + user
+		}
+		return []string{"--ntlm", "-u " + Quote(user+":"+a.NTLM.Password)}
+	case model.AuthAWSV4:
+		w := a.AWSV4
+		out := []string{"--aws-sigv4 " + Quote("aws:amz:"+w.Region+":"+w.Service), "-u " + Quote(w.AccessKey+":"+w.SecretKey)}
+		if w.SessionToken != "" {
+			out = append(out, "-H "+Quote("X-Amz-Security-Token: "+w.SessionToken))
+		}
+		if w.UnsignedPayload {
+			out = append(out, "-H "+Quote("X-Amz-Content-Sha256: UNSIGNED-PAYLOAD"))
+		}
+		return out
+	}
+	return nil
 }
 
 var globRe = regexp.MustCompile(`[\[\]{}]`)

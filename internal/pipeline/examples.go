@@ -76,9 +76,13 @@ func (s *Session) SendSecrets(req model.Request, parentID, envID string) (values
 	tokens, tokensLocked := s.tokenSecrets(req, parentID)
 	plain = append(plain, tokens...)
 	locked = locked || tokensLocked
+	p, perr := s.Prepare(req, parentID, envID)
+	if perr == nil {
+		plain = append(plain, AuthSecrets(p.Request.Auth)...)
+	}
 	values = append(values, plain...)
 	values = append(values, EncodedForms(plain)...)
-	if p, err := s.Prepare(req, parentID, envID); err == nil && p.Request.Auth.Type == model.AuthBasic {
+	if perr == nil && p.Request.Auth.Type == model.AuthBasic {
 		a := p.Request.Auth
 		if name := secretIn(plain, a.Password, a.Username); name != "" {
 			creds := []byte(a.Username + ":" + a.Password)
@@ -90,6 +94,34 @@ func (s *Session) SendSecrets(req model.Request, parentID, envID string) (values
 	values = dedupe(values)
 	slices.SortStableFunc(values, func(a, b SecretValue) int { return len(b.Value) - len(a.Value) })
 	return values, locked
+}
+
+// AuthSecrets returns the resolved values of the secret-bearing fields of
+// the auth types Tier 3 added (Digest and NTLM passwords, the AWS secret
+// key and session token, the JWT signing key, the Hawk key), so a value
+// typed in as is (not a secret variable) is masked too. Each is named
+// after its field. Values shorter than MinSecretLength are left out.
+func AuthSecrets(a model.Auth) []SecretValue {
+	var out []SecretValue
+	add := func(name, v string) {
+		if len(v) >= MinSecretLength {
+			out = append(out, SecretValue{Name: name, Value: v})
+		}
+	}
+	switch {
+	case a.Type == model.AuthDigest && a.Digest != nil:
+		add("digestPassword", a.Digest.Password)
+	case a.Type == model.AuthAWSV4 && a.AWSV4 != nil:
+		add("awsSecretKey", a.AWSV4.SecretKey)
+		add("awsSessionToken", a.AWSV4.SessionToken)
+	case a.Type == model.AuthJWT && a.JWT != nil:
+		add("jwtSecret", a.JWT.Secret)
+	case a.Type == model.AuthHawk && a.Hawk != nil:
+		add("hawkKey", a.Hawk.Key)
+	case a.Type == model.AuthNTLM && a.NTLM != nil:
+		add("ntlmPassword", a.NTLM.Password)
+	}
+	return out
 }
 
 // EncodedForms returns the forms of each value that commonly show up when a
@@ -181,6 +213,31 @@ func eachString(ex *fsstore.Example, f func(*string)) {
 		}
 		kvs(o.ExtraParams)
 	}
+	if d := r.Auth.Digest; d != nil {
+		for _, p := range []*string{&d.Username, &d.Password} {
+			f(p)
+		}
+	}
+	if w := r.Auth.AWSV4; w != nil {
+		for _, p := range []*string{&w.AccessKey, &w.SecretKey, &w.SessionToken, &w.Region, &w.Service} {
+			f(p)
+		}
+	}
+	if j := r.Auth.JWT; j != nil {
+		for _, p := range []*string{&j.Secret, &j.Header, &j.Payload, &j.HeaderPrefix, &j.QueryParam} {
+			f(p)
+		}
+	}
+	if h := r.Auth.Hawk; h != nil {
+		for _, p := range []*string{&h.ID, &h.Key, &h.Ext, &h.App, &h.Dlg} {
+			f(p)
+		}
+	}
+	if n := r.Auth.NTLM; n != nil {
+		for _, p := range []*string{&n.Username, &n.Password, &n.Domain, &n.Workstation} {
+			f(p)
+		}
+	}
 	kvs(r.PathParams)
 	kvs(r.Query)
 	kvs(r.Headers)
@@ -254,6 +311,38 @@ func copyExample(ex fsstore.Example) fsstore.Example {
 	r.Headers = slices.Clone(r.Headers)
 	r.Body.URLEncoded = slices.Clone(r.Body.URLEncoded)
 	r.Body.FormData = slices.Clone(r.Body.FormData)
+	r.Auth = copyAuth(r.Auth)
 	ex.Response.Headers = slices.Clone(ex.Response.Headers)
 	return ex
+}
+
+// copyAuth copies the auth's settings blocks, so masking them never
+// changes the input.
+func copyAuth(a model.Auth) model.Auth {
+	if a.OAuth2 != nil {
+		o := *a.OAuth2
+		o.ExtraParams = slices.Clone(o.ExtraParams)
+		a.OAuth2 = &o
+	}
+	if a.Digest != nil {
+		d := *a.Digest
+		a.Digest = &d
+	}
+	if a.AWSV4 != nil {
+		w := *a.AWSV4
+		a.AWSV4 = &w
+	}
+	if a.JWT != nil {
+		j := *a.JWT
+		a.JWT = &j
+	}
+	if a.Hawk != nil {
+		h := *a.Hawk
+		a.Hawk = &h
+	}
+	if a.NTLM != nil {
+		n := *a.NTLM
+		a.NTLM = &n
+	}
+	return a
 }

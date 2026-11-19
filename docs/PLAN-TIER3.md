@@ -155,6 +155,22 @@ PLAN-TOOLS stays a separate plan.
 | UI | Auth type "OAuth 2.0" in request, folder and collection editors; fields per grant; callback "Random port"/"Fixed URL" with help and a copy button; token panel (status with relative expiry, scope, Get new access token with waiting state, Cancel and "Copy the link", Refresh, Reveal/Hide, Clear, Unlock when locked); an inherited OAuth 2.0 shows the owner's status read-only. Palette "Get new OAuth 2.0 token". `stores/oauth2.ts` holds status, flows and errors per owner, never token values. |
 | Event | `oauth2:flow` (`OAuth2FlowEvent{flowId, stage: "browser", authUrl}`) when the authorization URL was opened, so the UI can show "Waiting…" and offer the link when no browser opened. |
 
+### Decisions made in M7
+
+| Topic | Decision |
+|---|---|
+| Model | `Auth.Digest`, `AWSV4`, `JWT`, `Hawk`, `NTLM` blocks (omitempty), types `digest`, `awsv4`, `jwt`, `hawk`, `ntlm`; `Auth.IsV3` counts the types and any block, so writing one upgrades the manifest. Blocks are kept when the type changes (as all auth fields are). |
+| Where auth applies | JWT, AWS SigV4 and Hawk are signed last in `httpexec.Build` (`auth.Apply`), after every header is final; the body is read into memory for payload hashes (form-data too: its boundary is random). Digest and NTLM are handshakes in `httpexec.send`. A user `Authorization` header always wins. |
+| Digest | Sent without auth; a 401 with a supported challenge (strongest of SHA-256, SHA-256-sess, MD5, MD5-sess, or the preferred one) is answered once by rebuilding the request (so any body replays). Not retried after a redirect. qop auth by default, auth-int when chosen and offered (or the only one offered); userhash and `username*` when needed; nc 1 and a fresh cnonce per send. A 401 without a usable challenge is the response. Tested with the RFC 7616/2617 vectors. |
+| AWS SigV4 | Own code (`core/auth/awsv4`). Signed headers: host, Content-Type, Content-MD5, every `X-Amz-*` (not User-Agent, which proxies may change). Path normalized and double-encoded except for S3; `X-Amz-Content-Sha256` for S3 and UNSIGNED-PAYLOAD. Vectors: 9 cases from the AWS test suite (Apache-2.0; only expected signatures are reproduced) plus the IAM documentation example. |
+| JWT | `core/jwtx` created with signing and verification (secret, PEM key/cert, JWK, JWK set), API as PLAN-TOOLS M3 needs (noted there). Header extra fields and payload are JSON objects, resolved like a raw JSON body; fields are written in name order; typ defaults to JWT; iat, exp (= now + lifetime) and jti are added unless the payload sets them. PEM keys pasted into the single-line field are repaired (`auth.NormalizePEM`). The generated token shows unmasked in the Debug tab (it's what users debug; it's derived and short-lived; the key never leaves). |
+| Hawk | Own code from the spec; README vectors. Timestamp and nonce per send; payload hash optional. The response's `Server-Authorization` isn't checked (Tier 4). |
+| NTLM | Kept (not dropped): `github.com/Azure/go-ntlmssp` v0.1.1 (MIT, April 2026), NTLMv2 only. The first request carries NEGOTIATE (no anonymous round trip); the handshake uses a per-send transport (HTTP/1.1, `MaxConnsPerHost` 1, closed after the send), never the shared cache. Domain is prefixed (`DOMAIN\user`) unless the username has one. |
+| Errors | Signing failures and unanswerable challenges are `KindAuth`; the message ends with "Check the Auth tab." |
+| Masking | `pipeline.AuthSecrets`: the resolved Digest/NTLM passwords, AWS secret key and session token, JWT key and Hawk key join `SendSecrets` as `[secret:digestPassword]` etc. (secret variables keep their own names). Example sidecars are scanned in the new fields too, and copies of all auth blocks are taken before masking. |
+| Code and cURL | `auth.MaterializeWith(req, keep)` with a per-language keep set (see Decisions: "Codegen and cURL for new auth"). Computed SigV4/JWT/Hawk need resolved values: with a `{{reference}}` left (secrets not revealed) the auth is left out with a warning. cURL import: `--digest`, `--ntlm` (`DOMAIN\user`), `--aws-sigv4 aws:amz:<region>:<service>` with `-u` (an `X-Amz-Security-Token` header becomes the session token). |
+| UI | Labels: Digest auth, AWS Signature v4, JWT bearer, Hawk, NTLM. Their fields are one lazy chunk (`OtherAuthFields`, ~8 kB). JWT payload and header fields are `CodeEditor`s (JSON, `{{vars}}`). |
+
 ## Workspace on disk (v3)
 
 ```
@@ -337,16 +353,41 @@ M3 ─ M4 ─ M5 ────────────────────┘
   - Docs: AGENTS.md, ARCHITECTURE.md (§3, §5a, §6, §9), SMOKE-TEST.md ("Tier 3: OAuth 2.0").
   - No new dependencies.
 
+- **M7 — Other auth: items 1–2 done (NTLM kept).**
+  - **Model and resolution**: `model.Digest/AWSV4/JWT/Hawk/NTLM`, `Auth.IsV3` (`TestOtherAuthYAML`), `vars.ResolveRequest` (`TestResolveRequestOtherAuth`, JWT JSON escaping).
+  - **Core**: `core/auth/digest` (98%), `core/auth/awsv4` (99%), `core/auth/hawk` (100%), `core/jwtx` (96.8%: every algorithm verified with the standard library, jwt.io token, key kinds, errors), `core/auth/signed.go` + `materialize.go` (97.6%).
+  - **httpexec**: `handshake.go` (`send`, Digest retry, NTLM, `dedicated` transports); `auth_test.go` against the `testnet` servers (Digest per algorithm/qop/userhash/file body, NTLM incl. 8 concurrent sends and connection reuse, SigV4 incl. form data, Hawk, JWT).
+  - **testnet**: `auth.go` verifying servers (Digest, NTLMv2 with per-connection challenges, SigV4, Hawk, JWT).
+  - **cURL/codegen**: `curl` import/export (`otherauth_test.go`), codegen goldens `digest`, `ntlm`, `aws_sigv4` in all languages.
+  - **Pipeline/service**: `AuthSecrets`, example fields, `copyAuth`; e2e `e2e_auth_test.go` (`TestEndToEndOtherAuth`: every type inherited from a collection with secret variables, hops/code/files/SQLite scanned, a literal session token masked, kind `auth`, manifest v3).
+  - **Frontend**: `model.ts` types and normalizers, `auth.ts`, `AuthEditor`, `OtherAuthFields.tsx` (lazy), `summary.ts`, `autoHeaders.ts`. Tests: `OtherAuth.test.tsx`, `summary.test.ts`, `autoHeaders.test.ts`.
+  - New dependency: `github.com/Azure/go-ntlmssp` v0.1.1 (MIT, pure Go).
+  - Gates: `wails3 task lint` 0 issues; `wails3 task coverage`: Go 96.2%, frontend 98.71% statements / 94.72% branches / 98.57% functions / 99.17% lines (962 tests). `GOOS=windows go vet ./internal/...` clean; `go test -race` on core, testnet and pipeline clean.
+
+- **M8 — Polish and release: done, except what needs real machines (see below).**
+  - Carry-overs finished: "Open the Auth tab" on `auth` send errors (`ResponsePane`, `Tests.test.tsx`); the inactive-auth-block question decided (kept, see M7 decisions); the status label now always shows the code (`statusName` in the response meta, console headers and runner rows: Go sends the bare reason phrase, so the meta showed "OK" alone); JWT editor labels aligned with their editors; `frontend/tsconfig.tsbuildinfo` is no longer tracked (checked with `git ls-files`).
+  - Visual check (light and dark, `scripts/screenshot.mjs` scenario + Playwright on the Go pages): request Settings tab, Network settings, cookie manager, Scripts tab, Tests tab with the console, runner tab, OAuth 2.0 and all M7 auth editors, the HTML run report and the OAuth callback page (success and error). Problems found and fixed: the two above. Left (cosmetic): the cookie manager's and the HTML report's per-group tables size their columns independently, so columns don't line up between domains/iterations.
+  - Bundle (vite build): startup JS = `index` 1,094.7 kB + shared chunks loaded at start (button 66.2, errors 77.3, dist 33.5, model 25.3, small ones 2.7) ≈ **1,300 kB (≈395 kB gzip)**, vs 1,184 kB (367.8 kB gzip) at the end of Tier 2: +116 kB for all of Tier 3 (request Settings tab, OAuth 2.0 editor and token panel, Tests tab, overlay notes, console store, runner/console wrappers). Lazy: RunnerView 22.9 kB, ScriptsSection 14.8 kB, CookieManagerDialog 10.4 kB, OtherAuthFields 7.8 kB, ConsoleDrawer 5.7 kB, SettingsDialog 30.6 kB (with Network).
+  - Docs: AGENTS.md (stack with licenses, layout, other-auth conventions), ARCHITECTURE.md (layout diagram, directories, §4 v3 writes, §6 pipeline and other auth, §8 lazy chunks), ROADMAP.md (Tier 3 done in code; Tier 4 additions), SMOKE-TEST.md ("Tier 3: other auth"), PLAN-TOOLS.md (jwtx exists).
+
+### Carried over from M7
+
+- **Hawk response verification** (`Server-Authorization`) and **NTLMv1/Kerberos (Negotiate)**: not done (Tier 4).
+- **Large bodies with SigV4/Hawk/auth-int** are read into memory to hash them; S3 users can choose UNSIGNED-PAYLOAD.
+- **NTLM sends the body twice** (with NEGOTIATE and AUTHENTICATE); fine for API calls, wasteful for uploads.
+- **Digest after a redirect** isn't answered (the 401 is returned).
+- **Smoke test** "Tier 3: other auth" against real servers on Linux, macOS and Windows.
+
 ### Carried over from M6
 
 - **Visual check** of the OAuth 2.0 auth editor, the token panel and the callback page in light and dark with `scripts/screenshot.mjs` wasn't run (needs an `AuthService` scenario).
 - **Smoke test** "Tier 3: OAuth 2.0" against real providers (Auth0/Keycloak/Google) on Linux, macOS and Windows, including the browser opening and `localhost` resolving to `::1`.
-- **No "Open the Auth tab" button** on the `auth` send error (the message names the tab); the response pane could link to it as it does for scripts.
-- **Token endpoint exchanges aren't in the Debug tab** (separate requests); a "token requests" section could show them masked.
+- ~~**No "Open the Auth tab" button**~~: done in M8.
+- **Token endpoint exchanges aren't in the Debug tab** (separate requests): left in M8, moved to Tier 4. The recorder starts after `Authorize`, and the Debug tab presents hops as one request and its redirects, so this needs its own section, not a small change.
 - **Echoed tokens in history bodies**: like secret variables, a response body that echoes the token is stored as received.
 - **No device code grant, no client assertion (private_key_jwt), no OpenID discovery** (`.well-known`), no token revocation call on Clear.
 - **Scripts can't read the token** (`pm.request.auth` isn't implemented; M3 carry-over).
-- **Switching away from OAuth 2.0 keeps the `oauth2` block** in the file (and the v3 manifest), like other auth fields are kept.
+- **Switching away from OAuth 2.0 keeps the `oauth2` block** in the file (and the v3 manifest), like other auth fields are kept. Decided in M8: keep it (same rule for every auth block; dropping on save would lose settings when users switch types to compare).
 
 ### Carried over from M5
 
@@ -360,8 +401,8 @@ M3 ─ M4 ─ M5 ────────────────────┘
 
 ### Carried over from M4
 
-- **History and script results**: a history entry has no tests, console or `scriptError` (never stored), so a script error opened from history has no "Open the script" button.
-- **Hover docs** for `pm` members (completion info only), and no `pm` completions on local variables holding API objects (`const res = pm.response; res.` offers nothing).
+- **History and script results**: a history entry has no tests, console or `scriptError` (never stored), so a script error opened from history has no "Open the script" button. Left in M8: it needs a history migration and storing script positions.
+- **Hover docs** (left in M8: new feature work, completion info covers the one-line docs) for `pm` members (completion info only), and no `pm` completions on local variables holding API objects (`const res = pm.response; res.` offers nothing).
 - **Inherited scripts** are read per level on each change; the runner (M5) may want them in the preview instead.
 - **Console** isn't per tab and not exportable. ~~The runner (M5) needs its own grouping~~: done in M5 (`addRunSend`, "Run … · Iteration N" headers).
 - **Settings tabs restored from before M4** show empty scripts until reloaded (saving won't clear the disk's scripts, see the decision).
@@ -388,7 +429,17 @@ M3 ─ M4 ─ M5 ────────────────────┘
 
 - **First `release.yml` run.** Push a pre-release tag (e.g. `v26.11.1-rc.1`) and check the Linux packages, the NSIS installer and the universal dmg (needs a tag push; agents never push).
 - **Smoke test on macOS and Windows** (`docs/SMOKE-TEST.md`), including the keychain on each and the file store with a master password on Linux. Worth adding a pruning check: delete a secret variable by hand in a file, restart, and confirm the value is gone from the keychain.
-- **`git rm --cached frontend/tsconfig.tsbuildinfo`**: still to run once by the user (the file is already in `.gitignore`).
+- ~~**`git rm --cached frontend/tsconfig.tsbuildinfo`**~~: no longer tracked (checked in M8).
 - **The `codegen-syntax` CI job** (Tier 2 M8) still needs its first run on a push.
 - **Pruning other workspaces.** Pruning covers the workspace being opened; values of a workspace folder deleted from disk stay until that workspace is opened again (never, then). A "prune every known workspace" pass would need the index to remember paths; left open.
-- **Form-data file/type cells** still have no variable support (the M5 bulk-edit carry-over named them too); they are not text fields and stay as they are unless asked.
+- **Form-data file/type cells** still have no variable support (the M5 bulk-edit carry-over named them too); they are not text fields and stay as they are unless asked (left again in M8).
+
+## Definition of Done — what's left
+
+Everything in code is done and gated (lint, coverage ≥ 80%, Windows vet, race on the new packages, `wails3 build`). What needs the user or real machines:
+
+- [ ] Push a pre-release tag (e.g. `v26.11.1-rc.1`) so `release.yml` runs for the first time; check the Linux packages, the NSIS installer and the universal dmg. The `codegen-syntax` CI job also gets its first run on that push.
+- [ ] CI green on Linux, macOS and Windows for this branch (agents never push).
+- [ ] Smoke test (`docs/SMOKE-TEST.md`, all "Tier 3" sections incl. "other auth") on Linux, macOS and Windows: keychain on each, the file store with a master password on Linux, OS proxy env differences, OAuth 2.0 with a real provider (browser opening, `localhost` → `::1`), NTLM against a Windows server.
+- [ ] Code signing (Windows and macOS), only if the signing secrets become available.
+- [x] `frontend/tsconfig.tsbuildinfo` untracked (nothing to do).

@@ -1,0 +1,3 @@
+curl https://example.com/dir/index.html \
+  --digest \
+  -u 'Mufasa:{{password}}'

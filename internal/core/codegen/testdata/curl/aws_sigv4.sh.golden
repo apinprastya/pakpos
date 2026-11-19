@@ -1,0 +1,6 @@
+curl https://example.amazonaws.com/ \
+  --aws-sigv4 aws:amz:us-east-1:service \
+  -u AKIDEXAMPLE:wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY \
+  -H 'X-Amz-Security-Token: token' \
+  -H 'Content-Type: application/json' \
+  --data-raw '{"a":1}'

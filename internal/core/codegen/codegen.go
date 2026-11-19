@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"pakpos/internal/core/auth"
+	"pakpos/internal/core/curl"
 	"pakpos/internal/core/model"
 	"pakpos/internal/core/urlx"
 )
@@ -50,17 +51,33 @@ var ErrUnknownLanguage = errors.New("unknown code language")
 type generator struct {
 	Language
 	gen func(*spec) string
+	// keep lists the auth types the language writes with a helper of its
+	// own (see auth.MaterializeWith).
+	keep func(model.AuthType) bool
 }
 
+func keepTypes(types ...model.AuthType) func(model.AuthType) bool {
+	return func(t model.AuthType) bool {
+		for _, k := range types {
+			if k == t {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+var basicOnly = keepTypes(model.AuthBasic)
+
 var generators = []generator{
-	{Language{ID: "curl", Label: "cURL", Editor: "shell"}, genCurl},
-	{Language{ID: "javascript-fetch", Label: "JavaScript (fetch, Node)", Editor: "javascript"}, genFetch},
-	{Language{ID: "javascript-fetch-browser", Label: "JavaScript (fetch, browser)", Editor: "javascript"}, genFetchBrowser},
-	{Language{ID: "javascript-axios", Label: "JavaScript (axios)", Editor: "javascript"}, genAxios},
-	{Language{ID: "python-requests", Label: "Python (requests)", Editor: "python"}, genPython},
-	{Language{ID: "go-native", Label: "Go (net/http)", Editor: "go"}, genGo},
-	{Language{ID: "java-http", Label: "Java (HttpClient)", Editor: "java"}, genJava},
-	{Language{ID: "php-curl", Label: "PHP (cURL)", Editor: "php"}, genPHP},
+	{Language{ID: "curl", Label: "cURL", Editor: "shell"}, genCurl, curl.Keeps},
+	{Language{ID: "javascript-fetch", Label: "JavaScript (fetch, Node)", Editor: "javascript"}, genFetch, basicOnly},
+	{Language{ID: "javascript-fetch-browser", Label: "JavaScript (fetch, browser)", Editor: "javascript"}, genFetchBrowser, basicOnly},
+	{Language{ID: "javascript-axios", Label: "JavaScript (axios)", Editor: "javascript"}, genAxios, basicOnly},
+	{Language{ID: "python-requests", Label: "Python (requests)", Editor: "python"}, genPython, keepTypes(model.AuthBasic, model.AuthDigest)},
+	{Language{ID: "go-native", Label: "Go (net/http)", Editor: "go"}, genGo, basicOnly},
+	{Language{ID: "java-http", Label: "Java (HttpClient)", Editor: "java"}, genJava, basicOnly},
+	{Language{ID: "php-curl", Label: "PHP (cURL)", Editor: "php"}, genPHP, keepTypes(model.AuthBasic, model.AuthDigest, model.AuthNTLM)},
 }
 
 // Languages lists the generators in display order.
@@ -76,7 +93,7 @@ func Languages() []Language {
 func Generate(lang string, req model.Request) (Result, error) {
 	for _, g := range generators {
 		if g.ID == lang {
-			s := prepare(req)
+			s := prepare(req, g.keep)
 			code := g.gen(s)
 			return Result{Code: code, Warnings: s.warnings}, nil
 		}
@@ -94,7 +111,10 @@ type spec struct {
 	// Content-Type for raw, urlencoded and binary bodies.
 	headers []model.KeyValue
 	basic   *model.Auth
-	body    model.Body
+	// digest and ntlm are set when the language keeps them (its helper).
+	digest *model.Digest
+	ntlm   *model.NTLM
+	body   model.Body
 	// fields are the enabled urlencoded rows; parts the enabled form-data fields.
 	fields   []model.KeyValue
 	parts    []model.FormField
@@ -112,11 +132,20 @@ func (s *spec) warn(format string, args ...any) {
 	s.warnings = append(s.warnings, msg)
 }
 
-func prepare(req model.Request) *spec {
+func prepare(req model.Request, keep func(model.AuthType) bool) *spec {
 	s := &spec{warnings: []string{}}
-	r, err := auth.Materialize(req, true)
+	r, warnings, err := auth.MaterializeWith(req, keep)
 	if err != nil {
 		s.warn("The API key auth has no key name, so it was left out.")
+	}
+	for _, w := range warnings {
+		s.warn("%s", w)
+	}
+	switch r.Auth.Type {
+	case model.AuthDigest:
+		s.digest = r.Auth.Digest
+	case model.AuthNTLM:
+		s.ntlm = r.Auth.NTLM
 	}
 	s.req = r
 	s.method = strings.ToUpper(strings.TrimSpace(r.Method))

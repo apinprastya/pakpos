@@ -25,18 +25,21 @@ export function Field({
   id,
   label,
   hint,
+  top = false,
   children,
 }: {
   id: string;
   label: string;
   hint?: React.ReactNode;
+  /** Align the label with the top of a tall control (a code editor). */
+  top?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <div className="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-x-3 gap-y-1">
       <Label
         htmlFor={id}
-        className="text-xs text-muted-foreground"
+        className={top ? "self-start pt-2 text-xs text-muted-foreground" : "text-xs text-muted-foreground"}
         // A variable field isn't a labelable element, so focus it by hand.
         onClick={() => {
           const el = document.getElementById(id);

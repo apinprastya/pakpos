@@ -88,6 +88,40 @@ func (r *Resolver) ResolveRequest(req model.Request) (model.Request, []string, e
 			rr.oauth2(&o)
 			a.OAuth2 = &o
 		}
+	case model.AuthDigest:
+		if a.Digest != nil {
+			d := *a.Digest
+			rr.fields("Digest", map[string]*string{"username": &d.Username, "password": &d.Password})
+			a.Digest = &d
+		}
+	case model.AuthAWSV4:
+		if a.AWSV4 != nil {
+			w := *a.AWSV4
+			rr.fields("AWS", map[string]*string{"access key": &w.AccessKey, "secret key": &w.SecretKey,
+				"session token": &w.SessionToken, "region": &w.Region, "service": &w.Service})
+			a.AWSV4 = &w
+		}
+	case model.AuthJWT:
+		if a.JWT != nil {
+			j := *a.JWT
+			rr.fields("JWT", map[string]*string{"secret": &j.Secret, "header prefix": &j.HeaderPrefix, "query parameter": &j.QueryParam})
+			rr.jsonField("JWT header", &j.Header)
+			rr.jsonField("JWT payload", &j.Payload)
+			a.JWT = &j
+		}
+	case model.AuthHawk:
+		if a.Hawk != nil {
+			h := *a.Hawk
+			rr.fields("Hawk", map[string]*string{"ID": &h.ID, "key": &h.Key, "ext": &h.Ext, "app": &h.App, "dlg": &h.Dlg})
+			a.Hawk = &h
+		}
+	case model.AuthNTLM:
+		if a.NTLM != nil {
+			n := *a.NTLM
+			rr.fields("NTLM", map[string]*string{"username": &n.Username, "password": &n.Password,
+				"domain": &n.Domain, "workstation": &n.Workstation})
+			a.NTLM = &n
+		}
 	}
 
 	if rr.err != nil {
@@ -122,6 +156,19 @@ func (rr *requestResolver) oauth2(o *model.OAuth2) {
 		rr.field(f.what, f.p)
 	}
 	rr.rows("OAuth 2.0 parameter", o.ExtraParams)
+}
+
+// fields resolves named fields of an auth type, in name order so the first
+// error reported doesn't depend on map order.
+func (rr *requestResolver) fields(kind string, fs map[string]*string) {
+	names := make([]string, 0, len(fs))
+	for n := range fs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		rr.field(kind+" "+n, fs[n])
+	}
 }
 
 // requestResolver resolves fields in place, keeping the first error.

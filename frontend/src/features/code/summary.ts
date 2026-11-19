@@ -42,6 +42,14 @@ export function authSummary(a: Auth): string {
       return "Bearer token";
     case "apikey":
       return `API key ${a.apiKey}`;
+    case "digest":
+      return a.digest?.username ? `Digest auth as ${a.digest.username}` : "Digest auth";
+    case "ntlm":
+      return a.ntlm?.username ? `NTLM as ${a.ntlm.username}` : "NTLM";
+    case "awsv4":
+      return a.awsv4?.region
+        ? `AWS Signature v4 (${a.awsv4.region}, ${a.awsv4.service})`
+        : "AWS Signature v4";
     default:
       return "None";
   }
