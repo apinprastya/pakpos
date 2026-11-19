@@ -1,6 +1,7 @@
 package fsstore
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -232,4 +233,81 @@ func TestWatcherSkipsHiddenDirectories(t *testing.T) {
 		}
 	}
 	w.addTree(filepath.Join(ws.Root(), "missing")) // no panic for vanished dirs
+}
+
+// A suspended directory is never (re-)watched, and resuming allows it again.
+func TestWatcherAddSkipsSuspendedDirs(t *testing.T) {
+	ws := newWS(t)
+	a := mustCol(t, ws, "A")
+	mustFolder(t, ws, a.ID, "F")
+	w, err := ws.Watch(testDebounce, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+	dir := filepath.Join(ws.Root(), CollectionsDir, "a", "f")
+	watched := func() bool {
+		for _, p := range w.fsw.WatchList() {
+			if p == dir {
+				return true
+			}
+		}
+		return false
+	}
+	if !watched() {
+		t.Fatal("folder not watched after Watch")
+	}
+	ws.unwatchDir(dir)
+	w.resync()
+	w.addTree(dir)
+	if watched() {
+		t.Fatal("suspended folder re-watched")
+	}
+	ws.resumeDir(dir)
+	w.resync()
+	if !watched() {
+		t.Fatal("resumed folder not watched")
+	}
+}
+
+// Renames and moves succeed while resyncs run concurrently (as the adder
+// goroutine does after rename events). On Windows a watch re-added between
+// unwatchDir and the rename made it fail with "Access is denied".
+func TestWatcherRenameRacesResync(t *testing.T) {
+	ws := newWS(t)
+	a := mustCol(t, ws, "A")
+	b := mustCol(t, ws, "B")
+	outer := mustFolder(t, ws, a.ID, "Outer")
+	inner := mustFolder(t, ws, outer.ID, "Inner")
+	mustReq(t, ws, inner.ID, model.Request{Name: "r"})
+	w, err := ws.Watch(testDebounce, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = w.Close() })
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				w.resync()
+			}
+		}
+	}()
+	defer func() { close(stop); <-done }()
+
+	parents := []string{b.ID, a.ID}
+	for i := 0; i < 40; i++ {
+		if _, err := ws.RenameFolder(inner.ID, fmt.Sprintf("Inner %d", i)); err != nil {
+			t.Fatalf("rename %d: %v", i, err)
+		}
+		if _, err := ws.MoveFolder(outer.ID, parents[i%2], 0); err != nil {
+			t.Fatalf("move %d: %v", i, err)
+		}
+	}
 }

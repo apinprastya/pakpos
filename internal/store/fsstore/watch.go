@@ -107,9 +107,9 @@ func (w *Workspace) resumeDir(dir string) {
 	w.suspMu.Unlock()
 }
 
-func (w *Workspace) isSuspended(path string) bool {
-	w.suspMu.Lock()
-	defer w.suspMu.Unlock()
+// isSuspendedLocked reports whether path is at or below a suspended
+// directory. The caller holds suspMu.
+func (w *Workspace) isSuspendedLocked(path string) bool {
 	for d := range w.suspended {
 		if path == d || strings.HasPrefix(path, d+string(filepath.Separator)) {
 			return true
@@ -128,8 +128,16 @@ func (wt *Watcher) removeTree(dir string) {
 	})
 }
 
+// add watches dir unless it is suspended. The check and the Add happen
+// under suspMu, so an add racing unwatchDir (e.g. a resync on the adder
+// goroutine) either finishes before the suspension, and removeTree then
+// drops it, or sees the suspension; it can never re-open the directory
+// between removeTree and the rename (Windows: "Access is denied"). The
+// event loop never takes suspMu, so waiting in Add can't deadlock.
 func (wt *Watcher) add(dir string) {
-	if wt.ws.isSuspended(dir) {
+	wt.ws.suspMu.Lock()
+	defer wt.ws.suspMu.Unlock()
+	if wt.ws.isSuspendedLocked(dir) {
 		return
 	}
 	_ = wt.fsw.Add(dir) // directories that vanish or can't be watched are skipped
