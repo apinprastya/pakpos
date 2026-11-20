@@ -1,6 +1,6 @@
 import { useState, type RefObject } from "react";
 import type { EditorView } from "@codemirror/view";
-import { Braces, Copy, FileJson, Route, TextSelect, Type } from "lucide-react";
+import { Binary, Braces, Copy, FileJson, Route, TextSelect, Type } from "lucide-react";
 import { toast } from "sonner";
 import {
   ContextMenu,
@@ -11,6 +11,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useTabsStore } from "@/stores/tabs";
+import { looksLikeBase64 } from "@/features/tools/base64/base64";
 import { formatPath, jsonFieldAt, type JsonField } from "./jsonField";
 
 interface Props {
@@ -24,7 +25,8 @@ interface Props {
  * The response body's right-click menu: copy the selection, select all and,
  * for JSON, copy the value, key or path of the field under the pointer (or at
  * the cursor when the menu is opened from the keyboard). "Open in JSON tool"
- * takes the selection, or the whole body when nothing is selected.
+ * takes the selection, or the whole body when nothing is selected; "Decode
+ * Base64" appears for a selection that looks like Base64.
  */
 export function BodyContextMenu({ view, json, children }: Props) {
   const [field, setField] = useState<JsonField | null>(null);
@@ -104,6 +106,12 @@ export function BodyContextMenu({ view, json, children }: Props) {
               Open in JSON tool
             </ContextMenuItem>
           </>
+        )}
+        {selection && looksLikeBase64(selection) && (
+          <ContextMenuItem onSelect={() => void useTabsStore.getState().openTool("base64", selection.trim())}>
+            <Binary />
+            Decode Base64
+          </ContextMenuItem>
         )}
       </ContextMenuContent>
     </ContextMenu>

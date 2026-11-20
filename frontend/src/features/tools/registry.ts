@@ -1,6 +1,18 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
-import { Braces, Hash, KeyRound, Link, type LucideIcon } from "lucide-react";
-import { loadHashTool, loadJsonTool, loadJwtTool, loadUrlTool } from "@/features/shell/dialogChunks";
+import { Binary, Braces, Hash, KeyRound, Link, type LucideIcon } from "lucide-react";
+import {
+  loadBase64Tool,
+  loadHashTool,
+  loadJsonTool,
+  loadJwtTool,
+  loadUrlTool,
+} from "@/features/shell/dialogChunks";
+import {
+  base64InitialState,
+  base64WithInput,
+  restoreBase64State,
+  type Base64ToolState,
+} from "./base64/state";
 import { hashInitialState, hashWithInput, restoreHashState, type HashToolState } from "./hash/state";
 import {
   restoreUrlState,
@@ -120,6 +132,18 @@ export const TOOLS: readonly ToolDef[] = [
     initialState: (input) => hashInitialState(input),
     withInput: hashWithInput,
     restore: restoreHashState,
+  }),
+  defineTool<Base64ToolState>({
+    id: "base64",
+    label: "Base64",
+    description: "Encode text as Base64, or decode it back.",
+    icon: Binary,
+    keywords: ["base64", "b64", "encode", "decode", "url-safe", "binary"],
+    persist: false,
+    component: lazy(() => loadBase64Tool().then((m) => ({ default: m.Base64Tool }))),
+    initialState: (input) => base64InitialState(input),
+    withInput: base64WithInput,
+    restore: restoreBase64State,
   }),
 ];
 

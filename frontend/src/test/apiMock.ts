@@ -186,6 +186,7 @@ export function createApiMock(): { [K in keyof Api]: ReturnType<typeof vi.fn> } 
     pickDataFile: vi.fn().mockResolvedValue(""),
     previewData: vi.fn(),
     hash: vi.fn().mockResolvedValue({ hex: "", base64: "", bytes: 0 }),
+    saveBytes: vi.fn().mockResolvedValue(""),
     pickHashFile: vi.fn().mockResolvedValue(""),
     onRunnerProgress: vi.fn().mockReturnValue(() => {}),
     startOAuth2: vi.fn().mockResolvedValue(noToken()),

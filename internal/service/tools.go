@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -100,4 +101,24 @@ func hashError(err error) error {
 // PickFile asks for a file to hash. It returns "" when cancelled.
 func (s *ToolService) PickFile() (string, error) {
 	return s.c.dialogs.PickFile("Choose a file to hash")
+}
+
+// SaveBytes asks where to save data (standard base64, as decoded by a tool)
+// and writes it there. It returns the path, or "" when cancelled.
+func (s *ToolService) SaveBytes(suggestedName, data string) (string, error) {
+	raw, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return "", &userError{msg: "The data to save isn't valid base64.", err: err}
+	}
+	if suggestedName == "" {
+		suggestedName = "data.bin"
+	}
+	dest, err := s.c.dialogs.SaveFile("Save to file", filepath.Base(suggestedName))
+	if err != nil || dest == "" {
+		return "", err
+	}
+	if err := os.WriteFile(dest, raw, 0o644); err != nil { //nolint:gosec // a file the user chose to save, readable like any document
+		return "", &userError{msg: fmt.Sprintf("Couldn't save %s. Check that the folder exists and you can write to it.", filepath.Base(dest)), err: err}
+	}
+	return dest, nil
 }

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -85,5 +86,44 @@ func TestToolServicePickFile(t *testing.T) {
 	h.dialogs.file = "/tmp/x.iso"
 	if got, err := NewToolService(h.core).PickFile(); err != nil || got != "/tmp/x.iso" {
 		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+func TestToolServiceSaveBytes(t *testing.T) {
+	h := newHarness(t)
+	s := NewToolService(h.core)
+	dir := t.TempDir()
+	data := base64.StdEncoding.EncodeToString([]byte{0, 1, 2, 0xff})
+
+	h.dialogs.save = filepath.Join(dir, "out.bin")
+	got, err := s.SaveBytes("../decoded.bin", data)
+	if err != nil || got != h.dialogs.save {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if h.dialogs.lastDefaultName != "decoded.bin" {
+		t.Errorf("default name = %q", h.dialogs.lastDefaultName)
+	}
+	if b, _ := os.ReadFile(got); string(b) != "\x00\x01\x02\xff" {
+		t.Errorf("wrote %v", b)
+	}
+	if _, _ = s.SaveBytes("", data); h.dialogs.lastDefaultName != "data.bin" {
+		t.Errorf("default name = %q", h.dialogs.lastDefaultName)
+	}
+
+	h.dialogs.save = ""
+	if got, err := s.SaveBytes("x.bin", data); got != "" || err != nil {
+		t.Fatalf("cancel: %q, %v", got, err)
+	}
+	h.dialogs.err = errors.New("no dialog")
+	if _, err := s.SaveBytes("x.bin", data); err == nil {
+		t.Fatal("want the dialog error")
+	}
+	h.dialogs.err = nil
+	if _, err := s.SaveBytes("x.bin", "%%%"); err == nil || err.Error() != "The data to save isn't valid base64." {
+		t.Fatalf("bad data: %v", err)
+	}
+	h.dialogs.save = filepath.Join(dir, "missing", "out.bin")
+	if _, err := s.SaveBytes("x.bin", data); err == nil || !strings.HasPrefix(err.Error(), "Couldn't save out.bin.") {
+		t.Fatalf("write error: %v", err)
 	}
 }

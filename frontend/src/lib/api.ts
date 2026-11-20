@@ -572,6 +572,10 @@ export const api = {
   async pickHashFile(): Promise<string> {
     return ToolService.PickFile();
   },
+  /** Asks where to save bytes (standard base64) and writes them; "" when cancelled. */
+  async saveBytes(suggestedName: string, base64Data: string): Promise<string> {
+    return ToolService.SaveBytes(suggestedName, base64Data);
+  },
   async previewData(path: string): Promise<DataPreview> {
     return normalizeDataPreview(await RunnerService.PreviewData(path));
   },
