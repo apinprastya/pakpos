@@ -216,6 +216,45 @@ describe("ResponsePane", () => {
     expect(screen.queryByRole("menuitem", { name: "Open in JSON tool" })).not.toBeInTheDocument();
   });
 
+  it("decodes a selected Base64 string in the Base64 tool", async () => {
+    const user = userEvent.setup();
+    show(ok({ kind: "text", contentType: "text/plain", body: "token: aGVsbG8gd29ybGQ= end" }));
+    const view = editorView("Response body");
+    const select = (from: number, to: number) =>
+      act(() => view.dispatch({ selection: { anchor: from, head: to } }));
+
+    // Not Base64: no entry.
+    select(0, 6);
+    fireEvent.contextMenu(view.contentDOM);
+    await screen.findByRole("menuitem", { name: "Select all" });
+    expect(screen.queryByRole("menuitem", { name: "Decode Base64" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    select(7, 23);
+    fireEvent.contextMenu(view.contentDOM);
+    await user.click(await screen.findByRole("menuitem", { name: "Decode Base64" }));
+    const tools = () => useTabsStore.getState().tabs.filter((t) => t.tool?.id === "base64");
+    expect(tools()).toHaveLength(1);
+    expect(tools()[0].tool?.state).toMatchObject({ input: "aGVsbG8gd29ybGQ=", direction: "decode" });
+    expect(useTabsStore.getState().activeId).toBe(tools()[0].id);
+
+    // Again: the open tab's input is replaced, still decoding.
+    act(() => {
+      useTabsStore
+        .getState()
+        .updateToolState(tools()[0].id, (st) => ({ ...(st as object), direction: "encode" }));
+      useTabsStore.getState().activate("t1");
+    });
+    // The body's editor mounted again with the request tab.
+    const again = editorView("Response body");
+    act(() => again.dispatch({ selection: { anchor: 7, head: 15 } }));
+    fireEvent.contextMenu(again.contentDOM);
+    await user.click(await screen.findByRole("menuitem", { name: "Decode Base64" }));
+    expect(tools()).toHaveLength(1);
+    expect(tools()[0].tool?.state).toMatchObject({ input: "aGVsbG8g", direction: "decode" });
+  });
+
   it("shows what went over the wire in the Debug tab", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

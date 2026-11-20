@@ -84,6 +84,22 @@ describe("tabs store: tool tabs", () => {
     expect(isRequestTab(s().tabs[0])).toBe(true);
   });
 
+  it("never writes what's typed into the Base64 tool to localStorage, and restores the tab empty", async () => {
+    const id = s().openTool("base64", "c2VjcmV0LXBhc3N3b3Jk");
+    s().updateToolState(id, (st) => ({ ...(st as object), alphabet: "url" }));
+    const raw = localStorage.getItem("pakpos-tabs")!;
+    expect(raw).not.toContain("c2VjcmV0LXBhc3N3b3Jk");
+    expect(stored().state.tabs[1].tool).toEqual({ id: "base64", state: null });
+
+    resetTabs({}, { id: "other" });
+    localStorage.setItem("pakpos-tabs", raw);
+    await useTabsStore.persist.rehydrate();
+    expect(s().tabs[1].tool).toEqual({
+      id: "base64",
+      state: { input: "", direction: "encode", alphabet: "standard", padding: true },
+    });
+  });
+
   it("never writes a JWT tab's token to localStorage, and restores the tab empty", async () => {
     const id = s().openTool("jwt", TOKEN);
     s().updateToolState(id, (st) => ({ ...(st as object), revealed: { access_token: "s3cret" } }));
