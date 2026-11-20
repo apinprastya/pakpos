@@ -1,12 +1,27 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
-import { Binary, Braces, Hash, KeyRound, Link, type LucideIcon } from "lucide-react";
+import { Binary, Braces, Clock, Fingerprint, Hash, KeyRound, Link, type LucideIcon } from "lucide-react";
 import {
   loadBase64Tool,
   loadHashTool,
+  loadIdsTool,
   loadJsonTool,
   loadJwtTool,
+  loadTimestampTool,
   loadUrlTool,
 } from "@/features/shell/dialogChunks";
+import {
+  idsInitialState,
+  idsWithInput,
+  restoreIdsState,
+  serializeIdsState,
+  type IdsState,
+} from "./ids/state";
+import {
+  restoreTimestampState,
+  timestampInitialState,
+  timestampWithInput,
+  type TimestampState,
+} from "./timestamp/state";
 import {
   base64InitialState,
   base64WithInput,
@@ -144,6 +159,42 @@ export const TOOLS: readonly ToolDef[] = [
     initialState: (input) => base64InitialState(input),
     withInput: base64WithInput,
     restore: restoreBase64State,
+  }),
+  defineTool<TimestampState>({
+    id: "timestamp",
+    label: "Timestamp converter",
+    description: "Convert Unix time, ISO 8601 and HTTP dates.",
+    icon: Clock,
+    keywords: [
+      "timestamp",
+      "unix",
+      "epoch",
+      "time",
+      "date",
+      "iso 8601",
+      "rfc 3339",
+      "rfc 1123",
+      "time zone",
+      "milliseconds",
+    ],
+    persist: true,
+    component: lazy(() => loadTimestampTool().then((m) => ({ default: m.TimestampTool }))),
+    initialState: (input) => timestampInitialState(input),
+    withInput: timestampWithInput,
+    restore: restoreTimestampState,
+  }),
+  defineTool<IdsState>({
+    id: "ids",
+    label: "ID generator",
+    description: "Make UUIDs and ULIDs, or read the time inside one.",
+    icon: Fingerprint,
+    keywords: ["uuid", "ulid", "guid", "id", "generate", "random", "v4", "v7", "inspect"],
+    persist: true,
+    component: lazy(() => loadIdsTool().then((m) => ({ default: m.IdsTool }))),
+    initialState: (input) => idsInitialState(input),
+    withInput: idsWithInput,
+    restore: restoreIdsState,
+    serialize: serializeIdsState,
   }),
 ];
 

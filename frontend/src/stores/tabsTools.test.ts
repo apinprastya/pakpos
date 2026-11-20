@@ -127,6 +127,33 @@ describe("tabs store: tool tabs", () => {
     expect(s().tabs[1].tool).toEqual({ id: "notes", state: { text: "keep me" } });
   });
 
+  it("keeps the timestamp and ID tools' choices across restarts, but not generated IDs", async () => {
+    const ts = s().openTool("timestamp", "1700000000");
+    s().updateToolState(ts, (st) => ({ ...(st as object), unit: "ms", zone: "UTC" }));
+    const ids = s().openTool("ids", "01ARZ3NDEKTSV4RRFFQ69G5FAV");
+    s().updateToolState(ids, (st) => ({
+      ...(st as object),
+      kind: "ulid",
+      count: "5",
+      generated: { kind: "ulid", ids: ["01HXYZSECRETLOOKINGVALUE00"] },
+    }));
+    const raw = localStorage.getItem("pakpos-tabs")!;
+    expect(raw).not.toContain("01HXYZSECRETLOOKINGVALUE00");
+    resetTabs({}, { id: "other" });
+    localStorage.setItem("pakpos-tabs", raw);
+    await useTabsStore.persist.rehydrate();
+    expect(s().tabs[1].tool).toEqual({
+      id: "timestamp",
+      state: { input: "1700000000", unit: "ms", zone: "UTC" },
+    });
+    expect(s().tabs[2].tool?.state).toMatchObject({
+      kind: "ulid",
+      count: "5",
+      inspect: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      generated: null,
+    });
+  });
+
   it("keeps the JSON tool's state across restarts, but not a large input", async () => {
     const id = s().openTool("json", '{"a":1}');
     s().updateToolState(id, (st) => ({ ...(st as object), sortKeys: true }));

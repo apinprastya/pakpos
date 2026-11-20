@@ -15,6 +15,8 @@ export const loadJsonTool = () => import("@/features/tools/json/JsonTool");
 export const loadUrlTool = () => import("@/features/tools/url/UrlTool");
 export const loadHashTool = () => import("@/features/tools/hash/HashTool");
 export const loadBase64Tool = () => import("@/features/tools/base64/Base64Tool");
+export const loadTimestampTool = () => import("@/features/tools/timestamp/TimestampTool");
+export const loadIdsTool = () => import("@/features/tools/ids/IdsTool");
 
 /** The palette first: it's the one opened most and expected to be instant. */
 export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
@@ -32,6 +34,8 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadUrlTool,
   loadHashTool,
   loadBase64Tool,
+  loadTimestampTool,
+  loadIdsTool,
   loadUpdate,
 ];
 
