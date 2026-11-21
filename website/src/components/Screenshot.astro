@@ -1,0 +1,21 @@
+---
+import { url } from "../lib/paths";
+
+// A real app screenshot in light and dark, picked by the visitor's colour scheme.
+// Files live in public/screenshots/<name>-light.webp and <name>-dark.webp, captured at
+// 2x from a 1280x760 window (steps in scripts/site-screenshots.mjs).
+interface Props {
+  name: string;
+  alt: string;
+  class?: string;
+  loading?: "eager" | "lazy";
+}
+
+const { name, alt, class: className, loading = "lazy" } = Astro.props;
+const src = (theme: "light" | "dark") => url(`screenshots/${name}-${theme}.webp`);
+---
+
+<picture class:list={["shot", className]}>
+  <source srcset={src("dark")} media="(prefers-color-scheme: dark)" />
+  <img src={src("light")} alt={alt} width="1280" height="760" loading={loading} decoding="async" />
+</picture>
