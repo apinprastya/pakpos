@@ -19,6 +19,7 @@
 //   --out <dir>         where PNGs go (default ./screenshots; prefer a temp dir)
 //   --theme <t>         light, dark or both (default light)
 //   --width/--height    viewport (default 1360x820)
+//   --scale <n>         device pixel ratio (default 1; 2 for high-DPI images)
 //   --scenario <file>   an ES module that customises the run:
 //                         export const handlers = { "EnvService.List": () => [...] } // merged over the defaults
 //                         export async function run({ page, shot, theme }) { ... }   // replaces the default steps
@@ -38,7 +39,7 @@ const frontend = path.join(root, "frontend");
 const bindings = path.join(frontend, "bindings", "pakpos", "internal", "service");
 
 function parseArgs(argv) {
-  const opts = { url: "http://127.0.0.1:4173/", out: "screenshots", theme: "light", width: 1360, height: 820 };
+  const opts = { url: "http://127.0.0.1:4173/", out: "screenshots", theme: "light", width: 1360, height: 820, scale: 1 };
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i].replace(/^--/, "");
     if (!(key in opts) && key !== "scenario") throw new Error(`Unknown option ${argv[i]}`);
@@ -46,6 +47,7 @@ function parseArgs(argv) {
   }
   opts.width = Number(opts.width);
   opts.height = Number(opts.height);
+  opts.scale = Number(opts.scale);
   return opts;
 }
 
@@ -231,7 +233,10 @@ async function main() {
   try {
     for (const theme of themes) {
       const handlers = { ...defaultHandlers(theme), ...(scenario.handlers ?? {}) };
-      const page = await browser.newPage({ viewport: { width: opts.width, height: opts.height } });
+      const page = await browser.newPage({
+        viewport: { width: opts.width, height: opts.height },
+        deviceScaleFactor: opts.scale,
+      });
       page.on("pageerror", (e) => console.log("page error:", e.message));
       page.on("console", (m) => m.type() === "error" && console.log("console error:", m.text()));
       await page.route("**/wails/runtime*", async (route) => {
