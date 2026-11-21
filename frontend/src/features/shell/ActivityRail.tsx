@@ -1,4 +1,13 @@
-import { FolderTree, History, Layers, Search, Settings, Wrench, type LucideIcon } from "lucide-react";
+import {
+  FolderTree,
+  History,
+  Layers,
+  Search,
+  Settings,
+  Webhook,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import { usePaletteStore } from "@/stores/palette";
 import { Button } from "@/components/ui/button";
 import { modKeyLabel } from "@/lib/platform";
@@ -6,6 +15,7 @@ import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useLayoutStore, type SidebarView } from "@/stores/layout";
+import { useWebhooksStore } from "@/stores/webhooks";
 import { ThemeMenu } from "./ThemeMenu";
 import { TitleBarSpace } from "./TitleBarSpace";
 import { AppLogo } from "./AppLogo";
@@ -14,12 +24,14 @@ const VIEWS: { id: SidebarView; label: string; icon: LucideIcon }[] = [
   { id: "collections", label: "Collections", icon: FolderTree },
   { id: "environments", label: "Environments", icon: Layers },
   { id: "history", label: "History", icon: History },
+  { id: "webhooks", label: "Webhooks", icon: Webhook },
   { id: "tools", label: "Tools", icon: Wrench },
 ];
 
 export function ActivityRail() {
   const view = useLayoutStore((s) => s.sidebarView);
   const setView = useLayoutStore((s) => s.setSidebarView);
+  const running = useWebhooksStore((s) => Object.keys(s.statuses).length);
 
   return (
     <nav
@@ -33,7 +45,7 @@ export function ActivityRail() {
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label={label}
+              aria-label={id === "webhooks" && running ? `${label} (${running} running)` : label}
               aria-pressed={view === id}
               onClick={() => setView(id)}
               className={cn(
@@ -43,9 +55,14 @@ export function ActivityRail() {
               )}
             >
               <Icon className="size-[18px]" />
+              {id === "webhooks" && running > 0 && (
+                <span aria-hidden className="absolute top-1.5 right-1.5 size-2 rounded-full bg-status-ok" />
+              )}
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right">{label}</TooltipContent>
+          <TooltipContent side="right">
+            {id === "webhooks" && running ? `${label} · ${running} running` : label}
+          </TooltipContent>
         </Tooltip>
       ))}
       <div className="mt-auto flex flex-col items-center gap-1">

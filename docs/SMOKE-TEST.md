@@ -209,6 +209,23 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir. Test servers: httpbin (`/digest-au
 - [ ] Copy as cURL writes `--digest`, `--ntlm` or `--aws-sigv4 aws:amz:<region>:<service>` with `-u` (secrets as `{{name}}` unless revealed) and runs with real curl once revealed; Python shows `HTTPDigestAuth`, PHP `CURLAUTH_DIGEST`/`CURLAUTH_NTLM`; other languages show computed SigV4/JWT/Hawk headers with a "valid for about 5 minutes"/"signed now" warning, or a warning that Digest/NTLM was left out. Importing those cURL commands gives the matching auth type.
 - [ ] No password, key or token appears in the workspace files (secret variables used), history, `pakpos.db`, runner exports or the Debug tab.
 
+## Webhooks
+
+Run on each OS. Start on a machine (or in an `XDG_CONFIG_HOME`) without cloudflared on the PATH.
+
+- [ ] The Webhooks view (rail icon above Tools) says "No webhooks yet"; **Create webhook** adds `webhooks/new-webhook.yaml` to the workspace and opens its tab in rename mode.
+- [ ] **Start** (with tunnel) shows "Pakpos needs cloudflared…"; **Download cloudflared** shows progress and **Cancel** stops it; downloading again installs it into `<config>/pakpos/bin/` and the webhook starts by itself: "Starting the public tunnel…", then a `https://….trycloudflare.com` URL. Settings → Webhooks shows the path, version and "Downloaded by Pakpos".
+- [ ] `curl -X POST <public URL>/stripe/events -H 'Content-Type: application/json' -d '{"type":"payment_intent.payment_failed","data":{"id":"pi_1"}}'` gets `{"ok": true}`; the request appears in the log at once, with headers (Host is the tunnel host), body, the sender's IP and "with the default response".
+- [ ] A real sender (Stripe CLI `stripe trigger`, a GitHub repository webhook, or webhook.site's "send test") reaches the URL and is logged.
+- [ ] **Create rule** on that request opens Rules with POST and the exact path; add a JSON condition `type equals payment_intent.payment_failed`, status 400, body `{"error": "declined", "id": "{{$request.json.data.id}}"}`, Save: the next curl gets 400 with `"id": "pi_1"`, and the log says "by rule …". A delay of 3000 ms delays the reply. Disabling the rule restores the default response.
+- [ ] A bad regex or a path without `/` refuses to save, with the message on the rule and the field marked.
+- [ ] **Copy as cURL** replays the request; **Open as request** opens a draft tab with the method, URL, headers and body.
+- [ ] **Start local only** gives `http://127.0.0.1:<port>`, reachable from the same machine only.
+- [ ] Switch to another workspace: the webhook keeps answering and logging; the view lists it under "Running in other workspaces" (Copy URL, Open log read-only, Stop); the rail icon shows a dot.
+- [ ] Quit and restart: nothing is running, the log is still there; **Clear log** empties it; deleting the webhook removes its file and log.
+- [ ] Settings → Webhooks → **Choose file…** with a non-cloudflared file is refused; choosing a real cloudflared shows "Chosen by you"; saving other settings afterwards keeps it; **Find it automatically** clears it.
+- [ ] Windows: no console window opens next to the app while the tunnel runs; Task Manager shows `cloudflared.exe` gone after Stop and after quitting.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

@@ -15,6 +15,8 @@ import { useEffect } from "react";
 import { useActiveTab } from "@/stores/tabs";
 import { DocEditor } from "@/features/scopes/DocEditor";
 import { RunnerView } from "@/features/runner/lazy";
+import { WebhookView } from "@/features/webhooks/lazy";
+import { useWebhooksSync } from "@/features/webhooks/useWebhooksSync";
 import { ToolTab } from "@/features/tools/ToolTab";
 import { useScopeSync } from "@/features/scopes/useScopeSync";
 import { SecretsDialogs } from "@/features/secrets/SecretsDialogs";
@@ -35,6 +37,7 @@ export function AppShell() {
   useExamplesSync();
   useUpdateCheck();
   useConsoleSync();
+  useWebhooksSync();
   const active = useActiveTab();
   const mainLayout = usePanelLayout("main");
   const splitLayout = usePanelLayout(`split-${orientation}`);
@@ -59,6 +62,8 @@ export function AppShell() {
                   <ToolTab key={active.id} tab={active} />
                 ) : active.doc?.kind === "runner" ? (
                   <RunnerView key={active.id} tab={active} />
+                ) : active.doc?.kind === "webhook" ? (
+                  <WebhookView key={active.id} tab={active} />
                 ) : active.doc ? (
                   <DocEditor key={active.id} tab={active} />
                 ) : (

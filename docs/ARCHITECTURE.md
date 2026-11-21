@@ -433,6 +433,31 @@ Request (as written) + parentId + selected environment
   localStorage). Runner console lines go to the shared console store, one
   group per request per iteration.
 
+## 7b. Webhook test server
+
+Plan and decisions: [PLAN-WEBHOOKS.md](PLAN-WEBHOOKS.md).
+
+- `internal/core/webhook` (pure): the webhook model (`webhooks/<slug>.yaml`:
+  name, ordered rules, default response), path patterns (`*`, `**`,
+  `:name`), conditions (header, query, body, JSON dot path; equals,
+  contains, exists, regex), `Compile`/`Select` (first enabled match wins) and
+  `Render` (`{{$request.*}}` and dynamic variables, one pass, JSON-escaped
+  inside string literals; workspace variables never resolve: the URL can
+  be public).
+- `internal/hookserver`: one `net/http` server per running webhook on
+  `127.0.0.1:0`, a `Manager` keyed by (workspace, webhook) owned by `Core`
+  that outlives workspace switches and stops everything on `Core.Close`.
+  Requests are stored in SQLite (`0007_webhook_requests.sql`, newest 500 per
+  webhook, bodies capped at 1 MiB) and announced with `webhook:request`;
+  state changes are `webhook:status`.
+- `internal/tunnel`: finds cloudflared (Settings path, `<data>/bin`, PATH),
+  downloads the latest GitHub release after checking the asset's SHA-256
+  digest, and runs `cloudflared tunnel --no-autoupdate --config <empty>
+  --url <local>`, reading the `trycloudflare.com` URL from its log.
+- Frontend: a "Webhooks" rail view, webhook doc tabs (`doc.kind =
+  "webhook"`, draft in `doc.webhook`), `stores/webhooks.ts` (list, running
+  statuses of every workspace, cached logs fed by events, cloudflared).
+
 ## 8. Frontend
 
 - State: **Zustand** (tabs, active workspace, env selection); server data via bound service calls.

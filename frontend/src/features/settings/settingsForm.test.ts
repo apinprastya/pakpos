@@ -109,6 +109,7 @@ describe("settingsForm", () => {
       caFile: "/ca.pem",
       clientCerts: [{ id: "c", host: "*", certFile: "", keyFile: "", pfxFile: "/me.p12" }],
       scriptTimeoutMs: 9000,
+      cloudflaredPath: "/opt/cloudflared",
     };
     expect(normalizeSettings(full, DEFAULT_SETTINGS)).toEqual(full);
     expect(normalizeSettings({ ...full, scriptTimeoutMs: 0 }, DEFAULT_SETTINGS).scriptTimeoutMs).toBe(5000);

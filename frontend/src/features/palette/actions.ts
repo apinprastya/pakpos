@@ -29,6 +29,10 @@ import { resolveTheme, useThemeStore } from "@/stores/theme";
 import { useTreeStore } from "@/stores/tree";
 import { useUpdateStore } from "@/stores/update";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { useWebhooksStore } from "@/stores/webhooks";
+import { copyText } from "@/features/webhooks/actions";
+import { startWebhook } from "@/features/webhooks/start";
+import { isRunning, statusKey, webhookUrl } from "@/lib/webhookModel";
 
 import type { PalettePage } from "@/stores/palette";
 
@@ -58,6 +62,15 @@ export interface PaletteAction {
 }
 
 const mod = (key: string) => () => `${modKeyLabel()}+${key}`;
+/** The active tab is a webhook of the open workspace (one from another workspace is read-only). */
+const webhookTab = (ctx: ActionContext) =>
+  ctx.tab.doc?.kind === "webhook" && !!ctx.workspace && ctx.tab.workspaceId === ctx.workspace.id;
+/** The running status of the active webhook tab (any workspace), if it runs. */
+function webhookStatus(ctx: ActionContext) {
+  if (ctx.tab.doc?.kind !== "webhook") return undefined;
+  const st = useWebhooksStore.getState().statuses[statusKey(ctx.tab.workspaceId, ctx.tab.doc.targetId)];
+  return isRunning(st) ? st : undefined;
+}
 const isRequestTab = (ctx: ActionContext) => isRequest(ctx.tab);
 const savedRequest = (ctx: ActionContext) => isRequestTab(ctx) && !!ctx.tab.saved?.id && !!ctx.workspace;
 const usesFileStore = (ctx: ActionContext) => ctx.secrets?.backend === "file";
@@ -255,6 +268,57 @@ export const ACTIONS: PaletteAction[] = [
       void useRunnerStore.getState().loadPast();
       ctx.goTo("run-history");
     },
+  },
+  {
+    id: "new-webhook",
+    label: "New webhook",
+    keywords: ["webhook", "tunnel", "cloudflare", "receive", "callback"],
+    group: "Webhooks",
+    enabled: (ctx) => !!ctx.workspace,
+    run: () => {
+      useLayoutStore.getState().setSidebarView("webhooks");
+      void useWebhooksStore.getState().create();
+    },
+  },
+  {
+    id: "open-webhooks",
+    label: "Open webhooks",
+    keywords: ["webhook", "tunnel", "requests", "log"],
+    group: "Webhooks",
+    enabled: () => true,
+    run: () => useLayoutStore.getState().setSidebarView("webhooks"),
+  },
+  {
+    id: "start-webhook",
+    label: "Start webhook with public tunnel",
+    keywords: ["webhook", "tunnel", "cloudflare", "run"],
+    group: "Webhooks",
+    enabled: (ctx) => webhookTab(ctx) && !webhookStatus(ctx),
+    run: (ctx) => void startWebhook(ctx.tab.doc!.targetId, true),
+  },
+  {
+    id: "start-webhook-local",
+    label: "Start webhook locally",
+    keywords: ["webhook", "local", "run"],
+    group: "Webhooks",
+    enabled: (ctx) => webhookTab(ctx) && !webhookStatus(ctx),
+    run: (ctx) => void startWebhook(ctx.tab.doc!.targetId, false),
+  },
+  {
+    id: "stop-webhook",
+    label: "Stop webhook",
+    keywords: ["webhook", "tunnel"],
+    group: "Webhooks",
+    enabled: (ctx) => !!webhookStatus(ctx),
+    run: (ctx) => void useWebhooksStore.getState().stop(ctx.tab.workspaceId, ctx.tab.doc!.targetId),
+  },
+  {
+    id: "copy-webhook-url",
+    label: "Copy webhook URL",
+    keywords: ["webhook", "tunnel", "link", "public"],
+    group: "Webhooks",
+    enabled: (ctx) => !!webhookStatus(ctx),
+    run: (ctx) => void copyText(webhookUrl(webhookStatus(ctx)), "URL"),
   },
   {
     id: "reset-script-values",

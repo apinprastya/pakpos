@@ -97,6 +97,9 @@ type Settings struct {
 	ClientCerts []ClientCert `json:"clientCerts"`
 	// ScriptTimeoutMs stops a pre-request or test script that runs longer.
 	ScriptTimeoutMs int `json:"scriptTimeoutMs"`
+	// CloudflaredPath is the cloudflared webhook tunnels use; "" finds it
+	// (Pakpos's downloaded copy, then PATH).
+	CloudflaredPath string `json:"cloudflaredPath"`
 }
 
 // Defaults returns the settings of a fresh install.
@@ -132,6 +135,7 @@ func (s Settings) Normalize() Settings {
 	s.Proxy.URL = strings.TrimSpace(s.Proxy.URL)
 	s.Proxy.Username = strings.TrimSpace(s.Proxy.Username)
 	s.CAFile = strings.TrimSpace(s.CAFile)
+	s.CloudflaredPath = strings.TrimSpace(s.CloudflaredPath)
 	certs := make([]ClientCert, 0, len(s.ClientCerts))
 	for _, c := range s.ClientCerts {
 		c.Host = strings.ToLower(strings.TrimSpace(c.Host))

@@ -1,3 +1,4 @@
+import { resetWebhooksStore } from "@/stores/webhooks";
 import { oauth2Initial, useOAuth2Store } from "@/stores/oauth2";
 import { useSettingsStore } from "@/stores/settings";
 import { DEFAULT_SETTINGS } from "@/lib/model";
@@ -42,6 +43,7 @@ export function resetSidebarStores(): void {
   useCookiesStore.setState(cookiesInitial);
   useConsoleStore.setState(consoleInitial, true);
   resetRunnerStore();
+  resetWebhooksStore();
   useOAuth2Store.setState({ ...oauth2Initial });
   resetUpdateAnnouncements();
   resetUiState();

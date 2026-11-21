@@ -8,6 +8,7 @@ import {
   Palette,
   History,
   TriangleAlert,
+  Webhook,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ import { useSecretsStore } from "@/stores/secrets";
 import { useUpdateStore } from "@/stores/update";
 import { SecretsSection } from "@/features/secrets/SecretsControls";
 import { NetworkSection } from "./NetworkSection";
+import { WebhooksSettings } from "@/features/webhooks/WebhooksSettings";
 import {
   fromDraft,
   hasPendingSecrets,
@@ -48,6 +50,7 @@ const SECTIONS: { id: SettingsSection; label: string; icon: LucideIcon }[] = [
   { id: "network", label: "Network", icon: Globe },
   { id: "history", label: "History", icon: History },
   { id: "secrets", label: "Secrets", icon: KeyRound },
+  { id: "webhooks", label: "Webhooks", icon: Webhook },
   { id: "about", label: "About", icon: Info },
 ];
 
@@ -102,7 +105,11 @@ function SettingsDialogBody() {
   };
 
   const onSave = async () => {
-    const parsed = fromDraft(draft, saved);
+    // The cloudflared path changes in the Webhooks section right away; keep it.
+    const parsed = fromDraft(draft, {
+      ...saved,
+      cloudflaredPath: useSettingsStore.getState().settings.cloudflaredPath,
+    });
     if (parsed.errors) {
       setErrors(parsed.errors);
       // Jump to the section with the first problem.
@@ -204,6 +211,7 @@ function SettingsDialogBody() {
               <HistorySection draft={draft} update={update} errors={errors} saved={saved} />
             )}
             {section === "secrets" && <SecretsSection />}
+            {section === "webhooks" && <WebhooksSettings />}
             {section === "about" && <AboutSection build={build} draft={draft} update={update} />}
           </div>
         </div>
