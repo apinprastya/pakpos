@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Copy, ExternalLink, ListPlus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CodeEditor } from "@/components/editor/CodeEditor";
 import { ConfirmDeleteDialog, type DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 import { formatDuration, statusTextClass } from "@/features/response/format";
@@ -258,17 +259,23 @@ function RequestDetail({
         >
           <ExternalLink /> Open as request
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Delete this request"
-          onClick={() => {
-            onDeleted();
-            void useWebhooksStore.getState().deleteEntry(webhookId, entry.id);
-          }}
-        >
-          <Trash2 />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Delete this request"
+              className="ml-1 border-l pl-1"
+              onClick={() => {
+                onDeleted();
+                void useWebhooksStore.getState().deleteEntry(webhookId, entry.id);
+              }}
+            >
+              <Trash2 />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Delete this request from the log</TooltipContent>
+        </Tooltip>
       </div>
       <div
         role="tablist"

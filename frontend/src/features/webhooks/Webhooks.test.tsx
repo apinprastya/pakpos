@@ -464,12 +464,13 @@ describe("RulesEditor", () => {
     await user.click(screen.getByRole("button", { name: "Add condition" }));
     await user.type(screen.getByRole("textbox", { name: "Condition 1 name" }), "X-Kind");
     await user.type(screen.getByRole("textbox", { name: "Condition 1 value" }), "b");
-    const status = screen.getByRole("spinbutton", { name: "Status" });
-    await user.clear(status);
-    await user.type(status, "402");
-    const delay = screen.getByRole("spinbutton", { name: "Delay (ms)" });
-    await user.clear(delay);
-    await user.type(delay, "250");
+    // Focusing selects the whole value, so typing replaces it.
+    const status = screen.getByRole("textbox", { name: "Status" });
+    await user.click(status);
+    await user.keyboard("402");
+    const delay = screen.getByRole("textbox", { name: "Delay (ms)" });
+    await user.click(delay);
+    await user.keyboard("2a5x0");
     setEditorText("Reply body", '{"id": "{{$request.params.id}}"}');
 
     const r = draft().rules[0];
@@ -482,8 +483,12 @@ describe("RulesEditor", () => {
       response: { status: 402, delayMs: 250, body: '{"id": "{{$request.params.id}}"}' },
     });
 
+    // Clearing doesn't turn it into 0; leaving it empty puts the value back.
     await user.clear(status);
-    expect(draft().rules[0].response.status).toBe(0);
+    expect(status).toHaveValue("");
+    expect(draft().rules[0].response.status).toBe(402);
+    await user.tab();
+    expect(status).toHaveValue("402");
     await user.click(screen.getByRole("button", { name: "Remove condition 1" }));
     expect(draft().rules[0].match.conditions).toEqual([]);
     await user.click(screen.getByRole("checkbox", { name: "Enabled" }));
@@ -532,9 +537,9 @@ describe("RulesEditor", () => {
     expect(draft().rules).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: /Default response/ }));
-    const status = await screen.findByRole("spinbutton", { name: "Status" });
-    await user.clear(status);
-    await user.type(status, "204");
+    const status = await screen.findByRole("textbox", { name: "Status" });
+    await user.tripleClick(status);
+    await user.keyboard("204");
     expect(draft().defaultResponse.status).toBe(204);
   });
 
@@ -555,7 +560,7 @@ describe("RulesEditor", () => {
       store().setProblem(tabs().activeId, { ruleId: "", field: "status", message: "Default response: bad" }),
     );
     expect(screen.getByRole("alert")).toHaveTextContent("Default response: bad");
-    expect(screen.getByRole("spinbutton", { name: "Status" })).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("textbox", { name: "Status" })).toHaveAttribute("aria-invalid", "true");
   });
 
   it("saves from the header when edited", async () => {

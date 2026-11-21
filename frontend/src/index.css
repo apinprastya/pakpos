@@ -129,6 +129,11 @@
   --syntax-var-warn: #8a5300;
   --syntax-var-warn-bg: color-mix(in oklab, var(--syntax-var-warn) 11%, transparent);
   --editor-selection: #cfdafc;
+  /* Selected text outside code editors. Both colours are set: WebKitGTK
+     otherwise paints selected text in form fields with the GTK theme's
+     colour, which can vanish on the selection. */
+  --selection: #cfdafc;
+  --selection-foreground: #11151c;
   /* Translucent: CodeMirror draws the selection under the lines, so an opaque
      active line would hide the selection on the cursor's line. */
   --editor-active-line: color-mix(in oklab, var(--foreground) 5%, transparent);
@@ -188,7 +193,9 @@
   --syntax-var-dynamic-bg: color-mix(in oklab, var(--syntax-var-dynamic) 16%, transparent);
   --syntax-var-warn: #ebc06e;
   --syntax-var-warn-bg: color-mix(in oklab, var(--syntax-var-warn) 16%, transparent);
-  --editor-selection: #2f3f66;
+  --editor-selection: #34497a;
+  --selection: #3d5a9e;
+  --selection-foreground: #ffffff;
   --editor-active-line: color-mix(in oklab, var(--foreground) 6%, transparent);
 }
 
@@ -255,8 +262,11 @@
   [data-platform="mac"] .window-drag * {
     --wails-draggable: no-drag;
   }
-  ::selection {
-    background-color: var(--editor-selection);
+  ::selection,
+  input::selection,
+  textarea::selection {
+    background-color: var(--selection);
+    color: var(--selection-foreground);
   }
   @media (prefers-reduced-motion: reduce) {
     *,

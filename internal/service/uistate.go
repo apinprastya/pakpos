@@ -11,6 +11,12 @@ import (
 const (
 	maxUIStateKey   = 128
 	maxUIStateValue = 64 << 10
+	// UIStateTabsKey holds the open tabs and their drafts (stores/tabs.ts).
+	// Drafts can carry request bodies, so it gets a larger limit. They live
+	// here rather than only in the webview's localStorage, which WebKitGTK
+	// doesn't reliably keep across app restarts.
+	UIStateTabsKey = "tabs"
+	maxUITabsValue = 16 << 20
 )
 
 // UIStateService stores app-wide UI state (panel sizes, table column widths)
@@ -31,7 +37,11 @@ func (s *UIStateService) Set(key, value string) error {
 	if key == "" || len(key) > maxUIStateKey {
 		return fmt.Errorf("ui state key must be 1-%d characters", maxUIStateKey)
 	}
-	if len(value) > maxUIStateValue {
+	limit := maxUIStateValue
+	if key == UIStateTabsKey {
+		limit = maxUITabsValue
+	}
+	if len(value) > limit {
 		return fmt.Errorf("ui state %s is too large (%d bytes)", key, len(value))
 	}
 	if value != "" && !json.Valid([]byte(value)) {

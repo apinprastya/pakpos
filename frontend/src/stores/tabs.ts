@@ -16,6 +16,8 @@ import {
 } from "@/lib/model";
 import { toolDef } from "@/features/tools/registry";
 import { normalizeWebhook, webhooksEqual, type Webhook } from "@/lib/webhookModel";
+import { api } from "@/lib/api";
+import { useUiStateStore } from "@/stores/uiState";
 
 /** What a non-request tab edits (or, for `runner`, runs). */
 export type DocKind = "environment" | "globals" | "collection" | "folder" | "runner" | "webhook";
@@ -332,6 +334,50 @@ const safeStorage: StateStorage = {
   },
 };
 
+/** localStorage key of the open tabs (also the zustand persist name). */
+export const TABS_STORAGE_KEY = "pakpos-tabs";
+/** Go UI state key holding the same value (service.UIStateTabsKey). */
+export const TABS_STATE_KEY = "tabs";
+const TABS_SAVE_DELAY_MS = 400;
+
+let tabsPending: string | null = null;
+let tabsTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Writes the open tabs to Go now, if a save is waiting (the window may be closing). */
+export function flushTabs(): void {
+  clearTimeout(tabsTimer);
+  if (tabsPending === null) return;
+  const value = tabsPending;
+  tabsPending = null;
+  api.setUiState(TABS_STATE_KEY, value).catch((e: unknown) => console.warn("save open tabs", e));
+}
+
+/**
+ * localStorage plus a copy in Go (SQLite): WebKitGTK doesn't reliably keep a
+ * webview's localStorage across app restarts, so Go's copy is the one
+ * restored at startup (`hydrateTabs`). Writes to Go are debounced.
+ */
+const tabsStorage: StateStorage = {
+  getItem: (k) => safeStorage.getItem(k),
+  setItem: (k, v) => {
+    safeStorage.setItem(k, v);
+    tabsPending = v;
+    clearTimeout(tabsTimer);
+    tabsTimer = setTimeout(flushTabs, TABS_SAVE_DELAY_MS);
+  },
+  removeItem: (k) => safeStorage.removeItem(k),
+};
+
+/**
+ * Restores the open tabs. Call after the UI state is loaded (main.tsx):
+ * Go's copy, when there is one, replaces whatever localStorage holds.
+ */
+export async function hydrateTabs(): Promise<void> {
+  const saved = useUiStateStore.getState().values[TABS_STATE_KEY];
+  if (saved !== undefined) safeStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(saved));
+  await useTabsStore.persist.rehydrate();
+}
+
 const first = makeTab();
 
 export const useTabsStore = create<TabsState>()(
@@ -606,9 +652,11 @@ export const useTabsStore = create<TabsState>()(
         })),
     }),
     {
-      name: "pakpos-tabs",
+      name: TABS_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => safeStorage),
+      storage: createJSONStorage(() => tabsStorage),
+      // hydrateTabs runs once Go's copy is loaded (main.tsx).
+      skipHydration: true,
       // Convenience only: keep the open tabs and drafts, not responses or sends.
       // A tool's state is kept only when the tool says so (never a JWT's token).
       partialize: (s) => ({

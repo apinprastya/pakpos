@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 import { useTabsStore } from "@/stores/tabs";
 import { useWebhooksStore } from "@/stores/webhooks";
 import { templateCompletions } from "./completions";
+import { NumberField } from "./NumberField";
 import { moveRule, ruleSummary } from "./format";
 
 /** "" in the selection means the default response. */
@@ -259,9 +260,6 @@ function RuleForm({
           />
           Enabled
         </label>
-        <Button variant="ghost" size="sm" onClick={onDelete}>
-          <Trash2 /> Delete rule
-        </Button>
       </div>
       <ProblemNote problem={problem} />
 
@@ -334,6 +332,20 @@ function RuleForm({
           onChange={(fn) => onChange((r) => ({ ...r, response: fn(r.response) }))}
         />
       </fieldset>
+
+      <div className="flex items-center justify-between gap-3 border-t pt-4">
+        <p className="text-xs text-muted-foreground">
+          Deleting a rule takes effect when you save the webhook.
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-destructive hover:text-destructive"
+          onClick={onDelete}
+        >
+          <Trash2 /> Delete rule
+        </Button>
+      </div>
     </div>
   );
 }
@@ -424,34 +436,27 @@ function ResponseForm({
 }) {
   const contentType =
     response.headers.find((h) => h.enabled && h.key.toLowerCase() === "content-type")?.value ?? "";
-  const num = (v: string) => (v.trim() === "" ? 0 : Number(v));
   return (
     <div className="flex flex-col gap-3">
       <div className="flex gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${idPrefix}-status`}>Status</Label>
-          <Input
+          <NumberField
             id={`${idPrefix}-status`}
-            type="number"
-            min={100}
-            max={599}
-            aria-invalid={invalid(problem, "status") || undefined}
+            hint="100–599"
+            invalid={invalid(problem, "status")}
             value={response.status}
-            onChange={(e) => onChange((r) => ({ ...r, status: num(e.target.value) }))}
-            className="w-28 font-mono"
+            onChange={(status) => onChange((r) => ({ ...r, status }))}
           />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor={`${idPrefix}-delay`}>Delay (ms)</Label>
-          <Input
+          <NumberField
             id={`${idPrefix}-delay`}
-            type="number"
-            min={0}
-            max={MAX_DELAY_MS}
-            aria-invalid={invalid(problem, "delayMs") || undefined}
+            hint={`0–${MAX_DELAY_MS}`}
+            invalid={invalid(problem, "delayMs")}
             value={response.delayMs}
-            onChange={(e) => onChange((r) => ({ ...r, delayMs: num(e.target.value) }))}
-            className="w-28 font-mono"
+            onChange={(delayMs) => onChange((r) => ({ ...r, delayMs }))}
           />
         </div>
       </div>
