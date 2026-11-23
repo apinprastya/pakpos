@@ -9,6 +9,7 @@ import { useWorkspaceStore } from "@/stores/workspace";
 import { useEnvironmentsStore } from "@/stores/environments";
 import { useSecretsStore } from "@/stores/secrets";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { postmanImportInitial, usePostmanImportStore } from "@/stores/postmanImport";
 import { useTreeStore } from "@/stores/tree";
 import { useExamplesStore } from "@/stores/examples";
 import { usePaletteStore } from "@/stores/palette";
@@ -36,6 +37,7 @@ export function resetSidebarStores(): void {
   useEnvironmentsStore.setState(environmentsInitial, true);
   useSecretsStore.setState(secretsInitial, true);
   useCodeDialogsStore.setState({ ...codeDialogsInitial, language: "curl" }, true);
+  usePostmanImportStore.setState({ ...postmanImportInitial });
   useTreeStore.setState(treeInitial, true);
   useExamplesStore.setState(examplesInitial, true);
   usePaletteStore.setState(paletteInitial, true);

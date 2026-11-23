@@ -1,0 +1,150 @@
+{
+  "info": {
+    "_postman_id": "8f0c0e5a-1111-2222-3333-444455556666",
+    "name": "  Shop   API ",
+    "description": "The shop",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+  },
+  "event": [
+    { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.variables.set('ts', Date.now());"] } },
+    { "listen": "test", "script": { "type": "text/javascript", "exec": "pm.test('ok', () => pm.response.to.have.status(200));" } }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "https://shop.example.com", "type": "string" },
+    { "key": "apiKey", "value": "abc123", "type": "string" },
+    { "key": "count", "value": 3, "type": "number" },
+    { "key": "off", "value": "x", "disabled": true },
+    { "key": "vaulted", "value": "s3cret", "type": "secret" }
+  ],
+  "item": [
+    {
+      "name": "Orders",
+      "auth": { "type": "noauth" },
+      "event": [
+        { "listen": "prerequest", "script": { "exec": ["const sig = CryptoJS.HmacSHA256('a', 'b');"] } }
+      ],
+      "item": [
+        {
+          "name": "List orders",
+          "protocolProfileBehavior": { "followRedirects": false, "strictSSL": false, "maxRedirects": 3 },
+          "request": {
+            "method": "get",
+            "header": [
+              { "key": "Accept", "value": "application/json" },
+              { "key": "X-Debug", "value": "1", "disabled": true }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/orders?page=1&q=a%20b",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "q", "value": "a%20b" },
+                { "key": "debug", "value": "true", "disabled": true }
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "Two orders",
+              "originalRequest": { "method": "GET", "header": [], "url": { "raw": "{{baseUrl}}/orders?page=1" } },
+              "status": "OK",
+              "code": 200,
+              "_postman_previewlanguage": "json",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "[{\"id\":1},{\"id\":2}]"
+            },
+            { "name": "", "code": 404, "status": "Not Found", "header": null, "body": "" }
+          ]
+        },
+        {
+          "name": "Get order",
+          "request": {
+            "method": "GET",
+            "header": "Accept: application/json\nX-Trace: {{$randomUUID}}",
+            "url": {
+              "raw": "{{baseUrl}}/orders/:id",
+              "host": ["{{baseUrl}}"],
+              "path": ["orders", ":id"],
+              "variable": [{ "key": "id", "value": "42" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Create order",
+      "event": [
+        { "listen": "test", "script": { "exec": ["tests['ok'] = responseCode.code === 201;", "pm.sendRequest('x', () => {});"] } },
+        { "listen": "test", "disabled": true, "script": { "exec": ["throw 1"] } }
+      ],
+      "request": {
+        "method": "POST",
+        "auth": { "type": "basic", "basic": [{ "key": "username", "value": "me" }, { "key": "password", "value": "hunter2" }] },
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"{{$randomEmail}}\"}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": "{{baseUrl}}/orders"
+      }
+    },
+    {
+      "name": "Upload",
+      "request": {
+        "method": "POST",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            { "key": "name", "value": "logo", "type": "text" },
+            { "key": "files", "type": "file", "src": ["/home/me/a.png", "/home/me/b.png"] },
+            { "key": "empty", "type": "file", "src": null },
+            { "key": "off", "value": "1", "type": "text", "disabled": true, "contentType": "text/plain" }
+          ]
+        },
+        "url": { "protocol": "https", "host": ["files", "example", "com"], "port": "8443", "path": "upload" }
+      }
+    },
+    {
+      "name": "Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/xml" }],
+        "body": { "mode": "raw", "raw": "<login/>" },
+        "url": "{{baseUrl}}/login"
+      }
+    },
+    {
+      "name": "Form",
+      "request": {
+        "method": "POST",
+        "body": { "mode": "urlencoded", "urlencoded": [{ "key": "a", "value": "1" }, { "key": "b", "value": "2", "disabled": true }] },
+        "url": "{{baseUrl}}/form"
+      }
+    },
+    {
+      "name": "Binary",
+      "request": { "method": "PUT", "body": { "mode": "file", "file": { "src": "/tmp/data.bin" } }, "url": "{{baseUrl}}/bin" }
+    },
+    {
+      "name": "Graph",
+      "request": {
+        "method": "POST",
+        "body": { "mode": "graphql", "graphql": { "query": "query { me { id } }", "variables": "{\"a\": 1}" } },
+        "url": "{{baseUrl}}/graphql"
+      }
+    },
+    {
+      "name": "Disabled body",
+      "request": { "method": "POST", "body": { "mode": "raw", "raw": "keep me", "disabled": true }, "url": "{{baseUrl}}/x" }
+    },
+    { "name": "Just a URL", "request": "https://example.com/ping" },
+    { "name": "Broken", "response": [] },
+    { "name": "Empty folder", "item": [] }
+  ]
+}

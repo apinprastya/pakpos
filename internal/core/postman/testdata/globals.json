@@ -1,0 +1,9 @@
+{
+  "id": "g1",
+  "name": "My Workspace Globals",
+  "values": [
+    { "key": "host", "value": "example.com", "enabled": true },
+    { "key": "secretThing", "value": "v", "type": "secret", "enabled": true }
+  ],
+  "_postman_variable_scope": "globals"
+}
