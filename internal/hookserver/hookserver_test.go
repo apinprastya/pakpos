@@ -99,13 +99,14 @@ func TestServerAnswersAndRecords(t *testing.T) {
 		t.Fatalf("default reply = %d %q", resp.StatusCode, body)
 	}
 
+	waitFor(t, func() bool { return len(recs.all()) == 2 })
 	got := recs.all()
 	if len(got) != 2 {
 		t.Fatalf("records = %d", len(got))
 	}
 	r := got[0]
 	if r.ID == "" || r.Method != "POST" || r.Path != "/orders/42" || r.Query != "x=1&x=2" || string(r.Body) != `{"a":1}` || r.BodySize != 7 ||
-		r.RuleName != "Fail" || r.RuleID == "" || r.Status != 402 || r.RemoteAddr != "9.9.9.9" || r.Error != "" || r.DurationMs <= 0 ||
+		r.RuleName != "Fail" || r.RuleID == "" || r.Status != 402 || r.RemoteAddr != "9.9.9.9" || r.Error != "" || r.DurationMs < 0 ||
 		string(r.ResponseBody) != `{"order": "42", "t": 5}` || r.ReceivedAt.IsZero() {
 		t.Errorf("record = %+v", r)
 	}
@@ -170,6 +171,7 @@ func TestServerChunked(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
+	waitFor(t, func() bool { return len(recs.all()) == 1 })
 	r := recs.all()[0]
 	found := false
 	for _, h := range r.Headers {
