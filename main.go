@@ -83,6 +83,7 @@ func main() {
 			application.NewService(service.NewAuthService(core, control)),
 			application.NewService(service.NewToolService(core)),
 			application.NewService(service.NewWebhookService(core)),
+			application.NewService(service.NewImportService(core)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{

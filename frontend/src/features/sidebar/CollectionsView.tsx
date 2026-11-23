@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { FolderOpen, FolderPlus, Search, X } from "lucide-react";
+import { FileUp, FolderOpen, FolderPlus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { usePostmanImportStore } from "@/stores/postmanImport";
 import { useTreeStore } from "@/stores/tree";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { CollectionTree } from "./CollectionTree";
@@ -86,19 +87,34 @@ function WorkspaceCollections({ workspaceId }: { workspaceId: string }) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex h-9 shrink-0 items-center justify-between pr-1.5 pl-3">
         <h2 className="text-xs font-medium text-muted-foreground">Collections</h2>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="New collection"
-              onClick={() => void store().createCollection()}
-            >
-              <FolderPlus />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>New collection</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Import from Postman"
+                onClick={() => usePostmanImportStore.getState().openDialog()}
+              >
+                <FileUp />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Import from Postman</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="New collection"
+                onClick={() => void store().createCollection()}
+              >
+                <FolderPlus />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>New collection</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {collections.length > 0 && (
@@ -137,6 +153,9 @@ function WorkspaceCollections({ workspaceId }: { workspaceId: string }) {
           >
             <Button size="sm" onClick={() => void store().createCollection()}>
               <FolderPlus /> Create collection
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => usePostmanImportStore.getState().openDialog()}>
+              <FileUp /> Import from Postman
             </Button>
           </EmptyState>
         ) : shown.length === 0 ? (

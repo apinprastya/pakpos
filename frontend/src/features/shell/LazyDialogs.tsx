@@ -2,12 +2,14 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { useCookiesStore } from "@/stores/cookies";
 import { usePaletteStore } from "@/stores/palette";
+import { usePostmanImportStore } from "@/stores/postmanImport";
 import { useSettingsStore } from "@/stores/settings";
 import { useUpdateStore } from "@/stores/update";
 import {
   loadCode,
   loadCookies,
   loadImportCurl,
+  loadImportPostman,
   loadPalette,
   loadSettings,
   loadUpdate,
@@ -19,6 +21,7 @@ import {
 // startup bundle.
 const SettingsDialog = lazy(() => loadSettings().then((m) => ({ default: m.SettingsDialog })));
 const ImportCurlDialog = lazy(() => loadImportCurl().then((m) => ({ default: m.ImportCurlDialog })));
+const ImportPostmanDialog = lazy(() => loadImportPostman().then((m) => ({ default: m.ImportPostmanDialog })));
 const CodeDialog = lazy(() => loadCode().then((m) => ({ default: m.CodeDialog })));
 const CommandPalette = lazy(() => loadPalette().then((m) => ({ default: m.CommandPalette })));
 const UpdateDialog = lazy(() => loadUpdate().then((m) => ({ default: m.UpdateDialog })));
@@ -37,6 +40,7 @@ export function MountWhenOpened({ open, children }: { open: boolean; children: R
 export function LazyDialogs() {
   const settings = useSettingsStore((s) => s.dialogOpen);
   const importCurl = useCodeDialogsStore((s) => s.importOpen);
+  const importPostman = usePostmanImportStore((s) => s.open);
   const code = useCodeDialogsStore((s) => !!s.codeTabId);
   const palette = usePaletteStore((s) => s.open);
   const update = useUpdateStore((s) => s.dialogOpen);
@@ -50,6 +54,9 @@ export function LazyDialogs() {
       </MountWhenOpened>
       <MountWhenOpened open={importCurl}>
         <ImportCurlDialog />
+      </MountWhenOpened>
+      <MountWhenOpened open={importPostman}>
+        <ImportPostmanDialog />
       </MountWhenOpened>
       <MountWhenOpened open={code}>
         <CodeDialog />

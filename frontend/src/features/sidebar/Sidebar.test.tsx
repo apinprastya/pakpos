@@ -9,6 +9,7 @@ import { col, folder, req } from "@/test/fixtures";
 import { activeTab, resetTabs } from "@/test/store";
 import { useLayoutStore } from "@/stores/layout";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { usePostmanImportStore } from "@/stores/postmanImport";
 
 const ws = { id: "w1", name: "Shop API", path: "/work/shop" };
 const collections = (): CollectionNode[] => [
@@ -378,6 +379,14 @@ describe("sidebar: collections tree", () => {
     await user.click(screen.getByRole("button", { name: "Create collection" }));
     await user.click(screen.getByRole("button", { name: "New collection" }));
     expect(create).toHaveBeenCalledTimes(2);
+
+    // Both places also offer the Postman import.
+    for (const b of screen.getAllByRole("button", { name: "Import from Postman" })) {
+      usePostmanImportStore.setState({ open: false });
+      await user.click(b);
+      expect(usePostmanImportStore.getState().open).toBe(true);
+    }
+    expect(screen.getAllByRole("button", { name: "Import from Postman" })).toHaveLength(2);
 
     act(() =>
       useWorkspaceStore.setState({

@@ -17,8 +17,11 @@ The webhook test server (public URL through a Cloudflare quick tunnel, request
 log, response rules) has its own plan, [PLAN-WEBHOOKS.md](PLAN-WEBHOOKS.md),
 and is done in code; its smoke tests are in [SMOKE-TEST.md](SMOKE-TEST.md).
 
-Out of scope for now: importing Postman collections. Non-REST protocols
-(GraphQL, gRPC, WebSocket) are not planned.
+Importing from Postman (collections v2.0/v2.1, environments, globals) has
+its own plan, [PLAN-POSTMAN.md](PLAN-POSTMAN.md), and is done in code; its
+smoke tests are in [SMOKE-TEST.md](SMOKE-TEST.md).
+
+Non-REST protocols (GraphQL, gRPC, WebSocket) are not planned.
 
 ---
 
@@ -62,8 +65,8 @@ Out of scope for now: importing Postman collections. Non-REST protocols
 - Copy a request as cURL.
 - Code generation: cURL, JavaScript (fetch / axios), Python (requests), Go,
   Java, PHP.
-- Not in this tier: Postman collections. OpenAPI and HAR import are deferred
-  to Tier 4.
+- Not in this tier: Postman collections (since done separately, see
+  PLAN-POSTMAN.md). OpenAPI and HAR import are deferred to Tier 4.
 
 **UX**
 - Command palette (requests, collections, actions).

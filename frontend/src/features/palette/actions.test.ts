@@ -14,6 +14,7 @@ import { col, req } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
 import { ACTIONS, availableActions, oauth2Target, type ActionContext } from "./actions";
 import { useConsoleStore } from "@/stores/console";
+import { usePostmanImportStore } from "@/stores/postmanImport";
 import { toast } from "sonner";
 import { makeEnv } from "@/test/fixtures";
 
@@ -48,6 +49,14 @@ beforeEach(() => {
 });
 
 describe("palette actions", () => {
+  it("opens the Postman import dialog only with a workspace", () => {
+    expect(ids(ctx({ workspace: null }))).not.toContain("import-postman");
+    const c = ctx();
+    expect(ids(c)).toContain("import-postman");
+    action("import-postman").run(c);
+    expect(usePostmanImportStore.getState().open).toBe(true);
+  });
+
   it("have unique ids, labels in sentence case and a group", () => {
     const seen = new Set<string>();
     for (const a of ACTIONS) {

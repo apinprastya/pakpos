@@ -16,6 +16,7 @@ import type { SecretsStatus, WorkspaceInfo } from "@/lib/model";
 import { modKeyLabel } from "@/lib/platform";
 import { destinations } from "@/lib/tree";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
+import { usePostmanImportStore } from "@/stores/postmanImport";
 import { useOAuth2Store } from "@/stores/oauth2";
 import { useCookiesStore } from "@/stores/cookies";
 import { useEnvironmentsStore } from "@/stores/environments";
@@ -354,6 +355,14 @@ export const ACTIONS: PaletteAction[] = [
       useLayoutStore.getState().setSidebarView("collections");
       void useWorkspaceStore.getState().createCollection();
     },
+  },
+  {
+    id: "import-postman",
+    label: "Import from Postman…",
+    keywords: ["collection", "environment", "globals", "export", "json"],
+    group: "Workspace",
+    enabled: (ctx) => !!ctx.workspace,
+    run: () => usePostmanImportStore.getState().openDialog(),
   },
   {
     id: "new-folder",

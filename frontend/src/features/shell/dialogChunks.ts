@@ -2,6 +2,7 @@
 // shared by their React.lazy wrappers and the idle-time preloader below.
 export const loadSettings = () => import("@/features/settings/SettingsDialog");
 export const loadImportCurl = () => import("@/features/code/ImportCurlDialog");
+export const loadImportPostman = () => import("@/features/import/ImportPostmanDialog");
 export const loadCode = () => import("@/features/code/CodeDialog");
 export const loadPalette = () => import("@/features/palette/CommandPalette");
 export const loadUpdate = () => import("@/features/update/UpdateDialog");
@@ -25,6 +26,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadSettings,
   loadCode,
   loadImportCurl,
+  loadImportPostman,
   loadCookies,
   loadScripts,
   loadConsole,

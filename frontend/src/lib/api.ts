@@ -11,6 +11,7 @@ import {
   EnvService,
   ExampleService,
   HistoryService,
+  ImportService,
   RequestService,
   RunnerService,
   SettingsService,
@@ -38,6 +39,13 @@ import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
 import type * as bsvc from "../../bindings/pakpos/internal/service/models";
 import { normalizeHashResult, type HashRequest, type HashResult } from "./toolModel";
+import {
+  normalizeImportResult,
+  normalizeImportSummary,
+  type ImportOptions,
+  type ImportResult,
+  type ImportSummary,
+} from "./importModel";
 import {
   normalizeCloudflared,
   normalizeProblem,
@@ -583,6 +591,18 @@ export const api = {
   /** Asks for a CSV or JSON data file; "" when cancelled. */
   async pickDataFile(): Promise<string> {
     return RunnerService.PickDataFile();
+  },
+  /** Asks for an exported Postman file; "" when cancelled. */
+  async pickPostmanFile(): Promise<string> {
+    return ImportService.PickPostmanFile();
+  },
+  /** Reads a Postman export and says what importing it adds. Rejects with a sentence for the user. */
+  async previewPostman(path: string, opts: ImportOptions): Promise<ImportSummary> {
+    return normalizeImportSummary(await ImportService.PreviewPostman(path, opts));
+  },
+  /** Imports a Postman export into the open workspace. Rejects with a sentence for the user. */
+  async importPostman(path: string, opts: ImportOptions): Promise<ImportResult> {
+    return normalizeImportResult(await ImportService.ImportPostman(path, opts));
   },
   /** Digests text or a file (streamed in Go). Rejects with a sentence for the user. */
   async hash(req: HashRequest): Promise<HashResult> {

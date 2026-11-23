@@ -226,6 +226,18 @@ Run on each OS. Start on a machine (or in an `XDG_CONFIG_HOME`) without cloudfla
 - [ ] Settings → Webhooks → **Choose file…** with a non-cloudflared file is refused; choosing a real cloudflared shows "Chosen by you"; saving other settings afterwards keeps it; **Find it automatically** clears it.
 - [ ] Windows: no console window opens next to the app while the tunnel runs; Task Manager shows `cloudflared.exe` gone after Stop and after quitting.
 
+## Postman import
+
+Needs a Postman account with a collection that has folders, examples, scripts, collection variables and auth, plus an environment with a secret variable. Export the collection as Collection v2.1, the environment, and the globals.
+
+- [ ] The Collections header's **Import from Postman** button, the "No collections yet" state and the palette's "Import from Postman…" open the dialog; **Choose file…** opens the system file dialog.
+- [ ] The collection's preview names it, counts requests, folders, examples and variables, and lists what won't work (e.g. a script with `pm.sendRequest`, `{{$randomEmail}}`); **Import** adds the collection, reveals it in the sidebar, and the tree matches Postman's order.
+- [ ] Opening imported requests shows the same URL, params (disabled ones too), path variables, headers, body, auth (inherited where Postman inherited) and scripts; examples are listed and open; sending one with the imported environment selected works like in Postman.
+- [ ] The environment import opens its tab; the secret variable shows as set, and its value appears in no workspace file (`grep -r <value> <workspace>`). With "Keep credentials in the secret store" on, a `token` variable is secret too; off, the preview warns about it.
+- [ ] With the secret store locked (file store), importing an environment with a secret asks to unlock first; cancelling leaves nothing imported.
+- [ ] Globals import lists the keys it replaces and opens the Globals tab with the merged values.
+- [ ] A v1 collection, a data dump, a non-JSON file and a JSON file that isn't a Postman export each show a sentence saying what to do; nothing is added.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).
