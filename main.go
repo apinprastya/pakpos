@@ -10,6 +10,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"pakpos/internal/appearance"
+	"pakpos/internal/hookserver"
 	"pakpos/internal/secrets"
 	"pakpos/internal/service"
 	"pakpos/internal/update"
@@ -26,6 +27,9 @@ func init() {
 	application.RegisterEvent[service.ScriptConsoleEvent](service.EventScriptConsole)
 	application.RegisterEvent[service.RunnerProgressEvent](service.EventRunnerProgress)
 	application.RegisterEvent[service.OAuth2FlowEvent](service.EventOAuth2Flow)
+	application.RegisterEvent[hookserver.Status](service.EventWebhookStatus)
+	application.RegisterEvent[service.WebhookRequestEvent](service.EventWebhookRequest)
+	application.RegisterEvent[service.CloudflaredInstallProgress](service.EventWebhookInstall)
 }
 
 func main() {
@@ -78,6 +82,7 @@ func main() {
 			application.NewService(service.NewRunnerService(core)),
 			application.NewService(service.NewAuthService(core, control)),
 			application.NewService(service.NewToolService(core)),
+			application.NewService(service.NewWebhookService(core)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{

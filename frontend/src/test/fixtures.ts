@@ -1,3 +1,10 @@
+import type {
+  Webhook,
+  WebhookRequestDetail,
+  WebhookRequestSummary,
+  WebhookRule,
+  WebhookStatus,
+} from "@/lib/webhookModel";
 import { emptyAuth, emptyRequest } from "@/lib/model";
 import {
   emptyRunSummary,
@@ -369,6 +376,91 @@ export function makeOAuth2Status(patch: Partial<OAuth2Status> = {}): OAuth2Statu
     obtainedAt: 0,
     hasRefreshToken: true,
     hasIdToken: false,
+    ...patch,
+  };
+}
+
+export function makeWebhook(id = "h1", name = "Payments", patch: Partial<Webhook> = {}): Webhook {
+  return {
+    id,
+    name,
+    seq: 1,
+    defaultResponse: {
+      status: 200,
+      headers: [{ key: "Content-Type", value: "application/json", enabled: true }],
+      body: '{"ok": true}\n',
+      delayMs: 0,
+    },
+    rules: [],
+    ...patch,
+  };
+}
+
+export function makeWebhookRule(id = "r1", patch: Partial<WebhookRule> = {}): WebhookRule {
+  return {
+    id,
+    name: "Declined",
+    enabled: true,
+    match: { method: "POST", path: "/stripe/*", conditions: [] },
+    response: { status: 400, headers: [], body: '{"error": "declined"}', delayMs: 0 },
+    ...patch,
+  };
+}
+
+export function makeWebhookStatus(patch: Partial<WebhookStatus> = {}): WebhookStatus {
+  return {
+    workspaceId: "w1",
+    webhookId: "h1",
+    name: "Payments",
+    workspaceName: "Shop",
+    state: "running",
+    tunnel: true,
+    localUrl: "http://127.0.0.1:40123",
+    publicUrl: "https://brave-fox.trycloudflare.com",
+    message: "",
+    startedAt: "2026-11-21T10:00:00Z",
+    ...patch,
+  };
+}
+
+export function makeWebhookRequest(
+  id = "q1",
+  patch: Partial<WebhookRequestSummary> = {},
+): WebhookRequestSummary {
+  return {
+    id,
+    workspaceId: "w1",
+    webhookId: "h1",
+    receivedAt: "2026-11-21T10:00:05Z",
+    method: "POST",
+    path: "/stripe/events",
+    query: "",
+    bodySize: 15,
+    truncated: false,
+    remoteAddr: "203.0.113.7",
+    ruleId: "",
+    ruleName: "",
+    status: 200,
+    durationMs: 1.2,
+    error: "",
+    ...patch,
+  };
+}
+
+export function makeWebhookDetail(
+  entry: WebhookRequestSummary = makeWebhookRequest(),
+  patch: Partial<WebhookRequestDetail> = {},
+): WebhookRequestDetail {
+  return {
+    entry,
+    headers: [
+      { name: "Host", value: "brave-fox.trycloudflare.com" },
+      { name: "Content-Type", value: "application/json" },
+      { name: "Stripe-Signature", value: "t=1,v1=abc" },
+    ],
+    body: { text: '{"type":"paid"}', base64: "", binary: false, truncated: false },
+    responseHeaders: [{ name: "Content-Type", value: "application/json" }],
+    responseBody: { text: '{"ok": true}\n', base64: "", binary: false, truncated: false },
     ...patch,
   };
 }

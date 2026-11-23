@@ -9,6 +9,7 @@ export const loadCookies = () => import("@/features/cookies/CookieManagerDialog"
 export const loadScripts = () => import("@/features/scripts/ScriptsSection");
 export const loadConsole = () => import("@/features/console/ConsoleDrawer");
 export const loadRunner = () => import("@/features/runner/RunnerView");
+export const loadWebhooks = () => import("@/features/webhooks/WebhookView");
 export const loadOtherAuth = () => import("@/features/request/OtherAuthFields");
 export const loadJwtTool = () => import("@/features/tools/jwt/JwtTool");
 export const loadJsonTool = () => import("@/features/tools/json/JsonTool");
@@ -28,6 +29,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadScripts,
   loadConsole,
   loadRunner,
+  loadWebhooks,
   loadOtherAuth,
   loadJwtTool,
   loadJsonTool,

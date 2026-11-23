@@ -14,6 +14,7 @@ import (
 	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/script"
 	"pakpos/internal/core/settings"
+	"pakpos/internal/hookserver"
 	"pakpos/internal/pipeline"
 	"pakpos/internal/secrets"
 	"pakpos/internal/store/fsstore"
@@ -80,12 +81,15 @@ type Config struct {
 	// WatchDebounce delays reloads after external file changes (default 300ms).
 	WatchDebounce time.Duration
 	Logger        *slog.Logger
+	// Tunnel opens webhook tunnels; nil uses cloudflared (tests pass a fake).
+	Tunnel hookserver.TunnelStarter
 }
 
 // Core is the state shared by all services: the database, the secret store,
 // the open workspace, the HTTP executor and settings. It is safe for
 // concurrent use.
 type Core struct {
+	dataDir  string
 	db       *sqlite.Store
 	secrets  secrets.Store
 	dialogs  Dialogs
@@ -102,6 +106,9 @@ type Core struct {
 	// oauth gets and refreshes OAuth 2.0 tokens through the current
 	// executor's transports; one per Core so refreshes are serialised.
 	oauth *pipeline.OAuth2
+	// hooks runs webhook test servers. It outlives workspace switches: a
+	// webhook keeps running with the rules it last loaded.
+	hooks *hookserver.Manager
 
 	mu      sync.RWMutex
 	ws      *fsstore.Workspace
@@ -144,6 +151,7 @@ func NewCore(cfg Config) (*Core, error) {
 		sec = secrets.NewFileStore(cfg.DataDir)
 	}
 	c := &Core{
+		dataDir:  cfg.DataDir,
 		db:       db,
 		secrets:  sec,
 		dialogs:  cfg.Dialogs,
@@ -160,6 +168,15 @@ func NewCore(cfg Config) (*Core, error) {
 		c.log = slog.Default()
 	}
 	c.oauth = pipeline.NewOAuth2(func() *http.Client { return c.executor().HTTPClient() }, nil)
+	startTunnel := cfg.Tunnel
+	if startTunnel == nil {
+		startTunnel = c.startTunnel
+	}
+	c.hooks = hookserver.NewManager(hookserver.Options{
+		OnStatus:  func(s hookserver.Status) { c.events.Emit(EventWebhookStatus, s) },
+		OnRequest: c.recordWebhookRequest,
+		Tunnel:    startTunnel,
+	})
 	if c.debounce <= 0 {
 		c.debounce = 300 * time.Millisecond
 	}
@@ -186,8 +203,9 @@ func NewCore(cfg Config) (*Core, error) {
 	return c, nil
 }
 
-// Close stops the watcher and closes the database.
+// Close stops running webhooks and the watcher and closes the database.
 func (c *Core) Close() error {
+	c.hooks.Close()
 	c.mu.Lock()
 	c.closeWorkspaceLocked()
 	c.mu.Unlock()
@@ -335,6 +353,7 @@ func (c *Core) setWorkspace(ws *fsstore.Workspace) {
 		if problems == nil {
 			problems = []fsstore.Problem{}
 		}
+		c.refreshWebhooks(ws)
 		c.events.Emit(EventWorkspaceChanged, WorkspaceChangedEvent{WorkspaceID: id, Problems: problems})
 	})
 	if err != nil {

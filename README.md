@@ -19,6 +19,7 @@ Pakpos is a desktop REST API client for Linux, macOS and Windows, built with Go,
 - **Command palette** (Ctrl/⌘+K) for requests, folders, environments, examples and actions.
 - **Saved examples** of responses per request, checked for echoed secrets before they're written.
 - **History** per workspace, with the environment each request was sent in.
+- **Webhook test server:** start a webhook and Pakpos gives you a public `https://….trycloudflare.com` URL (a Cloudflare quick tunnel through `cloudflared`, which Pakpos can download and checksum-verify for you) or a local one. Every request it receives is logged on your machine, and rules (method, path pattern, header/query/body/JSON conditions) decide the reply: status, headers, templated body and delay. Rules are workspace files, so they can be shared.
 - **Updates:** checks GitHub for a new release at startup and once a day (Settings → About turns it off), then downloads, verifies and installs it when you ask.
 
 See [docs/ROADMAP.md](docs/ROADMAP.md) (feature tiers), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), the plans [docs/PLAN-TIER1.md](docs/PLAN-TIER1.md) and [docs/PLAN-TIER2.md](docs/PLAN-TIER2.md), and the release checklist [docs/SMOKE-TEST.md](docs/SMOKE-TEST.md).
@@ -233,6 +234,8 @@ main.go, wails_adapters.go   Wails bootstrap and dialog/event adapters
 internal/service/            Wails-bound services (thin) + shared Core
 internal/core/               model, urlx, auth, httpexec, settings
 internal/store/              fsstore (YAML workspace), sqlite (history, settings)
+internal/hookserver/         webhook test server (local HTTP server per webhook, manager)
+internal/tunnel/             cloudflared: find, download (SHA-256 checked), run quick tunnels
 internal/buildinfo/          Version metadata (-ldflags)
 scripts/                     Go coverage gate
 tools/                       build helpers: calver, stamp (separate Go module)

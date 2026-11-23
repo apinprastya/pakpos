@@ -79,6 +79,29 @@ describe("SettingsDialog", () => {
     expect(useThemeStore.getState().mode).toBe("light");
   });
 
+  it("keeps a cloudflared path chosen in the Webhooks section when saving", async () => {
+    vi.mocked(api.pickCloudflared).mockResolvedValue({
+      found: true,
+      path: "/opt/cloudflared",
+      source: "settings",
+      version: "1",
+      error: "",
+      customPath: "/opt/cloudflared",
+      canDownload: true,
+    });
+    const { user, dialog } = await openSettings();
+    await user.click(section(dialog, "Webhooks"));
+    await user.click(await within(dialog).findByRole("button", { name: "Choose file…" }));
+    expect(await within(dialog).findByText("Chosen by you")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.setSettings).toHaveBeenCalledWith({
+        ...DEFAULT_SETTINGS,
+        cloudflaredPath: "/opt/cloudflared",
+      }),
+    );
+  });
+
   it("warns when TLS verification is turned off", async () => {
     const { user, dialog } = await openSettings();
     await user.click(section(dialog, "Requests"));

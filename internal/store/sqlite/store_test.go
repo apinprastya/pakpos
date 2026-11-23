@@ -25,7 +25,7 @@ func TestOpenMigratesOnceAndReopens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v, err := s.SchemaVersion(); err != nil || v != 6 {
+	if v, err := s.SchemaVersion(); err != nil || v != 7 {
 		t.Fatalf("version = %d, %v", v, err)
 	}
 	if s.DataDir() != dir {
@@ -74,7 +74,7 @@ func TestMigrations(t *testing.T) {
 	if err := s.migrate(good); err != nil {
 		t.Fatal(err)
 	}
-	if v, _ := s.SchemaVersion(); v != 6 {
+	if v, _ := s.SchemaVersion(); v != 7 {
 		t.Fatalf("version = %d", v)
 	}
 	if err := s.migrate(good); err != nil { // idempotent
@@ -94,7 +94,7 @@ func TestMigrations(t *testing.T) {
 			}
 		})
 	}
-	if v, _ := s.SchemaVersion(); v != 6 {
+	if v, _ := s.SchemaVersion(); v != 7 {
 		t.Fatalf("failed migration must not bump version, got %d", v)
 	}
 }

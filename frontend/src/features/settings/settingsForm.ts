@@ -230,6 +230,8 @@ export function fromDraft(
       caFile: d.caFile.trim(),
       clientCerts: certs,
       scriptTimeoutMs: scriptTimeout! * 1000,
+      // Changed through the Webhooks section (it checks the file runs).
+      cloudflaredPath: base.cloudflaredPath,
     },
     secrets,
     errors: null,

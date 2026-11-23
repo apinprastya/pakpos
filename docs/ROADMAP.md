@@ -13,6 +13,10 @@ tier gets its own plan document (`docs/PLAN-TIER<N>.md`) before work starts.
 In-app updates (signed `SHA256SUMS`, as in Lontar) were pulled forward from
 Tier 4 and are done.
 
+The webhook test server (public URL through a Cloudflare quick tunnel, request
+log, response rules) has its own plan, [PLAN-WEBHOOKS.md](PLAN-WEBHOOKS.md),
+and is done in code; its smoke tests are in [SMOKE-TEST.md](SMOKE-TEST.md).
+
 Out of scope for now: importing Postman collections. Non-REST protocols
 (GraphQL, gRPC, WebSocket) are not planned.
 

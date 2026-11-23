@@ -15,9 +15,18 @@ import {
   type Variable,
 } from "@/lib/model";
 import { toolDef } from "@/features/tools/registry";
+import { normalizeWebhook, webhooksEqual, type Webhook } from "@/lib/webhookModel";
+import { api } from "@/lib/api";
+import { useUiStateStore } from "@/stores/uiState";
 
 /** What a non-request tab edits (or, for `runner`, runs). */
-export type DocKind = "environment" | "globals" | "collection" | "folder" | "runner";
+export type DocKind = "environment" | "globals" | "collection" | "folder" | "runner" | "webhook";
+
+/** A webhook tab's definition as edited and as saved (null until loaded from Go). */
+export interface WebhookDoc {
+  draft: Webhook | null;
+  saved: Webhook | null;
+}
 
 /**
  * A runner tab's configuration, kept with the tab (results are not: past runs
@@ -82,6 +91,8 @@ export interface DocState {
   missing: boolean;
   /** Set for runner tabs (whose draft stays null). */
   runner?: RunnerSettings;
+  /** Set for webhook tabs (whose draft stays null). */
+  webhook?: WebhookDoc;
 }
 
 export function emptyDocDraft(): DocDraft {
@@ -151,10 +162,10 @@ export function isRequestTab(tab: Tab): boolean {
 }
 
 /** Panes whose section tabs are remembered per tab. */
-export type TabPane = "request" | "response" | "settings" | "scripts" | "runner";
+export type TabPane = "request" | "response" | "settings" | "scripts" | "runner" | "webhook";
 export type TabSections = Partial<Record<TabPane, string>>;
 
-const TAB_PANES: TabPane[] = ["request", "response", "settings", "scripts", "runner"];
+const TAB_PANES: TabPane[] = ["request", "response", "settings", "scripts", "runner", "webhook"];
 
 /** Keeps only string sections of known panes (persisted data may be anything). */
 export function restoreSections(raw: unknown): TabSections {
@@ -224,6 +235,14 @@ interface TabsState {
   ) => string;
   /** Changes a runner tab's configuration. */
   updateRunner: (id: string, patch: Partial<RunnerSettings>) => void;
+  /** Opens a webhook's tab, or focuses the open one. */
+  openWebhook: (webhookId: string, name: string, workspaceId: string) => string;
+  /** Edits a loaded webhook tab's draft. */
+  updateWebhook: (id: string, update: (draft: Webhook) => Webhook) => void;
+  /** Sets what was loaded or saved: the draft and its saved copy both become `saved`. */
+  markWebhookSaved: (id: string, saved: Webhook) => void;
+  /** A version read from disk: a clean tab shows it, an edited one keeps its edits. */
+  applyWebhookDisk: (id: string, disk: Webhook) => void;
   /**
    * Opens a tool's tab, or focuses the open one (one tab per tool). With
    * `input` (e.g. "Decode JWT" from a request), the tab's input is replaced.
@@ -260,6 +279,10 @@ function makeTab(partial: Partial<Tab> = {}): Tab {
 
 export function isDirty(tab: Tab): boolean {
   if (tab.tool) return false;
+  if (tab.doc?.webhook) {
+    const { draft, saved } = tab.doc.webhook;
+    return draft !== null && saved !== null && !webhooksEqual(draft, saved);
+  }
   if (tab.doc) {
     const { draft, saved } = tab.doc;
     return draft !== null && saved !== null && !draftsEqual(draft, saved);
@@ -273,6 +296,7 @@ const DOC_TITLES: Record<DocKind, (name: string) => string> = {
   collection: (name) => `${name || "Collection"} settings`,
   folder: (name) => `${name || "Folder"} settings`,
   runner: (name) => `Run ${name || "collection"}`,
+  webhook: (name) => name || "Webhook",
 };
 
 export function tabTitle(tab: Tab): string {
@@ -309,6 +333,50 @@ const safeStorage: StateStorage = {
     }
   },
 };
+
+/** localStorage key of the open tabs (also the zustand persist name). */
+export const TABS_STORAGE_KEY = "pakpos-tabs";
+/** Go UI state key holding the same value (service.UIStateTabsKey). */
+export const TABS_STATE_KEY = "tabs";
+const TABS_SAVE_DELAY_MS = 400;
+
+let tabsPending: string | null = null;
+let tabsTimer: ReturnType<typeof setTimeout> | undefined;
+
+/** Writes the open tabs to Go now, if a save is waiting (the window may be closing). */
+export function flushTabs(): void {
+  clearTimeout(tabsTimer);
+  if (tabsPending === null) return;
+  const value = tabsPending;
+  tabsPending = null;
+  api.setUiState(TABS_STATE_KEY, value).catch((e: unknown) => console.warn("save open tabs", e));
+}
+
+/**
+ * localStorage plus a copy in Go (SQLite): WebKitGTK doesn't reliably keep a
+ * webview's localStorage across app restarts, so Go's copy is the one
+ * restored at startup (`hydrateTabs`). Writes to Go are debounced.
+ */
+const tabsStorage: StateStorage = {
+  getItem: (k) => safeStorage.getItem(k),
+  setItem: (k, v) => {
+    safeStorage.setItem(k, v);
+    tabsPending = v;
+    clearTimeout(tabsTimer);
+    tabsTimer = setTimeout(flushTabs, TABS_SAVE_DELAY_MS);
+  },
+  removeItem: (k) => safeStorage.removeItem(k),
+};
+
+/**
+ * Restores the open tabs. Call after the UI state is loaded (main.tsx):
+ * Go's copy, when there is one, replaces whatever localStorage holds.
+ */
+export async function hydrateTabs(): Promise<void> {
+  const saved = useUiStateStore.getState().values[TABS_STATE_KEY];
+  if (saved !== undefined) safeStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(saved));
+  await useTabsStore.persist.rehydrate();
+}
 
 const first = makeTab();
 
@@ -505,6 +573,40 @@ export const useTabsStore = create<TabsState>()(
         return id;
       },
 
+      openWebhook: (webhookId, name, workspaceId) => {
+        const id = get().openDoc("webhook", webhookId, name, workspaceId);
+        set((s) => ({
+          tabs: mapDoc(s.tabs, id, (d) => (d.webhook ? d : { ...d, webhook: { draft: null, saved: null } })),
+        }));
+        return id;
+      },
+
+      updateWebhook: (id, update) =>
+        set((s) => ({
+          tabs: mapDoc(s.tabs, id, (d) =>
+            d.webhook?.draft ? { ...d, webhook: { ...d.webhook, draft: update(d.webhook.draft) } } : d,
+          ),
+        })),
+
+      markWebhookSaved: (id, saved) =>
+        set((s) => ({
+          tabs: mapDoc(s.tabs, id, (d) => ({
+            ...d,
+            name: saved.name,
+            missing: false,
+            webhook: { draft: saved, saved },
+          })),
+        })),
+
+      applyWebhookDisk: (id, disk) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) => {
+            if (t.id !== id || !t.doc?.webhook) return t;
+            const webhook = isDirty(t) ? { ...t.doc.webhook, saved: disk } : { draft: disk, saved: disk };
+            return { ...t, doc: { ...t.doc, webhook } };
+          }),
+        })),
+
       updateRunner: (id, patch) =>
         set((s) => ({
           tabs: mapDoc(s.tabs, id, (d) => (d.runner ? { ...d, runner: { ...d.runner, ...patch } } : d)),
@@ -550,9 +652,11 @@ export const useTabsStore = create<TabsState>()(
         })),
     }),
     {
-      name: "pakpos-tabs",
+      name: TABS_STORAGE_KEY,
       version: 1,
-      storage: createJSONStorage(() => safeStorage),
+      storage: createJSONStorage(() => tabsStorage),
+      // hydrateTabs runs once Go's copy is loaded (main.tsx).
+      skipHydration: true,
       // Convenience only: keep the open tabs and drafts, not responses or sends.
       // A tool's state is kept only when the tool says so (never a JWT's token).
       partialize: (s) => ({
@@ -637,7 +741,7 @@ function restoreKind(doc: Partial<DocState> | null | undefined, tool: unknown) {
   return t ? { doc: null, tool: t } : { doc: restoreDoc(doc), tool: null };
 }
 
-const DOC_KINDS: DocKind[] = ["environment", "globals", "collection", "folder", "runner"];
+const DOC_KINDS: DocKind[] = ["environment", "globals", "collection", "folder", "runner", "webhook"];
 
 function restoreRunner(raw: unknown): RunnerSettings {
   const r = (raw && typeof raw === "object" ? raw : {}) as Partial<RunnerSettings>;
@@ -681,6 +785,23 @@ function restoreDoc(d: Partial<DocState> | null | undefined): DocState | null {
       saved: null,
       missing: false,
       runner: restoreRunner(d.runner),
+    };
+  }
+  if (d.kind === "webhook") {
+    const w = (d.webhook ?? {}) as Partial<WebhookDoc>;
+    // A draft without its saved copy can't be compared; reload both from disk.
+    const both = !!w.draft && !!w.saved;
+    return {
+      kind: "webhook",
+      targetId: d.targetId ?? "",
+      name: d.name ?? "",
+      draft: null,
+      saved: null,
+      missing: false,
+      webhook: {
+        draft: both ? normalizeWebhook(w.draft) : null,
+        saved: both ? normalizeWebhook(w.saved) : null,
+      },
     };
   }
   const draft = restoreDraft(d.draft);

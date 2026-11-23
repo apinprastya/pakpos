@@ -1,4 +1,4 @@
-import { Folder, FolderTree, Globe, Layers, Play } from "lucide-react";
+import { Folder, FolderTree, Globe, Layers, Play, Webhook } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DocKind } from "@/stores/tabs";
 
@@ -16,5 +16,7 @@ export function DocKindIcon({ kind, className }: { kind: DocKind; className?: st
       return <Folder {...props} />;
     case "runner":
       return <Play {...props} />;
+    case "webhook":
+      return <Webhook {...props} />;
   }
 }

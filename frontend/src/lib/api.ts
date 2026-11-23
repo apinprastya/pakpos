@@ -17,6 +17,7 @@ import {
   ToolService,
   UIStateService,
   UpdateService,
+  WebhookService,
   WorkspaceService,
 } from "../../bindings/pakpos/internal/service";
 import type * as bs from "../../bindings/pakpos/internal/core/settings/models";
@@ -26,13 +27,32 @@ import {
   RunnerProgress,
   ScriptConsole,
   UpdateProgress as UpdateProgressEvent,
+  WebhookInstall,
+  WebhookRequest,
+  WebhookStatus as WebhookStatusEvent,
   WorkspaceChanged,
 } from "../../bindings/events";
+import type * as bw from "../../bindings/pakpos/internal/core/webhook/models";
 import type * as bm from "../../bindings/pakpos/internal/core/model/models";
 import type * as bp from "../../bindings/pakpos/internal/pipeline/models";
 import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
 import type * as bsvc from "../../bindings/pakpos/internal/service/models";
 import { normalizeHashResult, type HashRequest, type HashResult } from "./toolModel";
+import {
+  normalizeCloudflared,
+  normalizeProblem,
+  normalizeRequestDetail,
+  normalizeRequestSummary,
+  normalizeStatus,
+  normalizeWebhook,
+  type CloudflaredStatus,
+  type InstallProgress,
+  type Webhook,
+  type WebhookProblem,
+  type WebhookRequestDetail,
+  type WebhookRequestSummary,
+  type WebhookStatus,
+} from "./webhookModel";
 import {
   normalizeDataPreview,
   normalizeRunEvent,
@@ -615,6 +635,94 @@ export const api = {
   async clearOAuth2Token(ownerId: string): Promise<void> {
     return AuthService.ClearOAuth2Token(ownerId);
   },
+  // ---- webhooks ----
+  async listWebhooks(): Promise<Webhook[]> {
+    return ((await WebhookService.List()) ?? []).map(normalizeWebhook);
+  },
+  async getWebhook(id: string): Promise<Webhook> {
+    return normalizeWebhook(await WebhookService.Get(id));
+  },
+  async createWebhook(name: string): Promise<Webhook> {
+    return normalizeWebhook(await WebhookService.Create(name));
+  },
+  /** Saves; a webhook that doesn't validate comes back as `problem` (nothing is written). */
+  async saveWebhook(w: Webhook): Promise<{ webhook: Webhook | null; problem: WebhookProblem | null }> {
+    const res = await WebhookService.Save(w as unknown as bw.Webhook);
+    return {
+      webhook: res?.webhook ? normalizeWebhook(res.webhook) : null,
+      problem: normalizeProblem(res?.problem),
+    };
+  },
+  async renameWebhook(id: string, name: string): Promise<Webhook> {
+    return normalizeWebhook(await WebhookService.Rename(id, name));
+  },
+  async duplicateWebhook(id: string): Promise<Webhook> {
+    return normalizeWebhook(await WebhookService.Duplicate(id));
+  },
+  async deleteWebhook(id: string): Promise<void> {
+    return WebhookService.Delete(id);
+  },
+  async startWebhook(id: string, tunnel: boolean): Promise<WebhookStatus> {
+    return normalizeStatus(await WebhookService.Start(id, tunnel));
+  },
+  async stopWebhook(workspaceId: string, id: string): Promise<void> {
+    return WebhookService.Stop(workspaceId, id);
+  },
+  /** Every running webhook, of every workspace. */
+  async webhookStatuses(): Promise<WebhookStatus[]> {
+    return ((await WebhookService.Statuses()) ?? []).map(normalizeStatus);
+  },
+  async webhookRequests(
+    webhookId: string,
+    beforeId: string,
+    limit: number,
+  ): Promise<WebhookRequestSummary[]> {
+    return ((await WebhookService.Requests(webhookId, beforeId, limit)) ?? []).map(normalizeRequestSummary);
+  },
+  async webhookRequest(id: string): Promise<WebhookRequestDetail> {
+    return normalizeRequestDetail(await WebhookService.Request(id));
+  },
+  async deleteWebhookRequest(id: string): Promise<void> {
+    return WebhookService.DeleteRequest(id);
+  },
+  async clearWebhookRequests(webhookId: string): Promise<void> {
+    return WebhookService.ClearRequests(webhookId);
+  },
+  async cloudflaredStatus(): Promise<CloudflaredStatus> {
+    return normalizeCloudflared(await WebhookService.CloudflaredStatus());
+  },
+  /** Downloads cloudflared (progress through `onCloudflaredInstall`); rejects with "Cancelled." on cancel. */
+  async installCloudflared(): Promise<CloudflaredStatus> {
+    return normalizeCloudflared(await WebhookService.InstallCloudflared());
+  },
+  async cancelCloudflaredInstall(): Promise<void> {
+    return WebhookService.CancelInstall();
+  },
+  async pickCloudflared(): Promise<CloudflaredStatus> {
+    return normalizeCloudflared(await WebhookService.PickCloudflared());
+  },
+  /** "" goes back to finding cloudflared on its own. */
+  async setCloudflaredPath(path: string): Promise<CloudflaredStatus> {
+    return normalizeCloudflared(await WebhookService.SetCloudflaredPath(path));
+  },
+  onWebhookStatus(cb: (s: WebhookStatus) => void): () => void {
+    return Events.On(WebhookStatusEvent, (ev) => cb(normalizeStatus(ev.data)));
+  },
+  onWebhookRequest(
+    cb: (ev: { workspaceId: string; webhookId: string; entry: WebhookRequestSummary }) => void,
+  ): () => void {
+    return Events.On(WebhookRequest, (ev) =>
+      cb({
+        workspaceId: ev.data.workspaceId,
+        webhookId: ev.data.webhookId,
+        entry: normalizeRequestSummary(ev.data.entry),
+      }),
+    );
+  },
+  onCloudflaredInstall(cb: (p: InstallProgress) => void): () => void {
+    return Events.On(WebhookInstall, (ev) => cb({ done: ev.data.done, total: ev.data.total }));
+  },
+
   /** Browser flow progress: the authorization URL that was opened. */
   onOAuth2Flow(cb: (ev: { flowId: string; stage: string; authUrl: string }) => void): () => void {
     return Events.On(Oauth2Flow, (ev) => {

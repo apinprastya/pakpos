@@ -171,12 +171,13 @@ func (wt *Watcher) addTree(dir string) {
 	})
 }
 
-// resync (re-)adds watches for the environments dir, the collections dir
+// resync (re-)adds watches for the environments and webhooks dirs, the collections dir
 // and every directory below it. fsnotify drops a folder's watch when the
 // folder is renamed, so this runs after renames/removals. Adding an
 // already-watched path is a no-op.
 func (wt *Watcher) resync() {
 	wt.add(filepath.Join(wt.ws.root, EnvironmentsDir))
+	wt.add(filepath.Join(wt.ws.root, WebhooksDir))
 	wt.addTree(filepath.Join(wt.ws.root, CollectionsDir))
 }
 
@@ -202,8 +203,9 @@ func (wt *Watcher) loop() {
 func (wt *Watcher) handle(ev fsnotify.Event) {
 	colRoot := filepath.Join(wt.ws.root, CollectionsDir)
 	envDir := filepath.Join(wt.ws.root, EnvironmentsDir)
+	hookDir := filepath.Join(wt.ws.root, WebhooksDir)
 	switch {
-	case (ev.Name == colRoot || ev.Name == envDir) && (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
+	case (ev.Name == colRoot || ev.Name == envDir || ev.Name == hookDir) && (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
 		wt.queueResync()
 	case wt.watchable(ev.Name) && maybeDir(ev.Name) && (ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove)):
 		wt.queueResync()
@@ -302,7 +304,7 @@ func (wt *Watcher) relevant(path string) bool {
 		return false
 	}
 	first := strings.Split(filepath.ToSlash(rel), "/")[0]
-	return first == CollectionsDir || first == EnvironmentsDir || rel == ManifestFile
+	return first == CollectionsDir || first == EnvironmentsDir || first == WebhooksDir || rel == ManifestFile
 }
 
 func (wt *Watcher) schedule() {

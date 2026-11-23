@@ -1214,6 +1214,8 @@ export interface AppSettings {
   clientCerts: ClientCert[];
   /** A pre-request or test script running longer is stopped (1–60 s). */
   scriptTimeoutMs: number;
+  /** cloudflared for webhook tunnels; "" finds it (Pakpos's download, then PATH). */
+  cloudflaredPath: string;
 }
 
 export type ProxyMode = "none" | "system" | "custom";
@@ -1334,6 +1336,7 @@ export function normalizeSettings(
       typeof s.scriptTimeoutMs === "number" && s.scriptTimeoutMs > 0
         ? s.scriptTimeoutMs
         : defaults.scriptTimeoutMs,
+    cloudflaredPath: typeof s.cloudflaredPath === "string" ? s.cloudflaredPath : defaults.cloudflaredPath,
   };
 }
 
@@ -1361,6 +1364,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   caFile: "",
   clientCerts: [],
   scriptTimeoutMs: 5_000,
+  cloudflaredPath: "",
 };
 
 /** Result of a check for updates (Go service.UpdateInfo). */

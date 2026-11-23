@@ -59,6 +59,7 @@ const KIND_LABELS: Record<DocKind, string> = {
   collection: "Collection settings",
   folder: "Folder settings",
   runner: "Runner",
+  webhook: "Webhook",
 };
 
 /**

@@ -35,6 +35,15 @@ func TestUIStateService(t *testing.T) {
 		{"long key", strings.Repeat("k", maxUIStateKey+1), "1"},
 		{"invalid json", "k", "{"},
 		{"too large", "k", `"` + strings.Repeat("x", maxUIStateValue) + `"`},
+		{"tabs too large", UIStateTabsKey, `"` + strings.Repeat("x", maxUITabsValue) + `"`},
+	}
+	// Open tabs may be larger than other UI state.
+	tabs := `{"tabs":["` + strings.Repeat("x", maxUIStateValue) + `"]}`
+	if err := s.Set(UIStateTabsKey, tabs); err != nil {
+		t.Fatalf("large tabs value: %v", err)
+	}
+	if m, _ := s.Get(); m[UIStateTabsKey] != tabs {
+		t.Fatal("tabs value not stored")
 	}
 	for _, b := range bad {
 		if err := s.Set(b.key, b.value); err == nil {

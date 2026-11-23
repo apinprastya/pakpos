@@ -26,6 +26,7 @@ import {
   type Tab,
 } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
+import { saveWebhookTab } from "@/features/webhooks/actions";
 
 export function variablesDraft(variables: Variable[]): DocDraft {
   return { auth: emptyAuth(), headers: [], variables, scripts: emptyScripts() };
@@ -92,14 +93,15 @@ async function readDoc(doc: DocState): Promise<{ draft: DocDraft; name: string }
       return { draft: folderDraft(f), name: f.name };
     }
     case "runner":
-      throw new Error("A runner tab has nothing to load");
+    case "webhook":
+      throw new Error("This tab loads itself");
   }
 }
 
 /** Loads a doc tab that has no draft yet. Rejects with Go's error so the editor can show it. */
 export async function loadDocTab(tabId: string): Promise<void> {
   const tab = findTab(tabId);
-  if (!tab?.doc || tab.doc.kind === "runner") return;
+  if (!tab?.doc || tab.doc.kind === "runner" || tab.doc.kind === "webhook") return;
   const { draft, name } = await readDoc(tab.doc);
   useTabsStore.getState().markDocSaved(tabId, draft, name);
 }
@@ -108,6 +110,7 @@ export async function loadDocTab(tabId: string): Promise<void> {
 export async function saveDocTab(tabId: string, closeAfter = false): Promise<boolean> {
   const tab = findTab(tabId);
   const doc = tab?.doc;
+  if (doc?.kind === "webhook") return saveWebhookTab(tabId, closeAfter);
   if (!tab || !doc?.draft || doc.kind === "runner") return false;
   if (doc.missing) {
     toast.error(`Couldn't save ${tabTitle(tab)}`, {

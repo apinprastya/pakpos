@@ -32,6 +32,9 @@ const (
 	// EnvironmentsDir holds one file per environment plus GlobalsFile.
 	EnvironmentsDir = "environments"
 	GlobalsFile     = "_globals.yaml"
+	// WebhooksDir holds one file per webhook (webhooks.go). Older builds
+	// don't read it, so it needs no format version of its own.
+	WebhooksDir = "webhooks"
 	// LocalDir holds machine-local state and is git-ignored.
 	LocalDir = ".pakpos"
 	// FormatVersion is the newest workspace format this build understands
@@ -135,6 +138,7 @@ type Workspace struct {
 	folders     map[string]*folderEntry
 	requests    map[string]*reqEntry
 	envs        map[string]*envEntry
+	hooks       map[string]*hookEntry
 	// examples holds each request's example summaries (requests without
 	// examples have no entry).
 	examples map[string][]ExampleSummary
@@ -222,6 +226,7 @@ func newWorkspace(root string, m Manifest) *Workspace {
 		folders:     map[string]*folderEntry{},
 		requests:    map[string]*reqEntry{},
 		envs:        map[string]*envEntry{},
+		hooks:       map[string]*hookEntry{},
 		examples:    map[string][]ExampleSummary{},
 		writes:      map[string]time.Time{},
 		watchers:    map[*Watcher]struct{}{},
@@ -310,6 +315,7 @@ func (w *Workspace) Reload() []Problem {
 	}
 
 	envs, globals := w.loadEnvironments(sc.addProblem)
+	w.hooks = w.loadWebhooks(sc.addProblem)
 
 	w.collections, w.folders, w.requests, w.problems = sc.cols, sc.folders, sc.reqs, sc.problems
 	w.examples = sc.examples
