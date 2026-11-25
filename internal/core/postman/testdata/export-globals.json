@@ -1,0 +1,25 @@
+{
+	"name": "Dev",
+	"values": [
+		{
+			"key": "host",
+			"value": "example.com",
+			"type": "default",
+			"enabled": true
+		},
+		{
+			"key": "off",
+			"value": "x",
+			"type": "default",
+			"enabled": false
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "secret",
+			"enabled": true
+		}
+	],
+	"_postman_variable_scope": "globals",
+	"_postman_exported_using": "Pakpos"
+}

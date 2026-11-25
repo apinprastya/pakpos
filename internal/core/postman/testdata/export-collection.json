@@ -1,0 +1,289 @@
+{
+	"info": {
+		"name": "Shop API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Log in",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.test('ok', () => {",
+							"  pm.response.to.have.status(200);",
+							"});"
+						]
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "noauth"
+				},
+				"method": "POST",
+				"header": [
+					{
+						"key": "X-Trace",
+						"value": "collection",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\"user\":\"{{user}}\",\"pass\":\"<&>\"}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{baseUrl}}/login?debug=1",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"login"
+					],
+					"query": [
+						{
+							"key": "debug",
+							"value": "1"
+						},
+						{
+							"key": "trace",
+							"value": "on",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": [
+				{
+					"name": "Logged in",
+					"originalRequest": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\"user\":\"{{user}}\",\"pass\":\"<&>\"}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/login?debug=1",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"login"
+							],
+							"query": [
+								{
+									"key": "debug",
+									"value": "1"
+								},
+								{
+									"key": "trace",
+									"value": "on",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"status": "OK",
+					"code": 200,
+					"_postman_previewlanguage": "json",
+					"header": [
+						{
+							"key": "Content-Type",
+							"value": "application/json",
+							"type": "text"
+						}
+					],
+					"cookie": [],
+					"body": "{\"token\":\"abc\"}"
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Get user",
+					"protocolProfileBehavior": {
+						"followRedirects": false,
+						"maxRedirects": 3,
+						"strictSSL": false
+					},
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Folder",
+								"value": "users",
+								"type": "text"
+							},
+							{
+								"key": "X-Trace",
+								"value": "mine",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "https://api.example.com:8443/users/:id#top",
+							"protocol": "https",
+							"host": [
+								"api.example.com"
+							],
+							"port": "8443",
+							"path": [
+								"users",
+								":id"
+							],
+							"hash": "top",
+							"variable": [
+								{
+									"key": "id",
+									"value": "42"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Files",
+					"item": [
+						{
+							"name": "Upload",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{token}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PUT",
+								"header": [
+									{
+										"key": "X-Trace",
+										"value": "collection",
+										"type": "text"
+									},
+									{
+										"key": "X-Folder",
+										"value": "users",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "name",
+											"value": "a.txt",
+											"type": "text"
+										},
+										{
+											"key": "file",
+											"type": "file",
+											"src": "/tmp/a.txt",
+											"contentType": "text/plain"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{baseUrl}}/files",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"files"
+									]
+								}
+							},
+							"response": []
+						}
+					],
+					"auth": {
+						"type": "noauth"
+					}
+				}
+			],
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"type": "text/javascript",
+						"exec": [
+							"pm.expect(1).to.equal(1);"
+						]
+					}
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "basic",
+		"basic": [
+			{
+				"key": "username",
+				"value": "{{user}}",
+				"type": "string"
+			},
+			{
+				"key": "password",
+				"value": "{{pass}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"console.log('start');"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "https://api.example.com",
+			"type": "string"
+		},
+		{
+			"key": "pass",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

@@ -8,13 +8,14 @@ import { saveTab } from "@/features/request/actions";
 import { openContainerScripts, openRequestScripts } from "@/features/scripts/open";
 import { resetAllScriptValues } from "@/features/scripts/overlay";
 import { openRunnerFor } from "@/features/runner/open";
+import { exportToPostman } from "@/features/import/exportActions";
 import { usePaletteStore } from "@/stores/palette";
 import { useRunnerStore } from "@/stores/runner";
 import { useConsoleStore } from "@/stores/console";
 import type { DeleteTarget } from "@/features/sidebar/ConfirmDeleteDialog";
 import type { SecretsStatus, WorkspaceInfo } from "@/lib/model";
 import { modKeyLabel } from "@/lib/platform";
-import { destinations } from "@/lib/tree";
+import { collectionIdOf, destinations } from "@/lib/tree";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
 import { usePostmanImportStore } from "@/stores/postmanImport";
 import { useOAuth2Store } from "@/stores/oauth2";
@@ -126,6 +127,31 @@ function runTarget(ctx: ActionContext, kind: "collection" | "folder") {
 
 const hasContainer = (kind: "collection" | "folder") => (ctx: ActionContext) =>
   !!ctx.workspace && destinations(useWorkspaceStore.getState().collections).some((d) => d.kind === kind);
+
+/**
+ * The collection to export: the active tab's own (a collection or folder
+ * settings tab, or a saved request), or the only one there is.
+ */
+export function exportCollectionId(ctx: ActionContext): string {
+  if (!ctx.workspace) return "";
+  const collections = useWorkspaceStore.getState().collections;
+  const doc = ctx.tab.doc;
+  let container = "";
+  if (doc && (doc.kind === "collection" || doc.kind === "folder")) container = doc.targetId;
+  else if (doc?.kind === "runner") container = doc.targetId;
+  else if (isRequest(ctx.tab) && ctx.tab.saved?.id && ctx.tab.workspaceId === ctx.workspace.id)
+    container = ctx.tab.parentId;
+  const own = container ? collectionIdOf(collections, container) : "";
+  if (own) return own;
+  return collections.length === 1 ? collections[0].id : "";
+}
+
+/** The environment to export: the active environment tab's, else the selected one. */
+export function exportEnvironmentId(ctx: ActionContext): string {
+  if (!ctx.workspace) return "";
+  if (ctx.tab.doc?.kind === "environment" && !ctx.tab.doc.missing) return ctx.tab.doc.targetId;
+  return useEnvironmentsStore.getState().selectedId;
+}
 
 const SETTINGS_SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "appearance", label: "Appearance" },
@@ -363,6 +389,30 @@ export const ACTIONS: PaletteAction[] = [
     group: "Workspace",
     enabled: (ctx) => !!ctx.workspace,
     run: () => usePostmanImportStore.getState().openDialog(),
+  },
+  {
+    id: "export-collection-postman",
+    label: "Export collection to Postman…",
+    keywords: ["json", "share", "download"],
+    group: "Workspace",
+    enabled: (ctx) => !!exportCollectionId(ctx),
+    run: (ctx) => void exportToPostman({ kind: "collection", id: exportCollectionId(ctx) }),
+  },
+  {
+    id: "export-environment-postman",
+    label: "Export environment to Postman…",
+    keywords: ["json", "share", "download", "variables"],
+    group: "Workspace",
+    enabled: (ctx) => !!exportEnvironmentId(ctx),
+    run: (ctx) => void exportToPostman({ kind: "environment", id: exportEnvironmentId(ctx) }),
+  },
+  {
+    id: "export-globals-postman",
+    label: "Export globals to Postman…",
+    keywords: ["json", "share", "download", "variables"],
+    group: "Workspace",
+    enabled: (ctx) => !!ctx.workspace,
+    run: () => void exportToPostman({ kind: "globals" }),
   },
   {
     id: "new-folder",

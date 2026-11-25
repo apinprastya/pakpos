@@ -59,6 +59,25 @@ export function normalizeImportSummary(s: Raw<ImportSummary> | null | undefined)
   };
 }
 
+/** A finished export to Postman (`ExportService`). `path` is "" when the save dialog was cancelled. */
+export interface ExportResult {
+  path: string;
+  name: string;
+  warnings: ImportWarning[];
+}
+
+type RawExportResult = Omit<Loose<ExportResult>, "warnings"> & {
+  warnings?: (Loose<ImportWarning> | null)[] | null;
+};
+
+export function normalizeExportResult(r: RawExportResult | null | undefined): ExportResult {
+  return {
+    path: r?.path ?? "",
+    name: r?.name ?? "",
+    warnings: (r?.warnings ?? []).map((w) => ({ where: w?.where ?? "", message: w?.message ?? "" })),
+  };
+}
+
 export function normalizeImportResult(r: Raw<ImportResult> | null | undefined): ImportResult {
   return { ...normalizeImportSummary(r), id: r?.id ?? "" };
 }

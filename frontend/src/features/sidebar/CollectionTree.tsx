@@ -17,6 +17,7 @@ import {
 import {
   ChevronRight,
   Copy,
+  Download,
   ExternalLink,
   FilePlus,
   Folder,
@@ -26,9 +27,9 @@ import {
   MoreHorizontal,
   Pencil,
   Play,
-  Trash2,
   Settings2,
   Terminal,
+  Trash2,
 } from "lucide-react";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -41,6 +42,7 @@ import { useTabsStore } from "@/stores/tabs";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { useTreeStore } from "@/stores/tree";
 import { openContainerSettings } from "@/features/scopes/docActions";
+import { exportToPostman } from "@/features/import/exportActions";
 import { openRunnerFor } from "@/features/runner/open";
 import { copySavedAsCurl } from "@/features/code/actions";
 import { useCodeDialogsStore } from "@/stores/codeDialogs";
@@ -213,6 +215,15 @@ export function CollectionTree({
       icon: Play,
       onSelect: () => void openRunnerFor(c.id),
     },
+    ...(c.kind === "collection"
+      ? [
+          {
+            label: "Export to Postman…",
+            icon: Download,
+            onSelect: () => void exportToPostman({ kind: "collection", id: c.id }),
+          },
+        ]
+      : []),
     { label: "Settings", icon: Settings2, onSelect: () => openContainerSettings(c.id) },
     "separator",
     { label: "Delete", icon: Trash2, destructive: true, shortcut: "Del", onSelect: () => deleteNode(c) },

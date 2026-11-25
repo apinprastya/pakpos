@@ -166,12 +166,44 @@ describe("globals editor", () => {
     const user = openDoc("globals", "", "Globals");
     expect(await screen.findByRole("table", { name: "Global variables" })).toBeInTheDocument();
     expect(screen.getByText(/available in every request/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /More actions/ })).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("Variable 2"), "x");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.saveGlobals).toHaveBeenCalledWith([makeVar("ua", "pakpos"), makeVar("x", "")], []),
     );
+  });
+});
+
+describe("export to Postman", () => {
+  it("exports an environment from the header menu", async () => {
+    const user = openDoc("environment", "e1", "Dev");
+    await screen.findByLabelText("Value 1");
+    await user.click(screen.getByRole("button", { name: "More actions for Dev" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Export to Postman…" }));
+    expect(api.exportEnvironment).toHaveBeenCalledWith("e1");
+  });
+
+  it("exports the globals", async () => {
+    vi.mocked(api.getGlobals).mockResolvedValue({ id: "g", variables: [] });
+    const user = openDoc("globals", "", "Globals");
+    await screen.findByRole("table", { name: "Global variables" });
+    await user.click(screen.getByRole("button", { name: "More actions for Globals" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Export to Postman…" }));
+    expect(api.exportGlobals).toHaveBeenCalled();
+  });
+
+  it("exports a collection, and offers no menu on a folder", async () => {
+    const user = openDoc("collection", "c1", "Users");
+    await user.click(await screen.findByRole("button", { name: "More actions for Users" }));
+    expect(screen.queryByRole("menuitem", { name: "Rename" })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("menuitem", { name: "Export to Postman…" }));
+    expect(api.exportCollection).toHaveBeenCalledWith("c1");
+  });
+
+  it("has no menu on folder settings", async () => {
+    openDoc("folder", "f1", "Admin");
+    expect(await screen.findByRole("button", { name: "Run folder…" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /More actions/ })).not.toBeInTheDocument();
   });
 });
 

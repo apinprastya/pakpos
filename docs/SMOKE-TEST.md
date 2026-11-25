@@ -238,6 +238,14 @@ Needs a Postman account with a collection that has folders, examples, scripts, c
 - [ ] Globals import lists the keys it replaces and opens the Globals tab with the merged values.
 - [ ] A v1 collection, a data dump, a non-JSON file and a JSON file that isn't a Postman export each show a sentence saying what to do; nothing is added.
 
+## Postman export
+
+- [ ] Collection menu (tree right-click, or the collection settings tab's More menu) → **Export to Postman…** suggests `<Name>.postman_collection.json`; the file imports into Postman (v2.1) with folders, requests, examples, scripts, auth and collection variables. Folders have no export entry.
+- [ ] A collection with collection/folder headers, a secret variable, a form-data file or a per-request timeout shows a warning toast listing what to check in Postman.
+- [ ] Environment row menu, the environment tab's More menu and the Globals tab's More menu export environment/globals files that Postman imports. Secret variables arrive with type secret and no value; no secret value appears anywhere in the file.
+- [ ] Cancelling the save dialog shows nothing; the palette's "Export collection/environment/globals to Postman…" use the active tab's target (or the selected environment).
+- [ ] An exported collection imports back into Pakpos (Import from Postman) as a working copy.
+
 ## In-app updates
 
 Needs an older published release installed and a newer one published (stable, with `SHA256SUMS.sig`).

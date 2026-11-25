@@ -15,6 +15,7 @@ import {
   Check,
   CircleOff,
   Copy,
+  Download,
   ExternalLink,
   FolderTree,
   Globe,
@@ -24,6 +25,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import { exportToPostman } from "@/features/import/exportActions";
 import { Button } from "@/components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -207,6 +209,11 @@ function EnvironmentRow({
     "separator",
     { label: "Rename", icon: Pencil, shortcut: "F2", onSelect: () => setRenaming(true) },
     { label: "Duplicate", icon: Copy, onSelect: () => void store().duplicate(env.id) },
+    {
+      label: "Export to Postman…",
+      icon: Download,
+      onSelect: () => void exportToPostman({ kind: "environment", id: env.id }),
+    },
     ...(index > 0 ? [{ label: "Move up", icon: ArrowUp, shortcut: "Alt+↑", onSelect: () => shift(-1) }] : []),
     ...(index < ids.length - 1
       ? [{ label: "Move down", icon: ArrowDown, shortcut: "Alt+↓", onSelect: () => shift(1) }]

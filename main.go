@@ -84,6 +84,7 @@ func main() {
 			application.NewService(service.NewToolService(core)),
 			application.NewService(service.NewWebhookService(core)),
 			application.NewService(service.NewImportService(core)),
+			application.NewService(service.NewExportService(core)),
 			application.NewService(updates),
 		},
 		Assets: application.AssetOptions{
