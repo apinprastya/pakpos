@@ -644,6 +644,14 @@ func (h *host) object() *goja.Object {
 		})
 		return goja.Undefined()
 	})
+	set("jsonSchema", func(c goja.FunctionCall) goja.Value {
+		invalid, problems := checkSchema(arg(c, 0), arg(c, 1))
+		data, _ := json.Marshal(struct {
+			Invalid  string   `json:"invalid"`
+			Problems []string `json:"problems"`
+		}{invalid, nonNil(problems)})
+		return h.vm.ToValue(string(data))
+	})
 	set("sendRequest", func(c goja.FunctionCall) goja.Value {
 		return h.vm.ToValue(h.sendRequest(arg(c, 0)))
 	})

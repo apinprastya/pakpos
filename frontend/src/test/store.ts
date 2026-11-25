@@ -1,4 +1,6 @@
 import { resetWebhooksStore } from "@/stores/webhooks";
+import { jsonFilterInitial, useJsonFilterStore } from "@/stores/jsonFilter";
+import { historyCompareInitial, useHistoryCompareStore } from "@/stores/historyCompare";
 import { oauth2Initial, useOAuth2Store } from "@/stores/oauth2";
 import { useSettingsStore } from "@/stores/settings";
 import { DEFAULT_SETTINGS } from "@/lib/model";
@@ -47,6 +49,8 @@ export function resetSidebarStores(): void {
   resetRunnerStore();
   resetWebhooksStore();
   useOAuth2Store.setState({ ...oauth2Initial });
+  useJsonFilterStore.setState({ ...jsonFilterInitial });
+  useHistoryCompareStore.setState({ ...historyCompareInitial });
   resetUpdateAnnouncements();
   resetUiState();
   useSettingsStore.setState({

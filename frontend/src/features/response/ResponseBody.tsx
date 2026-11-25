@@ -1,7 +1,7 @@
-import { useMemo, useRef, useState } from "react";
+import { useDeferredValue, useMemo, useRef, useState } from "react";
 import { openSearchPanel } from "@codemirror/search";
 import type { EditorView } from "@codemirror/view";
-import { Copy, Download, Search } from "lucide-react";
+import { Copy, Download, ListFilter, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,16 +10,21 @@ import { saveResponseBody } from "@/features/request/actions";
 import { BodyContextMenu } from "./BodyContextMenu";
 import type { Response } from "@/lib/model";
 import { cn } from "@/lib/utils";
+import { stringifyJson } from "@/features/tools/json/json";
+import { CLOSED_FILTER, useJsonFilterStore } from "@/stores/jsonFilter";
 import { bodyText, editorLanguage, formatBytes, prettyBody } from "./format";
+import { filterJson, parseBody, type FilterResult } from "./jsonpath";
 
 type Mode = "pretty" | "raw" | "preview";
 
 interface Props {
   response: Response;
   historyId: number;
+  /** The tab the response belongs to; its JSONPath filter is kept per tab. */
+  tabId?: string;
 }
 
-export function ResponseBody({ response, historyId }: Props) {
+export function ResponseBody({ response, historyId, tabId = "" }: Props) {
   const canPreview = response.kind === "html" || response.kind === "image";
   const [mode, setMode] = useState<Mode>(response.kind === "image" ? "preview" : "pretty");
   const view = useRef<EditorView | null>(null);
@@ -28,7 +33,21 @@ export function ResponseBody({ response, historyId }: Props) {
   const isBinary = response.kind === "binary";
   const isEmpty = response.kind === "empty" || (response.size === 0 && !response.body);
   const effective: Mode = mode === "preview" && !canPreview ? "pretty" : mode;
-  const text = effective === "pretty" ? (pretty?.text ?? raw) : raw;
+  const filter = useJsonFilterStore((s) => s.byTab[tabId] ?? CLOSED_FILTER);
+  const setFilter = useJsonFilterStore((s) => s.set);
+  const canFilter = response.kind === "json" && effective === "pretty";
+  const filtering = canFilter && filter.open && filter.query.trim() !== "";
+  const query = useDeferredValue(filter.query);
+  const parsed = useMemo(() => (filtering ? parseBody(raw) : null), [filtering, raw]);
+  const filtered = useMemo<FilterResult | null>(
+    () => (filtering ? filterJson(parsed, query.trim()) : null),
+    [filtering, parsed, query],
+  );
+  const filteredText = useMemo(
+    () => (filtered?.ok ? stringifyJson({ type: "array", items: filtered.matches }, "2") : null),
+    [filtered],
+  );
+  const text = filteredText ?? (effective === "pretty" ? (pretty?.text ?? raw) : raw);
 
   const copy = async () => {
     try {
@@ -66,6 +85,15 @@ export function ResponseBody({ response, historyId }: Props) {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-0.5">
+          {canFilter && (
+            <IconButton
+              label={filter.open ? "Hide JSONPath filter" : "Filter with JSONPath"}
+              pressed={filter.open}
+              onClick={() => setFilter(tabId, { open: !filter.open })}
+            >
+              <ListFilter />
+            </IconButton>
+          )}
           <IconButton
             label="Search in response"
             disabled={effective === "preview" || isBinary}
@@ -86,6 +114,15 @@ export function ResponseBody({ response, historyId }: Props) {
         </div>
       </div>
 
+      {canFilter && filter.open && (
+        <JsonPathBar
+          query={filter.query}
+          result={filtered}
+          onChange={(q) => setFilter(tabId, { query: q })}
+          onClose={() => setFilter(tabId, { open: false })}
+        />
+      )}
+
       {response.truncated && (
         <Notice>
           Showing the first part of a {formatBytes(response.size)} response.{" "}
@@ -103,7 +140,7 @@ export function ResponseBody({ response, historyId }: Props) {
           to see all of it.
         </Notice>
       )}
-      {effective === "pretty" && pretty?.note && <Notice>{pretty.note}</Notice>}
+      {effective === "pretty" && pretty?.note && !filteredText && <Notice>{pretty.note}</Notice>}
 
       <div className="min-h-0 flex-1 overflow-hidden border-t">
         {isEmpty ? (
@@ -147,21 +184,86 @@ function Preview({ response, text }: { response: Response; text: string }) {
   return <iframe title="HTML preview" sandbox="" srcDoc={text} className="h-full w-full bg-white" />;
 }
 
+/** The JSONPath input under the body toolbar, with the match count or the error. */
+function JsonPathBar({
+  query,
+  result,
+  onChange,
+  onClose,
+}: {
+  query: string;
+  result: FilterResult | null;
+  onChange: (q: string) => void;
+  onClose: () => void;
+}) {
+  const status =
+    result === null
+      ? "Type a JSONPath, e.g. $.items[*].id or $..[?@.price < 10]"
+      : result.ok
+        ? result.matches.length === 1
+          ? "1 match"
+          : `${result.matches.length} matches`
+        : result.error;
+  const failed = result !== null && !result.ok;
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-t px-3 py-1.5">
+      <input
+        // Focus the field when the bar opens.
+        autoFocus
+        aria-label="JSONPath filter"
+        aria-invalid={failed || undefined}
+        aria-describedby="jsonpath-status"
+        spellCheck={false}
+        placeholder="$.items[*].id"
+        value={query}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+        className="h-6 min-w-0 flex-1 rounded-md border bg-background px-2 font-mono text-xs focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-invalid:border-destructive"
+      />
+      <span
+        id="jsonpath-status"
+        role="status"
+        className={cn("shrink-0 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}
+      >
+        {status}
+      </span>
+      <IconButton label="Close filter" onClick={onClose}>
+        <X />
+      </IconButton>
+    </div>
+  );
+}
+
 function IconButton({
   label,
   disabled,
+  pressed,
   onClick,
   children,
 }: {
   label: string;
   disabled?: boolean;
+  pressed?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon-xs" aria-label={label} disabled={disabled} onClick={onClick}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={label}
+          aria-pressed={pressed}
+          disabled={disabled}
+          onClick={onClick}
+          className={cn(pressed && "bg-accent text-accent-foreground")}
+        >
           {children}
         </Button>
       </TooltipTrigger>

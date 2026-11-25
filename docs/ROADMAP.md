@@ -124,9 +124,9 @@ Moved here from Tier 3 (see PLAN-TIER3.md for the reasons):
   core packages are already free of Wails code so it can reuse them.
 - Mock server generated from saved examples.
 - Auto-generated documentation from collections.
-- Response diff between two runs or history entries.
-- JSONPath / JMESPath filter on responses.
-- Response validation against JSON Schema or OpenAPI.
+- Response diff between two runs. (History entries are done: PLAN-RESPONSE-TOOLS.md.)
+- JMESPath filter on responses. (JSONPath is done.)
+- Response validation against OpenAPI. (JSON Schema in scripts is done.)
 - OpenAPI 3.x and HAR import.
 - Team sharing and sync. This needs a backend and is the largest item; git
   workspaces already cover basic sharing.

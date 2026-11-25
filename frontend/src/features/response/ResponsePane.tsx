@@ -104,7 +104,12 @@ export function ResponsePane() {
           </div>
         </div>
         <TabsContent value="body" className="min-h-0 flex-1">
-          <ResponseBody key={result?.historyId} response={response} historyId={result?.historyId ?? 0} />
+          <ResponseBody
+            key={result?.historyId}
+            tabId={tab.id}
+            response={response}
+            historyId={result?.historyId ?? 0}
+          />
         </TabsContent>
         <TabsContent value="headers" className="min-h-0 flex-1 overflow-auto">
           <HeadersTable headers={response.headers} />

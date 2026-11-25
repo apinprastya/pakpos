@@ -131,6 +131,59 @@ describe("ResponsePane", () => {
     expect(api.saveResponseBody).toHaveBeenCalledWith(5);
   });
 
+  it("filters a JSON body with JSONPath, and keeps the filter for the next response", async () => {
+    const user = userEvent.setup();
+    // user-event reads [ and { as key names unless doubled.
+    const typeText = (el: HTMLElement, text: string) => user.type(el, text.replace(/[[{]/g, "$&$&"));
+    const body = '{"items":[{"id":1,"price":12345678901234567890},{"id":2,"price":3}]}';
+    show(ok({ body, size: body.length }));
+    await user.click(screen.getByRole("button", { name: "Filter with JSONPath" }));
+    const field = screen.getByRole("textbox", { name: "JSONPath filter" });
+    expect(field).toHaveFocus();
+    expect(screen.getByRole("status")).toHaveTextContent("Type a JSONPath");
+
+    await typeText(field, "$.items[*].price");
+    await waitFor(() => expect(editorText("Response body")).toBe("[\n  12345678901234567890,\n  3\n]"));
+    expect(screen.getByRole("status")).toHaveTextContent("2 matches");
+
+    await user.clear(field);
+    await typeText(field, "$.items[?@.id == 2]");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 match"));
+
+    await typeText(field, "[");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Expected a name, an index"));
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    // The last good result isn't shown; the body is.
+    expect(editorText("Response body")).toContain('"items"');
+
+    // A new response (same tab) keeps the filter.
+    act(() => useTabsStore.getState().setResult("t1", ok({ body: '{"items":[]}' }, 6)));
+    expect(await screen.findByRole("textbox", { name: "JSONPath filter" })).toHaveValue(
+      "$.items[?@.id == 2][",
+    );
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "JSONPath filter" })).not.toBeInTheDocument();
+    expect(editorText("Response body")).toBe('{\n  "items": []\n}');
+    expect(screen.getByRole("button", { name: "Filter with JSONPath" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("explains a JSON body that can't be filtered, and offers no filter for other bodies", async () => {
+    const user = userEvent.setup();
+    show(ok({ body: '{"cut": [1, 2', size: 13 }));
+    await user.click(screen.getByRole("button", { name: "Filter with JSONPath" }));
+    await user.type(screen.getByRole("textbox", { name: "JSONPath filter" }), "$");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "The body isn't valid JSON, so it can't be filtered.",
+    );
+    await user.click(screen.getByRole("button", { name: "Close filter" }));
+    await user.click(screen.getByRole("radio", { name: "Raw" }));
+    expect(screen.queryByRole("button", { name: "Filter with JSONPath" })).not.toBeInTheDocument();
+  });
+
   it("copies a JSON field's value, key and path from the body's menu", async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);

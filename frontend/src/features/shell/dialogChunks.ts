@@ -7,6 +7,7 @@ export const loadCode = () => import("@/features/code/CodeDialog");
 export const loadPalette = () => import("@/features/palette/CommandPalette");
 export const loadUpdate = () => import("@/features/update/UpdateDialog");
 export const loadCookies = () => import("@/features/cookies/CookieManagerDialog");
+export const loadCompare = () => import("@/features/history/CompareDialog");
 export const loadScripts = () => import("@/features/scripts/ScriptsSection");
 export const loadConsole = () => import("@/features/console/ConsoleDrawer");
 export const loadRunner = () => import("@/features/runner/RunnerView");
@@ -28,6 +29,7 @@ export const dialogLoaders: ReadonlyArray<() => Promise<unknown>> = [
   loadImportCurl,
   loadImportPostman,
   loadCookies,
+  loadCompare,
   loadScripts,
   loadConsole,
   loadRunner,
