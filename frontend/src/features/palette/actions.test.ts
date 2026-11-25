@@ -10,9 +10,16 @@ import { useTabsStore, type Tab } from "@/stores/tabs";
 import { useThemeStore } from "@/stores/theme";
 import { useTreeStore } from "@/stores/tree";
 import { useWorkspaceStore } from "@/stores/workspace";
-import { col, req } from "@/test/fixtures";
+import { col, folder, req } from "@/test/fixtures";
 import { resetTabs } from "@/test/store";
-import { ACTIONS, availableActions, oauth2Target, type ActionContext } from "./actions";
+import {
+  ACTIONS,
+  availableActions,
+  exportCollectionId,
+  exportEnvironmentId,
+  oauth2Target,
+  type ActionContext,
+} from "./actions";
 import { useConsoleStore } from "@/stores/console";
 import { usePostmanImportStore } from "@/stores/postmanImport";
 import { toast } from "sonner";
@@ -55,6 +62,45 @@ describe("palette actions", () => {
     expect(ids(c)).toContain("import-postman");
     action("import-postman").run(c);
     expect(usePostmanImportStore.getState().open).toBe(true);
+  });
+
+  it("exports to Postman", () => {
+    // A saved request's collection.
+    const c = ctx();
+    expect(exportCollectionId(c)).toBe("c1");
+    action("export-collection-postman").run(c);
+    expect(api.exportCollection).toHaveBeenCalledWith("c1");
+    expect(ids(ctx({ workspace: null }))).not.toContain("export-collection-postman");
+
+    // A folder's settings tab exports its collection; with several and no tab, none.
+    useWorkspaceStore.setState({
+      collections: [col("c1", "Users", [folder("f1", "Admin")]), col("c2", "Orders")],
+    });
+    resetTabs();
+    const folderTab = useTabsStore.getState().openDoc("folder", "f1", "Admin", "w1");
+    const tab = useTabsStore.getState().tabs.find((t) => t.id === folderTab)!;
+    expect(exportCollectionId(ctx({}, tab))).toBe("c1");
+    const runner = { ...tab, doc: { ...tab.doc!, kind: "runner" as const, targetId: "c2" } };
+    expect(exportCollectionId(ctx({}, runner))).toBe("c2");
+    const draft = resetTabs();
+    expect(exportCollectionId(ctx({}, draft))).toBe("");
+    expect(ids(ctx({}, draft))).not.toContain("export-collection-postman");
+
+    // The environment tab's, else the selected one.
+    expect(exportEnvironmentId(ctx({}, draft))).toBe("");
+    useEnvironmentsStore.setState({ selectedId: "e9" });
+    expect(exportEnvironmentId(ctx({}, draft))).toBe("e9");
+    const envTabId = useTabsStore.getState().openDoc("environment", "e1", "Dev", "w1");
+    const envTab = useTabsStore.getState().tabs.find((t) => t.id === envTabId)!;
+    const ec = ctx({}, envTab);
+    expect(exportEnvironmentId(ec)).toBe("e1");
+    action("export-environment-postman").run(ec);
+    expect(api.exportEnvironment).toHaveBeenCalledWith("e1");
+    expect(exportEnvironmentId(ctx({ workspace: null }, envTab))).toBe("");
+
+    expect(ids(ctx({ workspace: null }))).not.toContain("export-globals-postman");
+    action("export-globals-postman").run(ec);
+    expect(api.exportGlobals).toHaveBeenCalled();
   });
 
   it("have unique ids, labels in sentence case and a group", () => {

@@ -193,6 +193,10 @@ describe("EnvironmentsView list", () => {
     await user.click(await screen.findByRole("menuitem", { name: "Duplicate" }));
     expect(api.duplicateEnvironment).toHaveBeenCalledWith("e2");
 
+    await user.click(menu("Staging"));
+    await user.click(await screen.findByRole("menuitem", { name: "Export to Postman…" }));
+    expect(api.exportEnvironment).toHaveBeenCalledWith("e2");
+
     await user.click(menu("Dev"));
     await user.click(await screen.findByRole("menuitem", { name: /^Rename/ }));
     expect(await screen.findByRole("textbox", { name: "Environment name" })).toBeInTheDocument();

@@ -10,6 +10,7 @@ import {
   CookieService,
   EnvService,
   ExampleService,
+  ExportService,
   HistoryService,
   ImportService,
   RequestService,
@@ -40,9 +41,11 @@ import type * as bf from "../../bindings/pakpos/internal/store/fsstore/models";
 import type * as bsvc from "../../bindings/pakpos/internal/service/models";
 import { normalizeHashResult, type HashRequest, type HashResult } from "./toolModel";
 import {
+  normalizeExportResult,
   normalizeImportResult,
   normalizeImportSummary,
   type ImportOptions,
+  type ExportResult,
   type ImportResult,
   type ImportSummary,
 } from "./importModel";
@@ -603,6 +606,18 @@ export const api = {
   /** Imports a Postman export into the open workspace. Rejects with a sentence for the user. */
   async importPostman(path: string, opts: ImportOptions): Promise<ImportResult> {
     return normalizeImportResult(await ImportService.ImportPostman(path, opts));
+  },
+  /** Asks where to save and writes the collection as a Postman collection (v2.1). Rejects with a sentence for the user. */
+  async exportCollection(id: string): Promise<ExportResult> {
+    return normalizeExportResult(await ExportService.ExportCollection(id));
+  },
+  /** Asks where to save and writes the environment as a Postman environment. */
+  async exportEnvironment(id: string): Promise<ExportResult> {
+    return normalizeExportResult(await ExportService.ExportEnvironment(id));
+  },
+  /** Asks where to save and writes the globals as a Postman globals file. */
+  async exportGlobals(): Promise<ExportResult> {
+    return normalizeExportResult(await ExportService.ExportGlobals());
   },
   /** Digests text or a file (streamed in Go). Rejects with a sentence for the user. */
   async hash(req: HashRequest): Promise<HashResult> {

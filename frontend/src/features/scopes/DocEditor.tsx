@@ -1,5 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Copy, MoreHorizontal, Pencil, Play, Save, Trash2, TriangleAlert } from "lucide-react";
+import {
+  Check,
+  Copy,
+  Download,
+  MoreHorizontal,
+  Pencil,
+  Play,
+  Save,
+  Trash2,
+  TriangleAlert,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,6 +46,7 @@ import { DocKindIcon } from "./DocKindIcon";
 import { VariablesTable } from "./VariablesTable";
 import { ScriptsSection } from "@/features/scripts/lazy";
 import { openRunnerFor } from "@/features/runner/open";
+import { exportToPostman, type ExportTarget } from "@/features/import/exportActions";
 import { hasScripts } from "@/features/scripts/hasScripts";
 import { useInheritedScripts } from "@/features/scripts/useInheritedScripts";
 
@@ -150,7 +161,16 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
   const renameNoun = doc.missing ? undefined : RENAME_NOUNS[doc.kind];
   const isContainer = doc.kind === "collection" || doc.kind === "folder";
 
-  const menu: MenuEntry[] = [
+  const exportTarget: ExportTarget | null =
+    doc.kind === "collection" || doc.kind === "environment"
+      ? { kind: doc.kind, id: doc.targetId }
+      : doc.kind === "globals"
+        ? { kind: "globals" }
+        : null;
+  const exportEntry: MenuEntry[] = exportTarget
+    ? [{ label: "Export to Postman…", icon: Download, onSelect: () => void exportToPostman(exportTarget) }]
+    : [];
+  const envMenu: MenuEntry[] = [
     { label: "Rename", icon: Pencil, onSelect: () => setRenaming(true) },
     {
       label: "Duplicate",
@@ -160,6 +180,7 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
           .duplicate(doc.targetId)
           .then((copy) => copy && envs().open(copy.id)),
     },
+    ...exportEntry,
     "separator",
     {
       label: "Delete",
@@ -175,6 +196,7 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
         }),
     },
   ];
+  const menu: MenuEntry[] = isEnv ? envMenu : exportEntry;
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
@@ -247,7 +269,7 @@ function DocHeader({ tab, doc, canSave }: { tab: Tab; doc: DocState; canSave: bo
         </TooltipTrigger>
         <TooltipContent>Save ({modKeyLabel()}+S)</TooltipContent>
       </Tooltip>
-      {isEnv && !doc.missing && (
+      {menu.length > 0 && !doc.missing && (
         <DropdownMenu>
           <Tooltip>
             <TooltipTrigger asChild>

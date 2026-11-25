@@ -298,6 +298,23 @@ describe("sidebar: collections tree", () => {
     expect(activeTab().doc).toMatchObject({ kind: "runner", targetId: "c1", name: "Users" });
   });
 
+  it("exports a collection to Postman from its menu", async () => {
+    const user = userEvent.setup();
+    ready();
+    renderSidebar();
+    fireEvent.contextMenu(within(item("Users")).getByText("Users"));
+    await user.click(await screen.findByRole("menuitem", { name: "Export to Postman…" }));
+    expect(api.exportCollection).toHaveBeenCalledWith("c1");
+  });
+
+  it("has no Postman export for a folder", async () => {
+    ready([col("c1", "Users", [folder("f1", "Docs")])]);
+    renderSidebar();
+    fireEvent.contextMenu(within(item("Docs")).getByText("Docs"));
+    expect(await screen.findByRole("menuitem", { name: "Run folder…" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Export to Postman…" })).not.toBeInTheDocument();
+  });
+
   it("offers actions in the right-click and More menus", async () => {
     const user = userEvent.setup();
     ready();

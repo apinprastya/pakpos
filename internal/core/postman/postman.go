@@ -85,7 +85,10 @@ type File struct {
 // Collection is a converted collection. Secret variables keep their values
 // (see File.Variables).
 type Collection struct {
-	Auth      model.Auth
+	Auth model.Auth
+	// Headers are sent with every request below (Pakpos only; imports
+	// leave them empty, exports copy them into each request).
+	Headers   []model.KeyValue
 	Variables []model.Variable
 	Scripts   model.Scripts
 	Items     []Item
@@ -101,6 +104,7 @@ type Item struct {
 type Folder struct {
 	Name    string
 	Auth    model.Auth
+	Headers []model.KeyValue
 	Scripts model.Scripts
 	Items   []Item
 }
@@ -122,6 +126,8 @@ type Example struct {
 	ContentType string
 	Kind        model.BodyKind
 	Body        string
+	// Encoding is how Body is written ("" or utf8 = text, base64 = binary).
+	Encoding model.BodyEncoding
 }
 
 // MaxExampleBody is the largest example body kept; larger ones are dropped

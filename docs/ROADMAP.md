@@ -17,9 +17,10 @@ The webhook test server (public URL through a Cloudflare quick tunnel, request
 log, response rules) has its own plan, [PLAN-WEBHOOKS.md](PLAN-WEBHOOKS.md),
 and is done in code; its smoke tests are in [SMOKE-TEST.md](SMOKE-TEST.md).
 
-Importing from Postman (collections v2.0/v2.1, environments, globals) has
-its own plan, [PLAN-POSTMAN.md](PLAN-POSTMAN.md), and is done in code; its
-smoke tests are in [SMOKE-TEST.md](SMOKE-TEST.md).
+Importing from Postman (collections v2.0/v2.1, environments, globals) and
+exporting to Postman (collection v2.1, environments, globals; never secret
+values) have their own plan, [PLAN-POSTMAN.md](PLAN-POSTMAN.md), and are done
+in code; their smoke tests are in [SMOKE-TEST.md](SMOKE-TEST.md).
 
 Non-REST protocols (GraphQL, gRPC, WebSocket) are not planned.
 
