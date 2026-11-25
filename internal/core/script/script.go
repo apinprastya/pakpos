@@ -7,15 +7,20 @@
 //     prototype changes) reaches a later run.
 //   - A run stops after Input.Timeout (DefaultTimeout when zero) or when
 //     its context is cancelled; deep recursion stops at MaxCallStack.
-//   - Scripts have no require, filesystem, network or timers: those names
-//     throw an error that says so.
+//   - Scripts have no require, filesystem or timers: those names throw an
+//     error that says so. pm.sendRequest and pm.cookies go through the
+//     HTTP and Cookies interfaces; the request blocks the script (its time
+//     counts against the timeout) and its callback runs after the script's
+//     own code, as in Postman. Without a callback it returns a promise;
+//     scripts may use top-level await.
+//   - A rejected promise nobody handled fails the run like a throw.
 //   - console output is captured (Budget caps it), never printed.
 //   - Variables are read and written through the Vars interface; the caller
 //     decides where values go (overlay, secret store, local scope).
 //   - pm.request is a copy of Input.Request; changes made by a pre-request
 //     script come back in Output.Request. In test scripts it is read-only.
 //
-// The package has no Wails dependency and does no I/O.
+// The package has no Wails dependency and does no I/O of its own.
 package script
 
 import (
@@ -25,14 +30,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
 	"github.com/dop251/goja"
+	"github.com/dop251/goja/ast"
 	"github.com/dop251/goja/parser"
 
+	"pakpos/internal/core/cookies"
 	"pakpos/internal/core/model"
 	"pakpos/internal/core/urlx"
 	"pakpos/internal/core/vars"
@@ -47,6 +57,8 @@ const (
 	// past them a single "output truncated" entry is added.
 	MaxConsoleEntries = 1000
 	MaxConsoleBytes   = 1 << 20
+	// MaxRequests is the most pm.sendRequest calls per Budget (one send).
+	MaxRequests = 50
 )
 
 // Event says when a script runs.
@@ -102,6 +114,23 @@ type Vars interface {
 	ReplaceIn(text string) (string, error)
 }
 
+// HTTP sends the requests scripts make with pm.sendRequest. req holds the
+// script's values as given ({{variables}} unresolved); an error's message
+// is what the script's callback gets.
+type HTTP interface {
+	Send(ctx context.Context, req model.Request) (*Response, error)
+}
+
+// Cookies is the cookie jar scripts see through pm.cookies. URLs are as the
+// script gave them ({{variables}} unresolved). Delete with name "" removes
+// every cookie a request to the URL sends. Errors are thrown in the script
+// with their message.
+type Cookies interface {
+	List(rawURL string) ([]cookies.Cookie, error)
+	Set(rawURL string, c cookies.Cookie) (cookies.Cookie, error)
+	Delete(rawURL, name string) error
+}
+
 // Response is what a test script sees as pm.response.
 type Response struct {
 	Code    int
@@ -144,9 +173,14 @@ type Input struct {
 	IterationData  map[string]string
 	// Timeout for the run; DefaultTimeout when zero.
 	Timeout time.Duration
-	// Budget caps console output; share one across the runs of a send.
-	// nil gives the run its own.
+	// Budget caps console output and pm.sendRequest calls; share one across
+	// the runs of a send. nil gives the run its own.
 	Budget *Budget
+	// HTTP sends pm.sendRequest requests; nil makes pm.sendRequest fail.
+	HTTP HTTP
+	// Cookies backs pm.cookies; nil makes it an empty jar that refuses
+	// writes.
+	Cookies Cookies
 }
 
 // TestResult is one pm.test.
@@ -186,6 +220,7 @@ type Budget struct {
 	entries   int
 	bytes     int
 	truncated bool
+	requests  int
 }
 
 // add returns the entries to append for one console call.
@@ -374,7 +409,7 @@ func Run(ctx context.Context, in Input) (Output, error) {
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	ast, err := parser.ParseFile(nil, userScript, in.Script, 0)
+	ast, wrapped, err := parse(in.Script)
 	if err != nil {
 		return fail(err)
 	}
@@ -387,7 +422,15 @@ func Run(ctx context.Context, in Input) (Output, error) {
 	vm.SetMaxCallStackSize(MaxCallStack)
 	done := make(chan struct{})
 	defer close(done)
-	timer := time.AfterFunc(timeout, func() { vm.Interrupt(errTimeout) })
+	// runCtx bounds the run's requests: they stop with the script.
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	h := &host{vm: vm, in: in, out: &out, ctx: runCtx}
+	timer := time.AfterFunc(timeout, func() {
+		h.timedOutSending.Store(h.sending.Load())
+		vm.Interrupt(errTimeout)
+		stop()
+	})
 	defer timer.Stop()
 	go func() {
 		select {
@@ -396,19 +439,54 @@ func Run(ctx context.Context, in Input) (Output, error) {
 		case <-done:
 		}
 	}()
+	fail = func(err error) (Output, error) {
+		e := toError(err, in.Source, timeout)
+		if e.Timeout && h.timedOutSending.Load() {
+			e.Message += " (it was waiting for pm.sendRequest)"
+		}
+		if e.Line == 1 && wrapped {
+			e.Column = max(e.Column-len(asyncPrefix), 1)
+		}
+		return out, e
+	}
+	var unhandled []*goja.Promise
+	vm.SetPromiseRejectionTracker(func(p *goja.Promise, op goja.PromiseRejectionOperation) {
+		if op == goja.PromiseRejectionReject {
+			unhandled = append(unhandled, p)
+			return
+		}
+		unhandled = slices.DeleteFunc(unhandled, func(x *goja.Promise) bool { return x == p })
+	})
 
 	wire := toWire(in)
 	inputJSON, err := json.Marshal(wire)
 	if err != nil {
 		return fail(fmt.Errorf("encode script input: %w", err))
 	}
-	h := &host{vm: vm, in: in, out: &out}
-	finish, err := h.setup(string(inputJSON))
+	drain, finish, err := h.setup(string(inputJSON))
 	if err != nil {
 		return fail(err)
 	}
-	if _, err := vm.RunProgram(prg); err != nil {
+	result, err := vm.RunProgram(prg)
+	if err != nil {
 		return fail(err)
+	}
+	for {
+		n, err := drain(goja.Undefined())
+		if err != nil {
+			return fail(err)
+		}
+		if n.ToInteger() == 0 {
+			break
+		}
+	}
+	if wrapped {
+		if p, ok := result.Export().(*goja.Promise); ok && p.State() == goja.PromiseStateRejected {
+			return fail(rejection(p.Result()))
+		}
+	}
+	if len(unhandled) > 0 {
+		return fail(rejection(unhandled[0].Result()))
 	}
 	stateVal, err := finish(goja.Undefined())
 	if err != nil {
@@ -433,31 +511,65 @@ func Run(ctx context.Context, in Input) (Output, error) {
 	return out, nil
 }
 
+// asyncPrefix wraps a script that uses top-level await (on its first line,
+// so line numbers stay the same).
+const asyncPrefix = "(async () => {"
+
+// parse parses a script. One that only parses inside an async function
+// (top-level await) is wrapped in one; wrapped reports that.
+func parse(src string) (prog *ast.Program, wrapped bool, err error) {
+	prog, err = parser.ParseFile(nil, userScript, src, 0)
+	if err == nil || !strings.Contains(src, "await") {
+		return prog, false, err
+	}
+	if wast, werr := parser.ParseFile(nil, userScript, asyncPrefix+src+"\n})()", 0); werr == nil {
+		return wast, true, nil
+	}
+	return nil, false, err
+}
+
+// rejectionError is a rejected promise's reason.
+type rejectionError struct{ value goja.Value }
+
+func (e *rejectionError) Error() string { return exceptionText(e.value) }
+
+func rejection(v goja.Value) error { return &rejectionError{value: v} }
+
+// stackPosition finds "script:line:column" in an Error's stack.
+var stackPosition = regexp.MustCompile(`\b` + userScript + `:(\d+):(\d+)`)
+
 // host holds the Go functions the prelude calls.
 type host struct {
 	vm  *goja.Runtime
 	in  Input
 	out *Output
+	// ctx bounds pm.sendRequest (cancelled when the run ends or times out).
+	ctx context.Context
+	// sending is true while pm.sendRequest waits; timedOutSending records
+	// that the timeout hit then.
+	sending, timedOutSending atomic.Bool
 }
 
 // setup runs the expect library and the prelude, which installs pm and
-// the globals, and returns the prelude's finish function.
-func (h *host) setup(inputJSON string) (goja.Callable, error) {
+// the globals, and returns the prelude's drain and finish functions.
+func (h *host) setup(inputJSON string) (drain, finish goja.Callable, err error) {
 	lib, err := h.vm.RunProgram(expectProgram)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	fnVal, err := h.vm.RunProgram(preludeProgram)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	fn, _ := goja.AssertFunction(fnVal)
-	finishVal, err := fn(goja.Undefined(), h.object(), h.vm.ToValue(inputJSON), lib)
+	res, err := fn(goja.Undefined(), h.object(), h.vm.ToValue(inputJSON), lib)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	finish, _ := goja.AssertFunction(finishVal)
-	return finish, nil
+	obj := res.ToObject(h.vm)
+	drain, _ = goja.AssertFunction(obj.Get("drain"))
+	finish, _ = goja.AssertFunction(obj.Get("finish"))
+	return drain, finish, nil
 }
 
 func (h *host) throw(msg string) {
@@ -522,8 +634,7 @@ func (h *host) object() *goja.Object {
 		return h.vm.ToValue(out)
 	})
 	set("log", func(c goja.FunctionCall) goja.Value {
-		e := ConsoleEntry{Level: ConsoleLevel(arg(c, 0)), Text: arg(c, 1), Source: h.in.Source}
-		h.out.Console = append(h.out.Console, h.in.Budget.add(e)...)
+		h.log(ConsoleLevel(arg(c, 0)), arg(c, 1))
 		return goja.Undefined()
 	})
 	set("test", func(c goja.FunctionCall) goja.Value {
@@ -531,6 +642,45 @@ func (h *host) object() *goja.Object {
 			Name: arg(c, 0), Passed: c.Argument(1).ToBoolean(), Error: arg(c, 2),
 			Skipped: c.Argument(3).ToBoolean(), Source: h.in.Source,
 		})
+		return goja.Undefined()
+	})
+	set("sendRequest", func(c goja.FunctionCall) goja.Value {
+		return h.vm.ToValue(h.sendRequest(arg(c, 0)))
+	})
+	set("cookieList", func(c goja.FunctionCall) goja.Value {
+		list := []cookies.Cookie{}
+		if h.in.Cookies != nil {
+			got, err := h.in.Cookies.List(arg(c, 0))
+			if err != nil {
+				h.throw(err.Error())
+			}
+			list = append(list, got...)
+		}
+		data, _ := json.Marshal(list)
+		return h.vm.ToValue(string(data))
+	})
+	set("cookieSet", func(c goja.FunctionCall) goja.Value {
+		if h.in.Cookies == nil {
+			h.throw(noJar)
+		}
+		var ck cookies.Cookie
+		if err := json.Unmarshal([]byte(arg(c, 1)), &ck); err != nil {
+			h.throw("The cookie isn't valid: " + err.Error())
+		}
+		got, err := h.in.Cookies.Set(arg(c, 0), ck)
+		if err != nil {
+			h.throw(err.Error())
+		}
+		data, _ := json.Marshal(got)
+		return h.vm.ToValue(string(data))
+	})
+	set("cookieDelete", func(c goja.FunctionCall) goja.Value {
+		if h.in.Cookies == nil {
+			h.throw(noJar)
+		}
+		if err := h.in.Cookies.Delete(arg(c, 0), arg(c, 1)); err != nil {
+			h.throw(err.Error())
+		}
 		return goja.Undefined()
 	})
 	set("btoa", func(c goja.FunctionCall) goja.Value {
@@ -564,6 +714,59 @@ func (h *host) object() *goja.Object {
 	return o
 }
 
+// noJar is thrown by cookie writes when the run has no jar.
+const noJar = "The cookie jar isn't available here"
+
+// scriptRequest is a pm.sendRequest request as the prelude sends it.
+type scriptRequest struct {
+	Method  string           `json:"method"`
+	URL     string           `json:"url"`
+	Headers []model.KeyValue `json:"headers"`
+	Body    model.Body       `json:"body"`
+	Auth    model.Auth       `json:"auth"`
+}
+
+// sendRequest sends a pm.sendRequest request and returns the response as
+// JSON. Failures are thrown (the prelude hands them to the callback). A
+// console line records each request.
+func (h *host) sendRequest(reqJSON string) string {
+	if h.in.HTTP == nil {
+		h.throw("pm.sendRequest isn't available here")
+	}
+	if h.in.Budget.requests >= MaxRequests {
+		h.throw(fmt.Sprintf("Scripts can send at most %d requests per send", MaxRequests))
+	}
+	h.in.Budget.requests++
+	var sr scriptRequest
+	if err := json.Unmarshal([]byte(reqJSON), &sr); err != nil {
+		h.throw("The request isn't valid: " + err.Error())
+	}
+	req := model.Request{
+		Method: sr.Method, URL: sr.URL, Query: urlx.MergeQuery(sr.URL, nil),
+		Headers: sr.Headers, Body: sr.Body, Auth: sr.Auth,
+	}
+	h.sending.Store(true)
+	resp, err := h.in.HTTP.Send(h.ctx, req)
+	h.sending.Store(false)
+	line := sr.Method + " " + sr.URL
+	if err != nil {
+		h.log(LevelWarn, "pm.sendRequest "+line+" failed: "+err.Error())
+		h.throw(err.Error())
+	}
+	h.log(LevelInfo, fmt.Sprintf("pm.sendRequest %s → %d %s (%s ms)", line, resp.Code, resp.Status,
+		strconv.FormatFloat(resp.ResponseTime, 'f', 0, 64)))
+	data, _ := json.Marshal(wireResponse{
+		Code: resp.Code, Status: resp.Status, Headers: nonNil(resp.Headers),
+		Body: resp.Body, ResponseTime: resp.ResponseTime, ResponseSize: resp.ResponseSize,
+	})
+	return string(data)
+}
+
+func (h *host) log(level ConsoleLevel, text string) {
+	e := ConsoleEntry{Level: level, Text: text, Source: h.in.Source}
+	h.out.Console = append(h.out.Console, h.in.Budget.add(e)...)
+}
+
 // toError turns anything a run returned into an *Error.
 func toError(err error, src Source, timeout time.Duration) *Error {
 	e := &Error{Source: src}
@@ -573,6 +776,7 @@ func toError(err error, src Source, timeout time.Duration) *Error {
 		ex     *goja.Exception
 		syntax *goja.CompilerSyntaxError
 		parse  parser.ErrorList
+		rej    *rejectionError
 	)
 	switch {
 	case errors.As(err, &intr):
@@ -595,6 +799,14 @@ func toError(err error, src Source, timeout time.Duration) *Error {
 	case errors.As(err, &parse):
 		e.Message = "SyntaxError: " + parse[0].Message
 		e.Line, e.Column = parse[0].Position.Line, parse[0].Position.Column
+	case errors.As(err, &rej):
+		e.Message = exceptionText(rej.value)
+		if obj, ok := rej.value.(*goja.Object); ok && obj.Get("stack") != nil {
+			if m := stackPosition.FindStringSubmatch(obj.Get("stack").String()); m != nil {
+				e.Line, _ = strconv.Atoi(m[1])
+				e.Column, _ = strconv.Atoi(m[2])
+			}
+		}
 	case errors.As(err, &ex):
 		e.Message = exceptionText(ex.Value())
 		e.Line, e.Column = position(ex.Stack())

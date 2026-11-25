@@ -1,7 +1,8 @@
 // Pakpos script prelude: builds pm, console and the sandbox globals for one
 // script run. The program's value is a function Go calls with the host
 // functions, the input (as JSON) and the expect library; it returns
-// finish(), which reports the run's state (as JSON) back to Go. The host
+// {drain, finish}: drain runs waiting callbacks, finish reports the run's
+// state (as JSON) back to Go. The host
 // object stays in this closure, so scripts can't reach it.
 (function (host, inputJSON, lib) {
   "use strict";
@@ -10,6 +11,9 @@
   var expect = lib.expect;
   var g = globalThis;
   var state = { request: input.request, nextRequest: null, nextRequestSet: false, skip: false };
+  // Callbacks of pm.sendRequest and the cookie jar run after the script's
+  // own code, as in Postman (Go calls drain until none are left).
+  var pending = [];
 
   function str(v) {
     if (v === undefined) return "";
@@ -313,10 +317,23 @@
       host.test(name, false, "", true);
       return pm;
     }
+    var r;
     try {
-      fn();
+      r = fn();
     } catch (e) {
       host.test(name, false, errorText(e), false);
+      return pm;
+    }
+    if (r !== null && typeof r === "object" && typeof r.then === "function") {
+      // An async test passes or fails when its promise settles.
+      r.then(
+        function () {
+          host.test(name, true, "", false);
+        },
+        function (e) {
+          host.test(name, false, errorText(e), false);
+        },
+      );
       return pm;
     }
     host.test(name, true, "", false);
@@ -325,6 +342,259 @@
   test.skip = function (name) {
     host.test(str(name), false, "", true);
     return pm;
+  };
+
+  // ---- async results ----
+
+  // settle runs work now and hands its result to cb (later, after the
+  // script's own code) or, without a callback, returns a promise.
+  function settle(cb, work) {
+    var err = null, value;
+    try {
+      value = work();
+    } catch (e) {
+      err = e;
+    }
+    if (typeof cb === "function") {
+      pending.push(function () {
+        cb(err, value);
+      });
+      return undefined;
+    }
+    return err === null ? Promise.resolve(value) : Promise.reject(err);
+  }
+
+  // ---- pm.sendRequest ----
+
+  function rows(list, what) {
+    if (list === undefined || list === null) return [];
+    if (typeof list === "string") list = list.split("\n").filter(function (l) {
+      return l.trim() !== "";
+    });
+    if (!Array.isArray(list)) {
+      if (typeof list !== "object") fail(what + " must be a list of {key, value} rows or an object");
+      return Object.keys(list).map(function (k) {
+        return { key: k, value: str(list[k]), enabled: true };
+      });
+    }
+    return list.map(function (h) {
+      var row = toHeader(h);
+      return { key: row.key, value: row.value, enabled: !(h && h.disabled) };
+    });
+  }
+
+  function authParams(a, type) {
+    var p = a[type], o = {};
+    if (Array.isArray(p)) {
+      p.forEach(function (x) {
+        if (x && x.key !== undefined) o[str(x.key)] = x.value;
+      });
+      return o;
+    }
+    return p && typeof p === "object" ? p : {};
+  }
+
+  function toAuth(a) {
+    if (a === undefined || a === null) return { type: "none" };
+    var type = str(a.type);
+    var p = authParams(a, type);
+    switch (type) {
+      case "noauth":
+      case "none":
+        return { type: "none" };
+      case "basic":
+        return { type: "basic", username: str(p.username), password: str(p.password) };
+      case "bearer":
+        return { type: "bearer", token: str(p.token) };
+      case "apikey":
+        return { type: "apikey", apiKey: str(p.key), apiValue: str(p.value), apiIn: p["in"] === "query" ? "query" : "header" };
+    }
+    fail("pm.sendRequest supports basic, bearer and apikey auth, not \"" + type + "\". Set the Authorization header yourself.");
+  }
+
+  function toBody(b) {
+    var none = { type: "none", raw: "", language: "", formData: [], urlEncoded: [], binaryPath: "" };
+    if (b === undefined || b === null) return none;
+    if (typeof b === "string") return Object.assign(none, { type: "raw", raw: b, language: "text" });
+    var lang = (b.options && b.options.raw && b.options.raw.language) || "text";
+    switch (b.mode) {
+      case undefined:
+      case "none":
+        return none;
+      case "raw":
+        return Object.assign(none, { type: "raw", raw: str(b.raw), language: str(lang) });
+      case "graphql":
+        var gql = b.graphql || {};
+        var variables = gql.variables;
+        if (typeof variables === "string") {
+          try {
+            variables = variables.trim() === "" ? undefined : JSON.parse(variables);
+          } catch (e) {
+            fail("The GraphQL variables aren't valid JSON: " + e.message);
+          }
+        }
+        return Object.assign(none, {
+          type: "raw",
+          raw: JSON.stringify({ query: str(gql.query), variables: variables }),
+          language: "json",
+        });
+      case "urlencoded":
+        return Object.assign(none, { type: "urlencoded", urlEncoded: rows(b.urlencoded, "body.urlencoded") });
+      case "formdata":
+        var fields = (Array.isArray(b.formdata) ? b.formdata : []).map(function (f) {
+          if (f && (f.type === "file" || f.src !== undefined)) fail("pm.sendRequest can't upload files");
+          return { key: str(f && f.key), kind: "text", value: str(f && f.value), filePath: "", contentType: str(f && f.contentType), enabled: !(f && f.disabled) };
+        });
+        return Object.assign(none, { type: "form-data", formData: fields });
+    }
+    fail("pm.sendRequest can't send a body in \"" + str(b.mode) + "\" mode; use raw, urlencoded, formdata or graphql");
+  }
+
+  function toRequest(r) {
+    if (typeof r === "string") r = { url: r };
+    if (r === null || typeof r !== "object") fail("pm.sendRequest needs a URL or a request like {url, method, header, body}");
+    var u = r.url;
+    if (u !== null && typeof u === "object") u = u.raw !== undefined ? u.raw : u.toString();
+    u = str(u).trim();
+    if (u === "") fail("pm.sendRequest needs a URL");
+    return {
+      method: str(r.method || "GET").trim().toUpperCase(),
+      url: u,
+      headers: rows(r.header !== undefined ? r.header : r.headers, "header"),
+      body: toBody(r.body),
+      auth: toAuth(r.auth),
+    };
+  }
+
+  function sendRequest(r, cb) {
+    return settle(cb, function () {
+      return makeResponse(JSON.parse(host.sendRequest(JSON.stringify(toRequest(r)))));
+    });
+  }
+
+  // ---- pm.cookies ----
+
+  function toCookie(c) {
+    var out = {
+      name: c.name,
+      value: c.value,
+      domain: c.domain,
+      path: c.path,
+      hostOnly: c.hostOnly,
+      secure: c.secure,
+      httpOnly: c.httpOnly,
+      session: !c.expiresAt,
+    };
+    if (c.expiresAt) out.expires = new Date(c.expiresAt).toISOString();
+    return out;
+  }
+
+  function cookiesFor(u) {
+    return JSON.parse(host.cookieList(str(u))).map(toCookie);
+  }
+
+  function fromCookie(name, value) {
+    var c = name !== null && typeof name === "object" ? name : { name: name, value: value };
+    var expiresAt = 0;
+    if (c.maxAge !== undefined && c.maxAge !== null) {
+      expiresAt = Date.now() + Number(c.maxAge) * 1000;
+    } else if (c.expires !== undefined && c.expires !== null) {
+      expiresAt = new Date(c.expires).getTime();
+    }
+    if (isNaN(expiresAt)) fail("The cookie's expiry isn't a valid date");
+    return {
+      name: str(c.name).trim(),
+      value: str(c.value),
+      domain: str(c.domain),
+      path: str(c.path),
+      secure: !!c.secure,
+      httpOnly: !!c.httpOnly,
+      sameSite: "",
+      expiresAt: expiresAt,
+    };
+  }
+
+  function needURL(u, what) {
+    if (typeof u !== "string" || u.trim() === "") fail(what + " needs a URL");
+    return u;
+  }
+
+  var jar = {
+    get: function (u, name, cb) {
+      return settle(cb, function () {
+        var hit;
+        cookiesFor(needURL(u, "jar.get")).forEach(function (c) {
+          if (hit === undefined && c.name === str(name)) hit = c.value;
+        });
+        return hit;
+      });
+    },
+    getAll: function (u, cb) {
+      return settle(cb, function () {
+        return cookiesFor(needURL(u, "jar.getAll"));
+      });
+    },
+    set: function (u, name, value, cb) {
+      if (typeof value === "function" && cb === undefined) {
+        cb = value;
+        value = undefined;
+      }
+      return settle(cb, function () {
+        return toCookie(JSON.parse(host.cookieSet(needURL(u, "jar.set"), JSON.stringify(fromCookie(name, value)))));
+      });
+    },
+    unset: function (u, name, cb) {
+      return settle(cb, function () {
+        host.cookieDelete(needURL(u, "jar.unset"), str(name));
+      });
+    },
+    clear: function (u, cb) {
+      return settle(cb, function () {
+        host.cookieDelete(needURL(u, "jar.clear"), "");
+      });
+    },
+  };
+
+  // pm.cookies: the cookies a request to the current URL sends (in a test
+  // script, including those its response set).
+  function current() {
+    return cookiesFor(req.url);
+  }
+  var cookies = {
+    get: function (name) {
+      var hit;
+      current().forEach(function (c) {
+        if (hit === undefined && c.name === str(name)) hit = c.value;
+      });
+      return hit;
+    },
+    has: function (name, value) {
+      return current().some(function (c) {
+        return c.name === str(name) && (value === undefined || c.value === str(value));
+      });
+    },
+    all: current,
+    count: function () {
+      return current().length;
+    },
+    each: function (fn) {
+      current().forEach(function (c) {
+        fn(c);
+      });
+    },
+    toObject: function () {
+      var o = {};
+      current()
+        .slice()
+        .reverse()
+        .forEach(function (c) {
+          o[c.name] = c.value;
+        });
+      return o;
+    },
+    jar: function () {
+      return jar;
+    },
   };
 
   // ---- pm ----
@@ -370,9 +640,8 @@
     execution: execution,
     test: test,
     expect: expect,
-    sendRequest: function () {
-      fail("pm.sendRequest isn't available: Pakpos scripts have no network access");
-    },
+    sendRequest: sendRequest,
+    cookies: cookies,
   };
   if (input.response) pm.response = makeResponse(input.response);
 
@@ -405,7 +674,7 @@
   g.clearTimeout = unavailable("clearTimeout", timers);
   g.clearInterval = unavailable("clearInterval", timers);
   g.require = unavailable("require", "there are no modules to load");
-  g.fetch = unavailable("fetch", "scripts have no network access");
+  g.fetch = unavailable("fetch", "use pm.sendRequest");
   g.btoa = function (s) {
     return host.btoa(str(s));
   };
@@ -413,7 +682,18 @@
     return host.atob(str(s));
   };
 
-  return function finish() {
-    return JSON.stringify(state);
+  return {
+    // drain runs the callbacks waiting so far and returns how many ran.
+    drain: function () {
+      var run = pending;
+      pending = [];
+      run.forEach(function (fn) {
+        fn();
+      });
+      return run.length;
+    },
+    finish: function () {
+      return JSON.stringify(state);
+    },
   };
 });

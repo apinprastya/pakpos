@@ -1214,6 +1214,8 @@ export interface AppSettings {
   clientCerts: ClientCert[];
   /** A pre-request or test script running longer is stopped (1–60 s). */
   scriptTimeoutMs: number;
+  /** Scripts may send requests with pm.sendRequest. */
+  scriptRequests: boolean;
   /** cloudflared for webhook tunnels; "" finds it (Pakpos's download, then PATH). */
   cloudflaredPath: string;
 }
@@ -1336,6 +1338,7 @@ export function normalizeSettings(
       typeof s.scriptTimeoutMs === "number" && s.scriptTimeoutMs > 0
         ? s.scriptTimeoutMs
         : defaults.scriptTimeoutMs,
+    scriptRequests: typeof s.scriptRequests === "boolean" ? s.scriptRequests : defaults.scriptRequests,
     cloudflaredPath: typeof s.cloudflaredPath === "string" ? s.cloudflaredPath : defaults.cloudflaredPath,
   };
 }
@@ -1364,6 +1367,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   caFile: "",
   clientCerts: [],
   scriptTimeoutMs: 5_000,
+  scriptRequests: true,
   cloudflaredPath: "",
 };
 

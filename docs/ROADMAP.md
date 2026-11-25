@@ -114,7 +114,7 @@ Carried over from Tier 2 (see PLAN-TIER2.md for the full lists):
 ## Tier 4 — Nice-to-have
 
 Moved here from Tier 3 (see PLAN-TIER3.md for the reasons):
-- `pm.sendRequest`, `pm.cookies`, `pm.request.auth`, bundled script libraries.
+- `pm.request.auth`, bundled script libraries. (`pm.sendRequest` and `pm.cookies` are done: see PLAN-SCRIPT-NETWORK.md.)
 - OAuth 2.0 device code, client assertion (private_key_jwt), OpenID discovery, token revocation.
 - OS proxy settings (macOS/Windows system proxy, PAC files); encrypted PEM keys.
 - Showing OAuth 2.0 token endpoint exchanges in the Debug tab.

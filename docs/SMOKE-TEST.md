@@ -167,6 +167,8 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir and an environment `Dev` with a pla
 - [ ] Script error: `notDefined()` in a folder's pre-request script stops the send with "A pre-request script failed", the folder name and line:column, and "Open the pre-request script of folder …" opens that folder's Scripts tab; the error is in the console too. A `while(true){}` stops after the script timeout (Settings → Requests).
 - [ ] Skip: `pm.execution.skipRequest()` shows "Skipped by a pre-request script (pm.execution.skipRequest)" and nothing is sent or added to history.
 - [ ] Palette: "Open pre-request script", "Open tests", "Toggle console", "Clear console", "Reset script values".
+- [ ] `pm.sendRequest`: the "Get a token with pm.sendRequest" snippet (pointed at a real token endpoint, client secret as a secret variable) sets `token` before the request goes out; the console shows `pm.sendRequest POST … → 200` and the secret only as `[secret:…]`; nothing extra appears in History. A callback form (`pm.sendRequest(url, (err, res) => …)`) works too, and an unreachable URL gives the callback an error. With Settings → Requests → "Scripts can send requests" off, the script fails with a message naming that setting.
+- [ ] `pm.cookies`: after `https://httpbin.org/cookies/set?x=1`, a test `pm.expect(pm.cookies.get("x")).to.equal("1")` passes; `await pm.cookies.jar().set("https://httpbin.org/", "y", "2")` shows `y` in Manage cookies.
 
 ## Tier 3: collection runner
 
@@ -231,7 +233,7 @@ Run on each OS. Start on a machine (or in an `XDG_CONFIG_HOME`) without cloudfla
 Needs a Postman account with a collection that has folders, examples, scripts, collection variables and auth, plus an environment with a secret variable. Export the collection as Collection v2.1, the environment, and the globals.
 
 - [ ] The Collections header's **Import from Postman** button, the "No collections yet" state and the palette's "Import from Postman…" open the dialog; **Choose file…** opens the system file dialog.
-- [ ] The collection's preview names it, counts requests, folders, examples and variables, and lists what won't work (e.g. a script with `pm.sendRequest`, `{{$randomEmail}}`); **Import** adds the collection, reveals it in the sidebar, and the tree matches Postman's order.
+- [ ] The collection's preview names it, counts requests, folders, examples and variables, and lists what won't work (e.g. a script with `pm.visualizer`, `{{$randomEmail}}`); **Import** adds the collection, reveals it in the sidebar, and the tree matches Postman's order.
 - [ ] Opening imported requests shows the same URL, params (disabled ones too), path variables, headers, body, auth (inherited where Postman inherited) and scripts; examples are listed and open; sending one with the imported environment selected works like in Postman.
 - [ ] The environment import opens its tab; the secret variable shows as set, and its value appears in no workspace file (`grep -r <value> <workspace>`). With "Keep credentials in the secret store" on, a `token` variable is secret too; off, the preview warns about it.
 - [ ] With the secret store locked (file store), importing an environment with a secret asks to unlock first; cancelling leaves nothing imported.

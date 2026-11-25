@@ -241,6 +241,15 @@ func (c *Core) loadJarLocked(workspaceID string) {
 	c.jar = jar
 }
 
+// scriptJar is the open workspace's jar for pm.cookies (nil when there is
+// none, so the interface stays nil).
+func (c *Core) scriptJar() pipeline.CookieJar {
+	if jar := c.cookieJar(); jar != nil {
+		return jar
+	}
+	return nil
+}
+
 // cookieJar returns the open workspace's jar.
 func (c *Core) cookieJar() *cookies.Jar {
 	c.mu.RLock()

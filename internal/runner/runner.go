@@ -88,6 +88,10 @@ type Config struct {
 	Options Options
 	// ScriptTimeout per script run (script.DefaultTimeout when zero).
 	ScriptTimeout time.Duration
+	// ScriptRequestsOff turns pm.sendRequest off (Executor sends them
+	// otherwise); Jar backs pm.cookies (nil: an empty jar).
+	ScriptRequestsOff bool
+	Jar               pipeline.CookieJar
 	// Record adds a send to history when Options.RecordHistory is on.
 	Record func(HistoryRecord)
 	// Sleep waits d or until ctx is done (tests inject one).
@@ -531,6 +535,7 @@ func (r *Runner) send(ctx context.Context, it, idx int, row map[string]string, l
 	sd := r.sess.NewSend(info.Request, "", r.run.EnvironmentID, pipeline.ScriptOptions{
 		Timeout: r.cfg.ScriptTimeout, Iteration: it, IterationCount: r.run.Iterations,
 		IterationData: row, Local: *local,
+		Executor: r.cfg.Executor, RequestsOff: r.cfg.ScriptRequestsOff, Jar: r.cfg.Jar,
 	})
 	started := r.cfg.Now()
 	res := Result{

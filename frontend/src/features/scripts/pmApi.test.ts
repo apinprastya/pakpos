@@ -129,6 +129,26 @@ describe("pmCompletions", () => {
   });
 });
 
+describe("pm.sendRequest and pm.cookies", () => {
+  it("completes them in both scripts", () => {
+    for (const event of ["prerequest", "test"] as const) {
+      expect(complete("pm.", event)!.labels).toEqual(expect.arrayContaining(["sendRequest", "cookies"]));
+    }
+    expect(complete("pm.cookies.")!.labels).toEqual([
+      "get",
+      "has",
+      "all",
+      "count",
+      "each",
+      "toObject",
+      "jar",
+    ]);
+    expect(complete("pm.cookies.jar().")!.labels).toEqual(["get", "getAll", "set", "unset", "clear"]);
+    // sendRequest returns a promise, not a response: no members.
+    expect(complete("pm.sendRequest(url).")).toBeNull();
+  });
+});
+
 describe("snippets", () => {
   it("inserts on a line of its own", () => {
     expect(snippetInsert("", 0, "x\n")).toBe("x\n");
@@ -146,6 +166,8 @@ describe("snippets", () => {
         "Set an environment variable from the JSON response",
         "Set a request header",
         "Log the response",
+        "Get a token with pm.sendRequest",
+        "Response set a cookie",
       ]),
     );
   });
