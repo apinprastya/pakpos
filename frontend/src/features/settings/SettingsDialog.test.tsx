@@ -161,6 +161,18 @@ describe("SettingsDialog", () => {
     );
   });
 
+  it("turns off requests from scripts", async () => {
+    const { user, dialog } = await openSettings();
+    await user.click(section(dialog, "Requests"));
+    const toggle = within(dialog).getByRole("switch", { name: "Scripts can send requests" });
+    expect(toggle).toBeChecked();
+    await user.click(toggle);
+    await user.click(within(dialog).getByRole("button", { name: "Save settings" }));
+    await waitFor(() =>
+      expect(api.setSettings).toHaveBeenCalledWith(expect.objectContaining({ scriptRequests: false })),
+    );
+  });
+
   it("explains that lowering retention deletes history", async () => {
     const { user, dialog } = await openSettings();
     await user.click(section(dialog, "History"));

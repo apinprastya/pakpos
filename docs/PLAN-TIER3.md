@@ -411,7 +411,7 @@ M3 ─ M4 ─ M5 ────────────────────┘
 ### Carried over from M3
 
 - ~~**M4 needs**~~: done in M4 (Scripts tab, Tests tab, console drawer, overlay badges; `overlayDraft` keeps script values winning).
-- **Postman compatibility gaps**: no `pm.cookies`, `pm.visualizer`, `pm.sendRequest` (Tier 4), `require` of bundled libraries (lodash, moment, CryptoJS…), the legacy `tests[...]`/`responseBody`/`postman.setEnvironmentVariable` globals, `pm.request.auth`, typed variable values, async tests.
+- **Postman compatibility gaps**: no `pm.visualizer` (`pm.sendRequest`, `pm.cookies` and async tests came later: PLAN-SCRIPT-NETWORK.md), `require` of bundled libraries (lodash, moment, CryptoJS…), the legacy `tests[...]`/`responseBody`/`postman.setEnvironmentVariable` globals, `pm.request.auth`, typed variable values.
 - **Memory**: goja has no heap limit; a script allocating fast within the timeout can use a lot of memory.
 - **Short secrets** (under 4 characters) aren't masked in script output (same rule as examples).
 

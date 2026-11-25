@@ -233,6 +233,32 @@ func (j *Jar) removeLocked(ref Ref) bool {
 
 // Cookies implements http.CookieJar.
 func (j *Jar) Cookies(u *url.URL) []*http.Cookie {
+	hits := j.ForURL(u)
+	if len(hits) == 0 {
+		return nil
+	}
+	out := make([]*http.Cookie, 0, len(hits))
+	for _, c := range hits {
+		// A Cookie header carries only the name and value.
+		out = append(out, &http.Cookie{Name: c.Name, Value: c.Value}) //nolint:gosec // request cookie, not a Set-Cookie
+	}
+	return out
+}
+
+// ForURL lists the live cookies a request to u sends, in Cookie header
+// order (RFC 6265 5.4: longer paths first, then older cookies first).
+func (j *Jar) ForURL(u *url.URL) []Cookie {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	hits := j.matchLocked(u)
+	out := make([]Cookie, len(hits))
+	for i, c := range hits {
+		out[i] = *c
+	}
+	return out
+}
+
+func (j *Jar) matchLocked(u *url.URL) []*Cookie {
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return nil
 	}
@@ -246,9 +272,6 @@ func (j *Jar) Cookies(u *url.URL) []*http.Cookie {
 	}
 	secure := u.Scheme == "https"
 	now := j.nowMs()
-
-	j.mu.Lock()
-	defer j.mu.Unlock()
 	var hits []*Cookie
 	for ref, c := range j.cookies {
 		if c.Persistent() && c.ExpiresAt <= now {
@@ -260,19 +283,59 @@ func (j *Jar) Cookies(u *url.URL) []*http.Cookie {
 		}
 		hits = append(hits, c)
 	}
-	// RFC 6265 5.4: longer paths first, then older cookies first.
 	sort.Slice(hits, func(a, b int) bool {
 		if len(hits[a].Path) != len(hits[b].Path) {
 			return len(hits[a].Path) > len(hits[b].Path)
 		}
 		return hits[a].CreatedAt < hits[b].CreatedAt
 	})
-	out := make([]*http.Cookie, 0, len(hits))
-	for _, c := range hits {
-		// A Cookie header carries only the name and value.
-		out = append(out, &http.Cookie{Name: c.Name, Value: c.Value}) //nolint:gosec // request cookie, not a Set-Cookie
+	return hits
+}
+
+// SetForURL stores c as if a response from u had set it: an empty Domain
+// makes a host-only cookie, and a Domain u's host isn't in is refused, as
+// is a public suffix; an empty Path is u's default path.
+func (j *Jar) SetForURL(u *url.URL, c Cookie) (Cookie, error) {
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return Cookie{}, fmt.Errorf("%w: cookies need an http or https URL", ErrInvalid)
 	}
-	return out
+	host, err := canonicalHost(u.Host)
+	if err != nil {
+		return Cookie{}, fmt.Errorf("%w: the URL has no host", ErrInvalid)
+	}
+	domain, hostOnly, err := domainAndType(host, strings.TrimSpace(c.Domain))
+	if err != nil {
+		return Cookie{}, fmt.Errorf("%w: a cookie for %s can't be set from %s", ErrInvalid, c.Domain, host)
+	}
+	c.Domain, c.HostOnly = domain, hostOnly
+	if strings.TrimSpace(c.Path) == "" {
+		c.Path = defaultPath(u.Path)
+	}
+	c, err = j.check(c)
+	if err != nil {
+		return Cookie{}, err
+	}
+	c.HostOnly = hostOnly
+	c.CreatedAt = 0
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.putLocked(c)
+	return *j.cookies[c.Ref()], nil
+}
+
+// DeleteForURL removes the cookies a request to u sends that are named
+// name, or all of them when name is "". It returns how many.
+func (j *Jar) DeleteForURL(u *url.URL, name string) int {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	n := 0
+	for _, c := range j.matchLocked(u) {
+		if name == "" || c.Name == name {
+			j.removeLocked(c.Ref())
+			n++
+		}
+	}
+	return n
 }
 
 func (c *Cookie) domainMatch(host string) bool {

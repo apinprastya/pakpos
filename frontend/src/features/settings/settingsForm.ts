@@ -19,6 +19,8 @@ export interface SettingsDraft {
   timeoutSeconds: string;
   /** Pre-request and test script timeout, whole seconds. */
   scriptTimeoutSeconds: string;
+  /** Scripts may send requests with pm.sendRequest. */
+  scriptRequests: boolean;
   followRedirects: boolean;
   maxRedirects: string;
   verifyTls: boolean;
@@ -74,6 +76,7 @@ export function toDraft(s: AppSettings): SettingsDraft {
     layout: s.layout,
     timeoutSeconds: formatSeconds(s.timeoutMs),
     scriptTimeoutSeconds: formatSeconds(s.scriptTimeoutMs),
+    scriptRequests: s.scriptRequests,
     followRedirects: s.followRedirects,
     maxRedirects: String(s.maxRedirects),
     verifyTls: s.verifyTls,
@@ -230,6 +233,7 @@ export function fromDraft(
       caFile: d.caFile.trim(),
       clientCerts: certs,
       scriptTimeoutMs: scriptTimeout! * 1000,
+      scriptRequests: d.scriptRequests,
       // Changed through the Webhooks section (it checks the file runs).
       cloudflaredPath: base.cloudflaredPath,
     },

@@ -41,7 +41,9 @@ export type TypeName =
   | "assertion"
   | "responseAssertion"
   | "console"
-  | "postman";
+  | "postman"
+  | "cookies"
+  | "cookieJar";
 
 const prop = (name: string, doc: string, type?: TypeName, only?: ScriptEvent): ApiEntry => ({
   name,
@@ -170,6 +172,12 @@ export const TYPES: Record<TypeName, ApiEntry[]> = {
     prop("execution", "Skip this request, or pick the runner's next one.", "execution"),
     fn("test", "(name, fn)", "Records a test: it passes unless fn throws.", "test"),
     fn("expect", "(value)", "Starts an assertion, e.g. pm.expect(x).to.equal(1).", "assertion"),
+    fn(
+      "sendRequest",
+      "(request, callback?)",
+      "Sends a request (a URL or {url, method, header, body, auth}); the callback gets (err, response), or await the promise it returns.",
+    ),
+    prop("cookies", "Cookies sent to the request's URL; jar() reads and changes any URL's.", "cookies"),
   ],
   scope: SCOPE,
   environment: [...SCOPE, prop("name", "The selected environment's name.")],
@@ -255,6 +263,26 @@ export const TYPES: Record<TypeName, ApiEntry[]> = {
     fn("debug", "(...values)", "Writes a debug line to the console."),
   ],
   postman: [fn("setNextRequest", "(name | null)", "Same as pm.execution.setNextRequest.")],
+  cookies: [
+    fn("get", "(name)", "The cookie's value, or undefined."),
+    fn("has", "(name, value?)", "True when the cookie is sent (with that value, if given)."),
+    fn("all", "()", "The cookies as a list of {name, value, domain, path, …}."),
+    fn("count", "()", "How many cookies are sent."),
+    fn("each", "(fn)", "Calls fn(cookie) for each cookie."),
+    fn("toObject", "()", "The cookies as an object of name → value."),
+    fn("jar", "()", "The cookie jar, for cookies of any URL.", "cookieJar"),
+  ],
+  cookieJar: [
+    fn("get", "(url, name, callback?)", "The value of a cookie sent to the URL."),
+    fn("getAll", "(url, callback?)", "Every cookie sent to the URL."),
+    fn(
+      "set",
+      "(url, name, value, callback?)",
+      "Sets a cookie for the URL (or pass {name, value, path, expires, …}).",
+    ),
+    fn("unset", "(url, name, callback?)", "Deletes the cookie sent to the URL."),
+    fn("clear", "(url, callback?)", "Deletes every cookie sent to the URL."),
+  ],
 };
 
 /** Names a script can start with. */

@@ -130,7 +130,7 @@ func TestCollectionV21(t *testing.T) {
 	if strings.Contains(create.Scripts.Test, "throw 1") {
 		t.Errorf("disabled script imported: %q", create.Scripts.Test)
 	}
-	if !warningFor(f, "Create order", "pm.sendRequest") || !warningFor(f, "Create order", "legacy") {
+	if warningFor(f, "Create order", "pm.sendRequest") || !warningFor(f, "Create order", "legacy") {
 		t.Errorf("script warnings missing: %+v", f.Warnings)
 	}
 
@@ -510,7 +510,6 @@ func TestScriptChecks(t *testing.T) {
 		src  string
 		want string
 	}{
-		{"pm.cookies.get('a')", "pm.cookies"},
 		{"pm.request.auth.type", "pm.request.auth"},
 		{"pm.vault.get('x')", "pm.vault"},
 		{"pm.visualizer.set('')", "pm.visualizer"},
@@ -522,6 +521,12 @@ func TestScriptChecks(t *testing.T) {
 		{"moment().format()", "moment"},
 		{"const $ = cheerio.load(x)", "bundled libraries"},
 		{"postman.setEnvironmentVariable('a', 1)", "legacy"},
+	}
+	for _, ok := range []string{"pm.sendRequest('x', () => {})", "pm.cookies.get('a')"} {
+		c := &converter{}
+		if c.checkScript("R", ok); len(c.warnings) != 0 {
+			t.Errorf("%q: warnings = %+v", ok, c.warnings)
+		}
 	}
 	for _, tt := range tests {
 		c := &converter{}

@@ -447,6 +447,12 @@ function RequestsSection({ draft, update, errors }: SectionProps & { errors: Dra
         onChange={(v) => update({ scriptTimeoutSeconds: v })}
         error={errors.scriptTimeoutSeconds}
       />
+      <SwitchField
+        label="Scripts can send requests"
+        hint="Lets pm.sendRequest reach the network. Turn it off before running scripts you don't trust, such as an imported collection's."
+        checked={draft.scriptRequests}
+        onChange={(v) => update({ scriptRequests: v })}
+      />
     </section>
   );
 }

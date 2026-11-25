@@ -52,6 +52,30 @@ export const SNIPPETS: Snippet[] = [
     code: `pm.environment.set("name", "value");\n`,
   },
   {
+    id: "send-request",
+    label: "Get a token with pm.sendRequest",
+    code: `const res = await pm.sendRequest({
+  url: pm.environment.get("baseUrl") + "/oauth/token",
+  method: "POST",
+  body: {
+    mode: "urlencoded",
+    urlencoded: [
+      { key: "grant_type", value: "client_credentials" },
+      { key: "client_id", value: "{{clientId}}" },
+      { key: "client_secret", value: "{{clientSecret}}" },
+    ],
+  },
+});
+pm.environment.set("token", res.json().access_token);
+`,
+  },
+  {
+    id: "cookie-set",
+    label: "Response set a cookie",
+    only: "test",
+    code: `pm.test("Sets a session cookie", () => {\n  pm.expect(pm.cookies.has("session")).to.be.true;\n});\n`,
+  },
+  {
     id: "log-response",
     label: "Log the response",
     only: "test",

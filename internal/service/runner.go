@@ -132,7 +132,9 @@ func (s *RunnerService) Start(config RunConfig) (string, error) {
 			StopOnFailure: config.StopOnFailure, KeepVariables: config.KeepVariables,
 			SaveResponses: config.SaveResponses, RecordHistory: config.RecordHistory,
 		},
-		ScriptTimeout: s.c.currentSettings().ScriptTimeout(),
+		ScriptTimeout:     s.c.currentSettings().ScriptTimeout(),
+		ScriptRequestsOff: !s.c.currentSettings().ScriptRequests,
+		Jar:               s.c.scriptJar(),
 		Record: func(h runner.HistoryRecord) {
 			s.c.recordHistory(wsID, h.EnvironmentName, h.Request, h.Response, h.Error, h.Started)
 		},

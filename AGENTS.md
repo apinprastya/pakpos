@@ -9,6 +9,7 @@ Read before larger changes:
 - `docs/PLAN-TIER2.md`: the previous plan, for the reasoning behind Tier 2 decisions
 - `docs/PLAN-WEBHOOKS.md`: the webhook test server (decisions, milestones)
 - `docs/PLAN-POSTMAN.md`: importing Postman collections, environments and globals
+- `docs/PLAN-SCRIPT-NETWORK.md`: `pm.sendRequest`, `pm.cookies` and async scripts
 - `docs/SMOKE-TEST.md`: the manual release checklist
 
 ## Stack
@@ -59,7 +60,7 @@ internal/
     tools/hashx/         MD5/SHA-1/SHA-2 digests and HMACs (key as text/hex/base64) of bytes or a streamed io.Reader, for the Hash and HMAC tool
     auth/oauth2/         OAuth 2.0 grants, PKCE, token parsing, loopback callback server; oauth2test: a fake authorization server for tests
     cookies/             the cookie jar (http.CookieJar + list/edit; persistent cookies through a Store)
-    script/              goja sandbox: script.Run, the pm API (prelude.js) and the chai subset (expect.js), embedded
+    script/              goja sandbox: script.Run, the pm API (prelude.js) and the chai subset (expect.js), embedded; pm.sendRequest/pm.cookies through the HTTP and Cookies interfaces
     vars/                {{variable}} scopes, nesting, dynamic variables
     inherit/             auth and headers inherited from collection and folders
     curl/                cURL parse (import) and generate
@@ -143,6 +144,7 @@ website/                 Astro marketing + download site, a SEPARATE npm project
   - **Event** `script:console` (`EventScriptConsole`, `ScriptConsoleEvent{sendId, entries}`), one per script run that logged, already masked; frontend `api.onScriptConsole`.
   - Code generation and previews never run scripts.
   - A pre-request error also sets `SendResult.ScriptError {source, line, column}` (nil otherwise) so the UI can open that level's script.
+  - **`pm.sendRequest` / `pm.cookies`** (`docs/PLAN-SCRIPT-NETWORK.md`): `script.Input.HTTP`/`Cookies` interfaces, implemented in `pipeline` (`scriptHTTP`: resolves `{{vars}}` from the send's scopes, sends through `ScriptOptions.Executor` (the app's executor and jar), masks errors, removes spilled bodies; `scriptCookies` over `ScriptOptions.Jar` = `cookies.Jar.ForURL/SetForURL/DeleteForURL`). Services and the runner pass the executor, the jar (`Core.scriptJar`) and `RequestsOff` = !`settings.ScriptRequests` ("Scripts can send requests", default on; off → `MsgScriptRequestsOff`). Requests block the script (they count against the script timeout) and are never in history or hops; each adds a masked console line; `script.MaxRequests` per send. Callbacks run after the script's code (prelude `pending`, Go loops `drain`); without a callback they return promises. Top-level `await` wraps the script in an async function on line 1 (`asyncPrefix`; first-line columns corrected); unhandled rejections fail the run (`SetPromiseRejectionTracker`, position from the error's stack); async `pm.test` records when it settles.
 - **Collection runner** (`internal/runner`, `service/runner.go`):
   - `runner.New(Config)` checks the config (iterations 1–10000 or 0 = one per data row, delay 0–60000 ms, a data file with rows matching the iterations) and resolves the order from `ws.Tree()` (depth-first, tree order, optional `RequestIDs` subset); errors are `*runner.ConfigError`/`*runner.DataError` with user sentences (`userErr` in the service). `Runner.Run(ctx, Sink)` returns a `runner.Report`; `runner.Run` does both. Requests are read once when the run starts.
   - Each send is a `pipeline.Send` (`Session.NewSend`), so scripts, overlay and masking match a single send. The iteration's local scope carries over between sends (`ScriptOptions.Local` ← `Send.Local()`), seeded from the data row. "Keep variable values" off → `Session.Isolated()` (private overlay copy). History only with `RecordHistory` (`Config.Record` → `Core.recordHistory`); otherwise a spilled body file is removed. Saved responses are text only, masked, `MaxSavedBody`/`MaxSavedBodies`.

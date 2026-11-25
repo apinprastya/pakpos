@@ -14,8 +14,6 @@ var scriptFeatures = []struct {
 	re   *regexp.Regexp
 	name string
 }{
-	{regexp.MustCompile(`\bpm\.sendRequest\b`), "pm.sendRequest"},
-	{regexp.MustCompile(`\bpm\.cookies\b`), "pm.cookies"},
 	{regexp.MustCompile(`\bpm\.request\.auth\b`), "pm.request.auth"},
 	{regexp.MustCompile(`\bpm\.vault\b`), "pm.vault"},
 	{regexp.MustCompile(`\bpm\.visualizer\b`), "pm.visualizer"},

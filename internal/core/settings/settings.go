@@ -97,6 +97,9 @@ type Settings struct {
 	ClientCerts []ClientCert `json:"clientCerts"`
 	// ScriptTimeoutMs stops a pre-request or test script that runs longer.
 	ScriptTimeoutMs int `json:"scriptTimeoutMs"`
+	// ScriptRequests lets scripts send requests with pm.sendRequest (on by
+	// default, as in Postman; settings saved before it existed keep it on).
+	ScriptRequests bool `json:"scriptRequests"`
 	// CloudflaredPath is the cloudflared webhook tunnels use; "" finds it
 	// (Pakpos's downloaded copy, then PATH).
 	CloudflaredPath string `json:"cloudflaredPath"`
@@ -117,6 +120,7 @@ func Defaults() Settings {
 		Proxy:           Proxy{Mode: ProxySystem},
 		ClientCerts:     []ClientCert{},
 		ScriptTimeoutMs: DefaultScriptTimeoutMs,
+		ScriptRequests:  true,
 	}
 }
 

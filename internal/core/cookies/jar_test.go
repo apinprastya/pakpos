@@ -350,3 +350,66 @@ func TestNewDefaultsClock(t *testing.T) {
 		t.Fatal("no clock")
 	}
 }
+
+func TestURLHelpers(t *testing.T) {
+	c := &clock{t: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	s := newMem()
+	j := newJar(t, s, c)
+	u := mustURL("https://api.example.com/v1/users")
+
+	got, err := j.SetForURL(u, Cookie{Name: "sid", Value: "abc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Domain != "api.example.com" || !got.HostOnly || got.Path != "/v1" || got.CreatedAt == 0 {
+		t.Fatalf("host-only cookie = %+v", got)
+	}
+	dom, err := j.SetForURL(u, Cookie{Name: "theme", Value: "dark", Domain: ".example.com", Path: "/",
+		ExpiresAt: c.t.Add(time.Hour).UnixMilli()})
+	if err != nil || dom.Domain != "example.com" || dom.HostOnly {
+		t.Fatalf("domain cookie = %+v, %v", dom, err)
+	}
+	if _, ok := s.m[dom.Ref()]; !ok {
+		t.Fatal("a persistent cookie set for a URL isn't stored")
+	}
+	if list := j.ForURL(u); len(list) != 2 || list[0].Name != "sid" || list[1].Name != "theme" {
+		t.Fatalf("ForURL = %+v", list)
+	}
+	if list := j.ForURL(mustURL("https://www.example.com/")); len(list) != 1 || list[0].Name != "theme" {
+		t.Fatalf("ForURL(www) = %+v", list)
+	}
+
+	bad := []struct {
+		u *url.URL
+		c Cookie
+	}{
+		{mustURL("ftp://x.com/"), Cookie{Name: "a"}},
+		{&url.URL{Scheme: "https"}, Cookie{Name: "a"}},
+		{u, Cookie{Name: "a", Domain: "other.org"}},
+		{u, Cookie{Name: "a", Domain: "com"}},
+		{u, Cookie{Name: "a b"}},
+		{u, Cookie{Name: "a", Value: "x;y"}},
+	}
+	for _, b := range bad {
+		if _, err := j.SetForURL(b.u, b.c); !errors.Is(err, ErrInvalid) {
+			t.Errorf("SetForURL(%s, %+v) = %v, want ErrInvalid", b.u, b.c, err)
+		}
+	}
+
+	if n := j.DeleteForURL(u, "nope"); n != 0 {
+		t.Fatalf("deleted %d unknown cookies", n)
+	}
+	if n := j.DeleteForURL(u, "theme"); n != 1 {
+		t.Fatalf("deleted %d, want 1", n)
+	}
+	if _, ok := s.m[dom.Ref()]; ok {
+		t.Fatal("a deleted persistent cookie is still stored")
+	}
+	_, _ = j.SetForURL(u, Cookie{Name: "x", Value: "1"})
+	if n := j.DeleteForURL(u, ""); n != 2 {
+		t.Fatalf("cleared %d, want 2", n)
+	}
+	if len(j.All()) != 0 || j.Cookies(u) != nil {
+		t.Fatalf("left %+v", j.All())
+	}
+}

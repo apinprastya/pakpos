@@ -6,14 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
 	"time"
 
+	"pakpos/internal/core/cookies"
+	"pakpos/internal/core/httpexec"
 	"pakpos/internal/core/inherit"
 	"pakpos/internal/core/model"
 	"pakpos/internal/core/script"
+	"pakpos/internal/core/urlx"
 	"pakpos/internal/core/vars"
 	"pakpos/internal/secrets"
 	"pakpos/internal/store/fsstore"
@@ -40,7 +44,29 @@ type ScriptOptions struct {
 	// the runner passes the previous send's Local() so pm.variables values
 	// last for the whole iteration.
 	Local map[string]string
+	// Executor sends pm.sendRequest requests (the app's network settings and
+	// cookie jar); nil makes pm.sendRequest fail. RequestsOff makes it fail
+	// with a pointer to the setting that turned it off.
+	Executor    Executor
+	RequestsOff bool
+	// Jar backs pm.cookies; nil gives scripts an empty jar.
+	Jar CookieJar
 }
+
+// Executor sends a resolved request (httpexec.Executor).
+type Executor interface {
+	Execute(ctx context.Context, id string, req model.Request) (*model.Response, error)
+}
+
+// CookieJar is the cookie jar scripts read and change (cookies.Jar).
+type CookieJar interface {
+	ForURL(u *url.URL) []cookies.Cookie
+	SetForURL(u *url.URL, c cookies.Cookie) (cookies.Cookie, error)
+	DeleteForURL(u *url.URL, name string) int
+}
+
+// MsgScriptRequestsOff is pm.sendRequest's error while the setting is off.
+const MsgScriptRequestsOff = "pm.sendRequest is turned off. Turn on \"Scripts can send requests\" in Settings → Requests."
 
 // ScriptReport is what the scripts of one event (pre-request or test)
 // produced, masked: secret values read as [secret:name].
@@ -209,12 +235,19 @@ func (sd *Send) run(ctx context.Context, event script.Event, resp *script.Respon
 		if strings.TrimSpace(code) == "" {
 			continue
 		}
-		out, err := script.Run(ctx, script.Input{
+		in := script.Input{
 			Source: l.src, Script: code, Request: sd.eff.Request, Response: resp,
 			Vars: sendVars{sd}, EnvironmentName: envName,
 			Iteration: sd.opts.Iteration, IterationCount: sd.opts.IterationCount, IterationData: sd.opts.IterationData,
 			Timeout: sd.opts.Timeout, Budget: sd.budget,
-		})
+		}
+		if sd.opts.Executor != nil || sd.opts.RequestsOff {
+			in.HTTP = scriptHTTP{sd}
+		}
+		if sd.opts.Jar != nil {
+			in.Cookies = scriptCookies{sd}
+		}
+		out, err := script.Run(ctx, in)
 		console := sd.maskConsole(out.Console)
 		rep.Console = append(rep.Console, console...)
 		rep.Tests = append(rep.Tests, sd.maskTests(out.Tests)...)
@@ -286,6 +319,83 @@ func ResponseBody(r *model.Response) []byte {
 		}
 	}
 	return []byte(r.Body)
+}
+
+// scriptHTTP sends pm.sendRequest requests: their {{variables}} resolve
+// from the send's current scopes (as pm.variables.replaceIn does), and they
+// go out with the app's network settings and cookie jar. Neither history
+// nor debug hops record them. Errors are masked.
+type scriptHTTP struct{ sd *Send }
+
+func (h scriptHTTP) Send(ctx context.Context, req model.Request) (*script.Response, error) {
+	if h.sd.opts.RequestsOff || h.sd.opts.Executor == nil {
+		return nil, requestsOffError{}
+	}
+	resolved, _, err := vars.New(h.sd.scopes.List, h.sd.vopts...).ResolveRequest(req)
+	if err != nil {
+		return nil, errors.New(VariableMessage(err))
+	}
+	resp, err := h.sd.opts.Executor.Execute(ctx, "", resolved)
+	if err != nil {
+		msg := err.Error()
+		if he := httpexec.Classify(err); he != nil {
+			msg = he.Message
+		}
+		return nil, errors.New(h.sd.Mask(msg))
+	}
+	body := ResponseBody(resp)
+	if resp.BodyPath != "" {
+		_ = os.Remove(resp.BodyPath)
+	}
+	return script.ResponseFrom(resp, body), nil
+}
+
+// requestsOffError is pm.sendRequest's error while it is off (a sentence
+// for the user).
+type requestsOffError struct{}
+
+func (requestsOffError) Error() string { return MsgScriptRequestsOff }
+
+// scriptCookies is pm.cookies over the jar. URLs resolve {{variables}};
+// one without a scheme gets http://, as the URL bar does.
+type scriptCookies struct{ sd *Send }
+
+func (c scriptCookies) url(raw string) (*url.URL, error) {
+	text, err := sendVars(c).ReplaceIn(raw)
+	if err != nil {
+		return nil, err
+	}
+	base, _, _, _ := urlx.Split(strings.TrimSpace(text))
+	u, err := url.Parse(urlx.EnsureScheme(base))
+	if err != nil || u.Host == "" {
+		return nil, fmt.Errorf("%q isn't a URL cookies can belong to", c.sd.Mask(raw))
+	}
+	return u, nil
+}
+
+func (c scriptCookies) List(raw string) ([]cookies.Cookie, error) {
+	u, err := c.url(raw)
+	if err != nil {
+		return nil, err
+	}
+	return c.sd.opts.Jar.ForURL(u), nil
+}
+
+func (c scriptCookies) Set(raw string, ck cookies.Cookie) (cookies.Cookie, error) {
+	u, err := c.url(raw)
+	if err != nil {
+		return cookies.Cookie{}, err
+	}
+	return c.sd.opts.Jar.SetForURL(u, ck)
+}
+
+func (c scriptCookies) Delete(raw, name string) error {
+	u, err := c.url(raw)
+	if err != nil {
+		return err
+	}
+	c.sd.opts.Jar.DeleteForURL(u, name)
+	return nil
 }
 
 // sendVars is script.Vars over a send's scopes.

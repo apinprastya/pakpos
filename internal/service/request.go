@@ -195,11 +195,13 @@ func (s *RequestService) Send(ctx context.Context, sendID string, req model.Requ
 	// user switches workspace while it runs.
 	wsID := ""
 	started := s.now()
+	cfg := s.c.currentSettings()
 	opts := pipeline.ScriptOptions{
-		Timeout: s.c.currentSettings().ScriptTimeout(),
+		Timeout: cfg.ScriptTimeout(),
 		OnConsole: func(entries []script.ConsoleEntry) {
 			s.c.events.Emit(EventScriptConsole, ScriptConsoleEvent{SendID: sendID, Entries: entries})
 		},
+		Executor: s.c.executor(), RequestsOff: !cfg.ScriptRequests, Jar: s.c.scriptJar(),
 	}
 	var sd *pipeline.Send
 	if ws, err := s.c.workspace(); err == nil {
