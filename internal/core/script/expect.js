@@ -608,6 +608,31 @@
     );
   });
 
+  // schemaCheck validates a value against a JSON schema in Go; the prelude
+  // installs it. It returns {invalid: "why the schema is bad" | "",
+  // problems: ["/id: got string, want integer", ...]}.
+  var schemaCheck = null;
+
+  method(["jsonSchema"], function (schema) {
+    var value = this._obj;
+    if (isResponse(value)) {
+      var body = parseBody(value);
+      if (!body.ok) throw new AssertionError("expected response body to be a valid json");
+      value = body.value;
+    }
+    if (schema === null || (typeof schema !== "object" && typeof schema !== "boolean")) {
+      throw new TypeError("jsonSchema needs a JSON schema object, like {type: 'object', required: ['id']}");
+    }
+    if (value === undefined) throw new AssertionError("expected a value to check against the schema but got undefined");
+    var res = schemaCheck(schema, value);
+    if (res.invalid) throw new TypeError("The JSON schema isn't valid: " + res.invalid);
+    return this.assert(
+      res.problems.length === 0,
+      "expected data to satisfy schema but found following errors: \n" + res.problems.join("\n"),
+      "expected data to not satisfy schema",
+    );
+  });
+
   method(["body"], function (want) {
     needResponse(this, "body");
     var text = this._obj.text();
@@ -660,5 +685,13 @@
     throw new AssertionError(message || "expect.fail()");
   };
 
-  return { expect: expect, inspect: inspect, deepEqual: deepEqual, AssertionError: AssertionError };
+  return {
+    expect: expect,
+    inspect: inspect,
+    deepEqual: deepEqual,
+    AssertionError: AssertionError,
+    useSchemaCheck: function (fn) {
+      schemaCheck = fn;
+    },
+  };
 })();

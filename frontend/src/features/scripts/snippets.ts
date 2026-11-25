@@ -35,6 +35,23 @@ export const SNIPPETS: Snippet[] = [
     code: `pm.test("Body has an id", () => {\n  const body = pm.response.json();\n  pm.expect(body).to.have.property("id");\n});\n`,
   },
   {
+    id: "json-schema",
+    label: "Response matches a JSON schema",
+    only: "test",
+    code: `const schema = {
+  type: "object",
+  required: ["id"],
+  properties: {
+    id: { type: "integer" },
+  },
+};
+
+pm.test("Body matches the schema", () => {
+  pm.response.to.have.jsonSchema(schema);
+});
+`,
+  },
+  {
     id: "env-from-json",
     label: "Set an environment variable from the JSON response",
     only: "test",

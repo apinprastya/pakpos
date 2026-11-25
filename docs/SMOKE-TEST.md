@@ -170,6 +170,12 @@ Use `XDG_CONFIG_HOME` pointing at a temp dir and an environment `Dev` with a pla
 - [ ] `pm.sendRequest`: the "Get a token with pm.sendRequest" snippet (pointed at a real token endpoint, client secret as a secret variable) sets `token` before the request goes out; the console shows `pm.sendRequest POST … → 200` and the secret only as `[secret:…]`; nothing extra appears in History. A callback form (`pm.sendRequest(url, (err, res) => …)`) works too, and an unreachable URL gives the callback an error. With Settings → Requests → "Scripts can send requests" off, the script fails with a message naming that setting.
 - [ ] `pm.cookies`: after `https://httpbin.org/cookies/set?x=1`, a test `pm.expect(pm.cookies.get("x")).to.equal("1")` passes; `await pm.cookies.jar().set("https://httpbin.org/", "y", "2")` shows `y` in Manage cookies.
 
+## Response tools
+
+- [ ] JSONPath: on a JSON response (`https://httpbin.org/json`), the body toolbar's filter button opens the field; `$.slideshow.slides[*].title` shows the titles and "2 matches"; `$..slides[?@.type == 'all']` filters; a typo shows the error in red and the full body. Resend: the filter stays. Escape closes it. Raw view and non-JSON bodies have no filter button.
+- [ ] JSON Schema: the "Response matches a JSON schema" snippet passes or fails with `/id: …` lines in the Tests tab; a `$ref` to a file or URL fails with "isn't supported".
+- [ ] Compare: send a request twice with a change (e.g. `https://httpbin.org/uuid`), hover a History row → compare icon, pick the other row; the dialog shows the earlier entry as −, the changed body lines highlighted, "Show N unchanged lines" expands, "Ignore JSON key order" works, the Request tab shows request differences. Light and dark themes are readable.
+
 ## Tier 3: collection runner
 
 Use `XDG_CONFIG_HOME` pointing at a temp dir, a collection with Login (test script sets `token` in `Dev`, where `token` and `apiKey` are secret variables), Me (`Bearer {{token}}`, a test on the user) and Logout, and a `users.csv` with `user,password` and two rows.

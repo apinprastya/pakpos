@@ -129,6 +129,13 @@ describe("pmCompletions", () => {
   });
 });
 
+describe("jsonSchema", () => {
+  it("completes on responses and expectations", () => {
+    expect(complete("pm.response.to.have.")!.labels).toContain("jsonSchema");
+    expect(complete("pm.expect(body).to.have.")!.labels).toContain("jsonSchema");
+  });
+});
+
 describe("pm.sendRequest and pm.cookies", () => {
   it("completes them in both scripts", () => {
     for (const event of ["prerequest", "test"] as const) {
@@ -168,6 +175,7 @@ describe("snippets", () => {
         "Log the response",
         "Get a token with pm.sendRequest",
         "Response set a cookie",
+        "Response matches a JSON schema",
       ]),
     );
   });

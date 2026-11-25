@@ -63,7 +63,7 @@ describe("schedulePreload", () => {
   });
 
   it("preloads the palette first", () => {
-    expect(dialogLoaders).toHaveLength(19);
+    expect(dialogLoaders).toHaveLength(20);
     expect(dialogLoaders[0].toString()).toContain("CommandPalette");
   });
 });

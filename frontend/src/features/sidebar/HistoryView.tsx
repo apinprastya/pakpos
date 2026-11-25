@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { History, Search, Trash2, X } from "lucide-react";
+import { GitCompareArrows, History, Search, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { statusTextClass } from "@/features/response/format";
@@ -8,6 +8,7 @@ import { methodShortLabel, methodTextClass } from "@/lib/http";
 import type { HistorySummary } from "@/lib/model";
 import { cn } from "@/lib/utils";
 import { useHistoryStore } from "@/stores/history";
+import { useHistoryCompareStore } from "@/stores/historyCompare";
 import { useWorkspaceStore } from "@/stores/workspace";
 import { ConfirmDeleteDialog, type DeleteTarget } from "./ConfirmDeleteDialog";
 import { EmptyState } from "./EmptyState";
@@ -26,6 +27,7 @@ export function HistoryView() {
   const [pendingClear, setPendingClear] = useState<DeleteTarget | null>(null);
   const workspace = useWorkspaceStore((s) => s.workspace);
   const workspaceId = workspace?.id ?? "";
+  const compareBase = useHistoryCompareStore((s) => s.base);
 
   // History is per workspace: reload when another one opens or it closes.
   useEffect(() => {
@@ -98,6 +100,24 @@ export function HistoryView() {
         )}
       </div>
 
+      {compareBase && (
+        <div
+          role="status"
+          className="mx-2 mb-1 flex shrink-0 items-center gap-2 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5 text-xs"
+        >
+          <p className="min-w-0 flex-1">
+            Pick an entry to compare with{" "}
+            <span className="font-mono">
+              {compareBase.method} {displayUrl(compareBase.url)}
+            </span>{" "}
+            ({timeLabel(new Date(compareBase.createdAt), now)}).
+          </p>
+          <Button size="xs" variant="ghost" onClick={() => useHistoryCompareStore.getState().cancel()}>
+            Cancel
+          </Button>
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-auto pb-2">
         {loaded && items.length === 0 ? (
           searching ? (
@@ -123,7 +143,7 @@ export function HistoryView() {
               <h3 className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">{g.label}</h3>
               <ul className="flex flex-col">
                 {g.items.map((item) => (
-                  <HistoryRow key={item.id} item={item} now={now} />
+                  <HistoryRow key={item.id} item={item} now={now} picking={compareBase} />
                 ))}
               </ul>
             </section>
@@ -143,18 +163,34 @@ export function HistoryView() {
   );
 }
 
-function HistoryRow({ item, now }: { item: HistorySummary; now: Date }) {
+function HistoryRow({
+  item,
+  now,
+  picking,
+}: {
+  item: HistorySummary;
+  now: Date;
+  /** The entry waiting for a second one to compare with; null when not comparing. */
+  picking: HistorySummary | null;
+}) {
   const store = useHistoryStore.getState;
+  const compare = useHistoryCompareStore.getState;
   const failed = item.status === 0;
   const when = new Date(item.createdAt);
+  const isBase = picking?.id === item.id;
+  const describe = `${item.method} ${item.url}, ${statusLabel(item)}, ${timeLabel(when, now)}${item.environmentName ? `, ${item.environmentName}` : ""}`;
   return (
     <li className="group/row relative mx-1">
       <button
         type="button"
-        onClick={() => void store().open(item.id)}
+        onClick={() => (picking ? compare().pick(item) : void store().open(item.id))}
         title={item.url}
-        aria-label={`${item.method} ${item.url}, ${statusLabel(item)}, ${timeLabel(when, now)}${item.environmentName ? `, ${item.environmentName}` : ""}`}
-        className="flex w-full flex-col gap-0.5 rounded-md py-1.5 pr-7 pl-2 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset"
+        aria-label={picking ? (isBase ? `Stop comparing ${describe}` : `Compare with ${describe}`) : describe}
+        aria-pressed={picking ? isBase : undefined}
+        className={cn(
+          "flex w-full flex-col gap-0.5 rounded-md py-1.5 pr-13 pl-2 text-left hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none focus-visible:ring-inset",
+          isBase && "bg-primary/10 ring-1 ring-primary/40 ring-inset",
+        )}
       >
         <span className="flex w-full items-center gap-2">
           <span
@@ -187,6 +223,17 @@ function HistoryRow({ item, now }: { item: HistorySummary; now: Date }) {
           )}
         </span>
       </button>
+      {!picking && (
+        <button
+          type="button"
+          aria-label="Compare with another entry"
+          title="Compare with another entry"
+          onClick={() => compare().start(item)}
+          className="absolute top-1.5 right-7 hidden rounded p-1 text-muted-foreground group-focus-within/row:block group-hover/row:block hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          <GitCompareArrows className="size-3.5" />
+        </button>
+      )}
       <button
         type="button"
         aria-label="Delete from history"

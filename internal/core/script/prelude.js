@@ -9,6 +9,9 @@
 
   var input = JSON.parse(inputJSON);
   var expect = lib.expect;
+  lib.useSchemaCheck(function (schema, value) {
+    return JSON.parse(host.jsonSchema(JSON.stringify(schema), JSON.stringify(value)));
+  });
   var g = globalThis;
   var state = { request: input.request, nextRequest: null, nextRequestSet: false, skip: false };
   // Callbacks of pm.sendRequest and the cookie jar run after the script's
